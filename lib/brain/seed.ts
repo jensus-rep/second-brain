@@ -12,6 +12,7 @@ const entries = [
 
 export const seedWorkspace: Workspace = {
   schemaVersion: 1,
+  cards: [],
   topics: [
     { id: "wissen", title: "Wissensarbeit", description: "Gedanken sammeln, ordnen und wiederfinden.", color: "blue" },
     { id: "denken", title: "Denken & Verstehen", description: "Verbindungen entdecken. Eigene Ideen entwickeln.", color: "purple" },
@@ -24,4 +25,3 @@ export const seedWorkspace: Workspace = {
   paths: [{ id: "erster-pfad", title: "Dein Second Brain aufbauen", description: "Sechs kleine Schritte von deiner ersten Frage zu einer lebendigen Wissenssammlung.", steps: entries.map(([id], i) => ({ id: "einstieg-" + i, noteId: id, objective: ["Formuliere deine erste Wissensfrage.", "Erfasse einen Gedanken mit Kontext.", "Erkläre eine Idee in deinen eigenen Worten.", "Verbinde zwei verwandte Gedanken.", "Erstelle einen eigenen Lernpfad.", "Wende einen Gedanken im Alltag an."][i] })) }],
   completedStepIds: [],
 };
-

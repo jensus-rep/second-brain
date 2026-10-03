@@ -22,6 +22,7 @@ try {
   await page.getByRole("button", { name: "Neue Notiz", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("Titel", { exact: true }).fill("Browserprüfung Wissensnotiz");
+  await dialog.getByRole("button", { name: "Details & Verbindungen" }).click();
   await dialog.getByLabel("Kurzbeschreibung").fill("Ein prüfbarer Gedanke.");
   await dialog.getByLabel(/^Tags/).fill("Test, test, Wiederfinden");
   await dialog.getByRole("textbox", { name: /^Inhalt/ }).fill("## Meine Erkenntnis\n\nDiese Notiz prüft dauerhaftes Speichern und Suchen.");
@@ -34,10 +35,12 @@ try {
   await page.getByRole("button", { name: "Aus Favoriten entfernen" }).waitFor();
   await page.getByRole("heading", { name: "Browserprüfung Wissensnotiz", exact: true }).click();
   await page.getByRole("dialog").getByRole("heading", { name: "Meine Erkenntnis" }).waitFor();
-  await page.getByRole("button", { name: "Archivieren", exact: true }).click();
-  await page.getByRole("button", { name: "Wiederherstellen", exact: true }).waitFor();
-  await page.getByRole("button", { name: "Wiederherstellen", exact: true }).click();
-  await page.getByRole("button", { name: "Archivieren", exact: true }).waitFor();
+  await page.getByRole("button", { name: "Weitere Notizaktionen" }).click();
+  await page.getByRole("menuitem", { name: "Archivieren", exact: true }).click();
+  await page.getByText("Notiz archiviert", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Weitere Notizaktionen" }).click();
+  await page.getByRole("menuitem", { name: "Wiederherstellen", exact: true }).click();
+  await page.getByText("Notiz wiederhergestellt", { exact: true }).waitFor();
   await page.keyboard.press("Escape");
 
   await page.getByRole("button", { name: "Lernpfade", exact: true }).click();

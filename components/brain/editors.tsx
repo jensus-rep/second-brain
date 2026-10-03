@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Markdown } from "./markdown";
+import { MediaToolbar } from "./media-toolbar";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { normalizeTags, type Note, type Topic, type LearningPath, type Workspace } from "@/lib/brain/model";
 import type { SaveWorkspace } from "@/lib/brain/use-brain";
 
@@ -32,6 +34,9 @@ export function NoteEditor({ note, workspace, save, saving, onClose }: {
   const [draft, setDraft] = useState(note);
   const [tags, setTags] = useState(note.tags.join(", "));
   const [linkQuery, setLinkQuery] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const busy = saving || uploading;
+  const [mode, setMode] = useState("edit");
   const dirty = JSON.stringify(note) !== JSON.stringify(draft) || tags !== note.tags.join(", ");
   useUnsaved(dirty);
   const change = <K extends keyof Note>(key: K, value: Note[K]) => setDraft(d => ({ ...d, [key]: value }));
@@ -41,22 +46,27 @@ export function NoteEditor({ note, workspace, save, saving, onClose }: {
     const ok = await save(w => ({ ...w, notes: w.notes.some(n => n.id === note.id) ? w.notes.map(n => n.id === note.id ? updated : n) : [...w.notes, updated] }), "Notiz gespeichert");
     if (ok) onClose();
   }
-  return <Dialog open onOpenChange={open => { if (!open && !saving) closeIfSafe(dirty, onClose); }}>
-    <DialogContent className="editor-dialog" onInteractOutside={e => e.preventDefault()}>
+  return <Dialog open onOpenChange={open => { if (!open && !busy) closeIfSafe(dirty, onClose); }}>
+    <DialogContent className="editor-dialog" onInteractOutside={e => e.preventDefault()} onEscapeKeyDown={e => { if (document.querySelector(".lightbox")) e.preventDefault(); }}>
       <DialogHeader><DialogTitle>{workspace.notes.some(n => n.id === note.id) ? "Notiz bearbeiten" : "Ein neuer Gedanke"}</DialogTitle><DialogDescription>Halte fest, was du verstehen und behalten möchtest.</DialogDescription></DialogHeader>
-      <form onSubmit={submit} className="editor-form" inert={saving} aria-busy={saving}>
+      <form onSubmit={submit} className="editor-form" inert={busy} aria-busy={busy}>
         <Field label="Titel"><Input value={draft.title} onChange={e => change("title", e.target.value)} placeholder="Was möchtest du festhalten?" required maxLength={160} autoFocus /></Field>
+        <Tabs value={mode} onValueChange={setMode}><TabsList aria-label="Inhaltsansicht"><TabsTrigger value="edit">Schreiben</TabsTrigger><TabsTrigger value="preview">Vorschau</TabsTrigger></TabsList>
+          <TabsContent value="edit"><Field label="Inhalt" hint="Markdown: ## Überschrift · **fett** · - Aufzählung · [Quelle](https://…)"><Textarea className="markdown-input" value={draft.content} onChange={e => change("content", e.target.value)} placeholder="Deine Gedanken, Beispiele und Quellen …" maxLength={80000} rows={10} /></Field></TabsContent>
+          <TabsContent value="preview"><div className="markdown-preview"><Markdown content={draft.content || "Deine Vorschau erscheint hier."} /></div></TabsContent>
+        </Tabs>
+        {mode === "edit" && <MediaToolbar onBusy={setUploading} insert={text => setDraft(d => ({ ...d, content: d.content + text }))} />}
+        <Collapsible className="editor-details"><CollapsibleTrigger asChild><button type="button" className="details-trigger">Details & Verbindungen<ChevronDown size={16} /></button></CollapsibleTrigger><CollapsibleContent className="details-content">
         <div className="form-columns">
           <Field label="Thema"><Select value={draft.topicId ?? "none"} onValueChange={v => change("topicId", v === "none" ? null : v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Noch nicht zugeordnet</SelectItem>{workspace.topics.map(t => <SelectItem key={t.id} value={t.id}>{t.title}</SelectItem>)}</SelectContent></Select></Field>
           <Field label="Tags" hint="Mit Komma trennen"><Input value={tags} onChange={e => setTags(e.target.value)} placeholder="z. B. ideen, schreiben" maxLength={800} /></Field>
         </div>
         <Field label="Kurzbeschreibung"><Textarea value={draft.summary} onChange={e => change("summary", e.target.value)} placeholder="Die wichtigste Idee in einem Satz." maxLength={600} rows={2} /></Field>
-        <Tabs defaultValue="edit"><TabsList aria-label="Inhaltsansicht"><TabsTrigger value="edit">Schreiben</TabsTrigger><TabsTrigger value="preview">Vorschau</TabsTrigger></TabsList>
-          <TabsContent value="edit"><Field label="Inhalt" hint="Markdown: ## Überschrift · **fett** · - Aufzählung · [Quelle](https://…)"><Textarea className="markdown-input" value={draft.content} onChange={e => change("content", e.target.value)} placeholder="Deine Gedanken, Beispiele und Quellen …" maxLength={80000} rows={10} /></Field></TabsContent>
-          <TabsContent value="preview"><div className="markdown-preview"><Markdown content={draft.content || "Deine Vorschau erscheint hier."} /></div></TabsContent>
-        </Tabs>
+
         <fieldset className="link-picker"><legend>Verknüpfte Notizen</legend><Input aria-label="Verknüpfbare Notizen filtern" value={linkQuery} onChange={e => setLinkQuery(e.target.value)} placeholder="Notizen finden …" /><div className="checkbox-list">{workspace.notes.filter(n => n.id !== note.id && (!n.archived || draft.relatedIds.includes(n.id)) && n.title.toLowerCase().includes(linkQuery.toLowerCase())).map(n => <label key={n.id}><Checkbox checked={draft.relatedIds.includes(n.id)} onCheckedChange={checked => change("relatedIds", checked ? [...draft.relatedIds, n.id] : draft.relatedIds.filter(id => id !== n.id))} /><span>{n.title}{n.archived ? " (archiviert)" : ""}</span></label>)}</div></fieldset>
-        <div className="dialog-actions"><Button type="button" variant="outline" disabled={saving} onClick={() => closeIfSafe(dirty, onClose)}>Abbrechen</Button><Button type="submit" disabled={saving || !draft.title.trim()}><Save size={16} />{saving ? "Wird gespeichert …" : "Notiz speichern"}</Button></div>
+
+        </CollapsibleContent></Collapsible>
+        <div className="dialog-actions"><Button type="button" variant="outline" disabled={busy} onClick={() => closeIfSafe(dirty, onClose)}>Abbrechen</Button><Button type="submit" disabled={busy || !draft.title.trim()}><Save size={16} />{saving ? "Wird gespeichert …" : "Notiz speichern"}</Button></div>
       </form>
     </DialogContent>
   </Dialog>;

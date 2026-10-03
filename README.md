@@ -10,6 +10,10 @@ Eine private, deutschsprachige Second-Brain-Web-App. Wissen wird als Markdown mi
 - Karten- und Listenansicht sowie responsive Navigation.
 - Lernpfade mit sortierbaren Schritten, eigenen Aufgaben und dauerhaftem Fortschritt.
 - JSON-Export und validierter Import mit ausdrücklicher Ersetzungsbestätigung.
+- Bilder (PNG, JPEG, WebP, GIF) mit Beschriftung, Kartenvorschau und vergrößerbarer Ansicht; private Speicherung in R2.
+- Sichere Mermaid-Ablaufdiagramme, Sequenzdiagramme und Mindmaps direkt im Markdown.
+- Lernkarten mit Frage, aufdeckbarer Antwort und geplanten Wiederholungen; Bilder und Diagramme auf beiden Seiten.
+- Vollständige ZIP-Sicherungen inklusive Bilder und Lernkarten; JSON bleibt zum Bearbeiten der Wissensdaten verfügbar.
 - Sechs editierbare Einstiegsnotizen und ein unbegonnener Beispiel-Lernpfad.
 - Private Sites-Bereitstellung; Speicherung in Cloudflare D1 pro angemeldetem Nutzer.
 - Konflikterkennung über Revisionen statt stiller Überschreibung in mehreren Fenstern.
@@ -26,6 +30,9 @@ Eine private, deutschsprachige Second-Brain-Web-App. Wissen wird als Markdown mi
 | Arbeitsoberfläche | components/brain/brain-app.tsx |
 | Notiz-, Themen- und Lernpfad-Editoren | components/brain/editors.tsx |
 | Sicherer Markdown-Renderer | components/brain/markdown.tsx |
+| Abbildungen, Diagramme, Uploads | components/brain/visual.tsx, media-toolbar.tsx, app/api/media/ |
+| Lernkarten und Lernansicht | components/brain/flashcards.tsx |
+| Bildsicherungen und Import | lib/brain/backup.ts, components/brain/transfer-dialog.tsx |
 | Design-Tokens, Layout, responsive Gestaltung | app/globals.css |
 | Datenbankschema und Migrationen | db/schema.ts, drizzle/ |
 | Wiederverwendbare UI-Primitiven | components/ui/ |
@@ -56,6 +63,7 @@ Falls die npm-CMD-Weiterleitung auf Windows fehlschlägt, kann man die npm-CLI d
 npm run typecheck
 npm test
 npm run test:browser
+npm run test:visual
 ~~~
 
 Für den Browsertest muss der lokale Entwicklungsserver laufen und Google Chrome installiert sein. Alternativ die Browserkonfiguration in tests/browser.mjs auf einen verfügbaren Playwright-Browser ändern. Der Test lehnt externe Ziele ab und stellt den lokalen Ausgangsbestand nach seinem Lauf wieder her.
@@ -72,12 +80,23 @@ Neue Inhalte lassen sich über die Oberfläche erfassen. Für vorbereitete Inhal
 
 Das Format ist in lib/brain/model.ts beschrieben. Ein Import ersetzt den gesamten Bestand; vorher eine Sicherung aufbewahren. Änderungen an seed.ts beeinflussen ausschließlich neu angelegte Nutzer-Sammlungen.
 
-Der Markdown-Renderer unterstützt Überschriften, Absätze, Listen, Zitate, Fettschrift, Inline-Code, Codeblöcke ohne Leerabsatz und externe HTTP(S)-Links. HTML, Skripte und gefährliche Linkprotokolle werden nicht ausgeführt. Tabellen, Bilder, Dateianhänge und vollständiges CommonMark sind noch nicht umgesetzt.
+Der Markdown-Renderer verwendet react-markdown und remark-gfm: Überschriften, Listen, Tabellen, Zitate, Code, Links und private Bilder. Bilder über „Bild einfügen“ hochladen; Bildunterschriften stehen im Markdown-Titel. Externe Bilder werden nicht automatisch abgerufen. HTML wird nicht ausgeführt.
 
-## Grenzen der ersten Version
+„Diagramm einfügen“ legt eine editierbare Mermaid-Vorlage an. Unterstützt sind klassische flowchart/graph-Diagramme, sequenceDiagram und mindmap. HTML, Konfigurationsdirektiven, externe Ressourcen und Bildformen sind ausgeschlossen. Das Ergebnis wird mit DOMPurify bereinigt und als isoliertes SVG-Bild angezeigt.
 
-- Maximal 1,8 MB UTF-8 pro Sammlung, 1.000 Notizen, 100 Themen und 100 Lernpfade; maximal 80.000 Zeichen je Notiz.
-- Kein Offline-Modus, keine Dateianhänge, keine automatische externe Recherche.
+## Lernen mit Karten
+
+Unter „Lernkarten“ eigene Fragen und Antworten erstellen, oder im Notizleser „Lernkarte erstellen“ wählen. Eine Lernrunde zeigt fällige Karten. Erst nach dem Aufdecken erscheinen die Bewertungen. „Noch üben“ plant zehn Minuten später; „Gewusst“ steigert den Abstand auf 1, 3, 7, 14 und höchstens 30 Tage. Bewertungen werden vor dem Weiterblättern atomar gespeichert. Ältere Sammlungen ohne Lernkarten bleiben kompatibel. Termine werden in UTC gespeichert und für Europe/Berlin angezeigt.
+
+## Abbildungen sichern
+
+ZIP-Sicherungen enthalten die Wissensdaten sowie hochgeladene Bilder. Beim Import werden die Bilder dem angemeldeten Nutzer neu zugeordnet und ihre Referenzen angepasst. JSON enthält nur Referenzen auf Bilder derselben Umgebung. Fehlende Abbildungen verhindern einen unvollständigen Import oder ZIP-Export. Die Bildsicherung unterstützt bis zu 200 Bilder und insgesamt 64 MB. Bilder bleiben beim Entfernen einer Notiz erhalten, damit andere Verknüpfungen und vorhandene JSON-Sicherungen funktionieren.
+
+## Grenzen
+
+- Maximal 1,8 MB UTF-8 für Text und Metadaten, 1.000 Notizen, 100 Themen, 100 Lernpfade und 3.000 Lernkarten; maximal 80.000 Zeichen je Notiz. Bilddateien zählen nicht in dieses Textlimit.
+- Bilder: höchstens 8 MB und 24 Megapixel. Der Server prüft Format und Abmessungen, der Browser decodiert Uploads und importierte Bilder vor dem Speichern.
+- Kein Offline-Modus, keine allgemeinen Dateianhänge und keine automatische externe Recherche.
 - Änderungen werden ausdrücklich gespeichert. Bei Verbindungsfehlern bleiben offene Formulare erhalten; beim Verlassen mit ungespeicherten Änderungen erfolgt eine Warnung.
 - Die Sammlung bleibt privat; weitere Nutzer erhalten separate Sammlungen, falls der Zugang später erweitert wird.
 - Die Verknüpfungskarte zeigt bis zu 40 Notizen; Themenfilter grenzen größere Bestände ein.
@@ -86,4 +105,3 @@ Der Markdown-Renderer unterstützt Überschriften, Absätze, Listen, Zitate, Fet
 ## Veröffentlichung
 
 Die Sites-Projektidentität und DB-Bindung stehen in .openai/hosting.json. Veröffentlichung über den Sites-Workflow; Builds erzeugen den Cloudflare Worker samt Assets und Migrationen. Der private Zugriff bleibt erhalten. Zugangsdaten gehören weder in das Repository noch in Browsercode.
-

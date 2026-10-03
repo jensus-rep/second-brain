@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { workspaceSchema, normalizeTags, searchNotes, pathProgress } from "../lib/brain/model.ts";
+import { workspaceSchema, normalizeTags, searchNotes, pathProgress, reviewCard } from "../lib/brain/model.ts";
+import { isAllowedDiagram } from "../lib/brain/diagram.ts";
 import { seedWorkspace } from "../lib/brain/seed.ts";
 test("seed is a valid portable workspace with no fake learning progress", () => {
   assert.equal(workspaceSchema.parse(seedWorkspace).notes.length, 6);
@@ -29,4 +30,28 @@ test("progress survives reordering and handles an empty path", () => {
   assert.deepEqual(pathProgress(path, completed), { done: 1, total: 6, percent: 17 });
   assert.deepEqual(pathProgress({ ...path, steps: [] }, []), { done: 0, total: 0, percent: 0 });
 });
-
+test("old workspaces get cards without changing existing content", () => {
+  const old = structuredClone(seedWorkspace); delete old.cards;
+  assert.deepEqual(workspaceSchema.parse(old).cards, []);
+  assert.equal(workspaceSchema.parse(old).notes.length, old.notes.length);
+});
+test("flashcards schedule atomically with stable UTC intervals", () => {
+  const now = new Date("2026-10-03T12:00:00.000Z");
+  let card = { id: "test-card", question: "Frage", answer: "Antwort", noteId: null, dueAt: now.toISOString(), intervalDays: 0, reviews: 0 };
+  for (const interval of [1, 3, 7, 14, 30, 30]) {
+    card = reviewCard(card, true, now);
+    assert.equal(card.intervalDays, interval);
+    assert.equal(Date.parse(card.dueAt) - now.getTime(), interval * 86400000);
+  }
+  card = reviewCard(card, false, now);
+  assert.equal(card.reviews, 7);
+  assert.equal(card.intervalDays, 0);
+  assert.equal(card.dueAt, "2026-10-03T12:10:00.000Z");
+  assert.equal(reviewCard(card, true, now).intervalDays, 1);
+});
+test("diagram boundary rejects network-capable image shapes and config", () => {
+  assert.equal(isAllowedDiagram("flowchart LR\nA[Gedanke] --> B[Verstehen]"), true);
+  assert.equal(isAllowedDiagram('flowchart LR\nA@{img: "https://example.com/pixel"}'), false);
+  assert.equal(isAllowedDiagram('%%{init: {"securityLevel":"loose"}}%%\nflowchart LR\nA-->B'), false);
+  assert.equal(isAllowedDiagram('flowchart LR\nA[<img src=x>]'), false);
+});

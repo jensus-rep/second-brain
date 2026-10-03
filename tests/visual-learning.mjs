@@ -1,0 +1,137 @@
+import { chromium, expect } from "@playwright/test";
+import assert from "node:assert/strict";
+import { mkdir, readFile } from "node:fs/promises";
+import { unzipSync, strFromU8 } from "fflate";
+
+const origin = process.env.BRAIN_TEST_URL ?? "http://127.0.0.1:5173";
+if (!["127.0.0.1", "localhost"].includes(new URL(origin).hostname)) throw new Error("Local test data only.");
+const browser = await chromium.launch({ channel: "chrome", headless: true });
+const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+const errors = [];
+const remoteImages = [];
+page.on("pageerror", e => errors.push(e.message));
+page.on("request", request => { if (request.url().includes("image-probe.invalid")) remoteImages.push(request.url()); });
+let initial;
+try {
+  await page.goto(origin, { waitUntil: "networkidle" });
+  await page.getByText("Dein Wissen ist gespeichert").waitFor();
+  initial = (await (await page.request.get(origin + "/api/brain")).json()).workspace;
+  await mkdir(".sites-runtime/qa", { recursive: true });
+  await page.screenshot({ path: ".sites-runtime/qa/round2-overview.png", fullPage: true });
+  const image = await page.evaluate(() => {
+    const canvas = document.createElement("canvas"); canvas.width = 960; canvas.height = 440;
+    const ctx = canvas.getContext("2d"); ctx.fillStyle = "#eff4ff"; ctx.fillRect(0, 0, 960, 440);
+    ctx.fillStyle = "#34496b"; ctx.font = "30px Georgia"; ctx.fillText("Vom Gedanken zur Anwendung", 55, 75);
+    const labels = ["Sammeln", "Verstehen", "Anwenden"];
+    labels.forEach((label, i) => { const x = 55 + i * 305; ctx.fillStyle = "white"; ctx.fillRect(x, 145, 240, 140); ctx.fillStyle = "#4565a3"; ctx.font = "22px Arial"; ctx.fillText(label, x + 50, 222); if (i < 2) { ctx.strokeStyle = "#89a5d5"; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x+246, 215); ctx.lineTo(x+294, 215); ctx.stroke(); } });
+    ctx.fillStyle = "#8397b9"; ctx.font = "17px Arial"; ctx.fillText("Wissen wird durch Verbindungen und Anwendung nutzbar.", 55, 355);
+    return canvas.toDataURL("image/png").split(",")[1];
+  });
+  await page.getByRole("button", { name: "Neue Notiz", exact: true }).click();
+  let dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Titel", { exact: true }).fill("Visuell lernen – Prüfnote");
+  await expect(dialog.getByLabel("Kurzbeschreibung")).not.toBeVisible();
+  await dialog.locator('input[type="file"]').setInputFiles({ name: "wissensweg.png", mimeType: "image/png", buffer: Buffer.from(image, "base64") });
+  await dialog.getByLabel("Bildbeschreibung", { exact: true }).fill("Vom Gedanken zur Anwendung");
+  await dialog.getByLabel("Bildunterschrift", { exact: true }).fill("Sammeln, verstehen, anwenden – ein einfacher Lernweg.");
+  await dialog.getByRole("button", { name: "Abbildung übernehmen" }).click();
+  await page.getByText("Abbildung eingefügt – jetzt die Notiz speichern.", { exact: true }).waitFor();
+  await dialog.getByRole("button", { name: "Diagramm einfügen" }).click();
+  const content = await dialog.getByRole("textbox", { name: /^Inhalt/ }).inputValue();
+  const imageUrl = content.match(/\/api\/media\/[0-9a-f-]{36}/)[0];
+  await dialog.getByRole("textbox", { name: /^Inhalt/ }).fill("## Ein visueller Gedanke\n\n" + content);
+  await dialog.getByRole("tab", { name: "Vorschau", exact: true }).click();
+  await expect(dialog.getByRole("img", { name: "Vom Gedanken zur Anwendung", exact: true })).toBeVisible();
+  await expect(dialog.getByRole("img", { name: "Diagramm", exact: true })).toBeVisible({ timeout: 60000 });
+  assert.equal(await dialog.getByRole("img", { name: "Diagramm", exact: true }).evaluate(img => img.complete && img.naturalWidth > 0), true);
+  const diagramSource = await dialog.getByRole("img", { name: "Diagramm", exact: true }).getAttribute("src");
+  assert.match(decodeURIComponent(diagramSource.split(",")[1]), /<text[\s>]/);
+  assert.match(decodeURIComponent(diagramSource.split(",")[1]), /Gedanke/);
+  await dialog.getByRole("button", { name: "Vom Gedanken zur Anwendung vergrößern" }).click();
+  await page.getByRole("dialog", { name: "Vom Gedanken zur Anwendung", exact: true }).waitFor();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "Ein neuer Gedanke", exact: true })).toBeVisible();
+  await dialog.getByRole("button", { name: "Notiz speichern", exact: true }).click();
+  await dialog.waitFor({ state: "hidden" });
+  await page.getByRole("textbox", { name: "Wissen durchsuchen" }).fill("Visuell lernen");
+  await page.getByRole("heading", { name: "Visuell lernen – Prüfnote" }).click();
+  dialog = page.getByRole("dialog");
+  await expect(dialog.locator("figcaption")).toHaveText("Sammeln, verstehen, anwenden – ein einfacher Lernweg.");
+  await expect(dialog.getByRole("img", { name: "Diagramm", exact: true })).toBeVisible({ timeout: 60000 });
+  await page.screenshot({ path: ".sites-runtime/qa/round2-visual-note.png", fullPage: true, animations: "disabled" });
+  await dialog.getByRole("button", { name: "Vom Gedanken zur Anwendung vergrößern" }).click();
+  await expect(page.getByRole("dialog", { name: "Vom Gedanken zur Anwendung", exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "Visuell lernen – Prüfnote", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Lernkarte erstellen" }).click();
+  dialog = page.getByRole("dialog");
+  await dialog.getByRole("textbox", { name: "Frage", exact: true }).fill("Wie wird aus einer Fundstelle eigenes Wissen?");
+  await dialog.getByRole("tab", { name: "Antwort", exact: true }).click();
+  await dialog.getByRole("textbox", { name: "Antwort", exact: true }).fill("In eigenen Worten erklären, mit Bekanntem verknüpfen und anwenden.\n\n![Wissensweg](" + imageUrl + ' "Die drei Schritte.")');
+  await dialog.getByRole("button", { name: "Lernkarte speichern" }).click();
+  await dialog.waitFor({ state: "hidden" });
+  await page.getByRole("button", { name: "Lernkarten", exact: true }).click();
+  // Isolate the newly created card without modifying the user's original test data permanently.
+  const snapshot = await (await page.request.get(origin + "/api/brain")).json();
+  const card = snapshot.workspace.cards.find(c => c.question === "Wie wird aus einer Fundstelle eigenes Wissen?");
+  assert.ok(card);
+  await page.request.put(origin + "/api/brain", { data: { ...snapshot, workspace: { ...snapshot.workspace, cards: [card] } } });
+  await page.reload({ waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Lernkarten", exact: true }).click();
+  await page.getByRole("button", { name: "Lernrunde starten" }).click();
+  await expect(page.getByRole("button", { name: /Gewusst/ })).not.toBeVisible();
+  await page.getByRole("button", { name: "Antwort aufdecken" }).press("Enter");
+  await expect(page.getByRole("img", { name: "Wissensweg", exact: true })).toBeVisible();
+  await page.screenshot({ path: ".sites-runtime/qa/round2-flashcard.png", fullPage: true });
+  await page.getByRole("button", { name: /Gewusst/ }).click();
+  await page.getByRole("heading", { name: "Ein Stück Wissen bleibt." }).waitFor();
+  let updated = await (await page.request.get(origin + "/api/brain")).json();
+  assert.equal(updated.workspace.cards[0].reviews, 1);
+  assert.equal(updated.workspace.cards[0].intervalDays, 1);
+  await page.reload({ waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Lernkarten", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Für den Moment ist alles da." })).toBeVisible();
+
+  // Rejected file payloads cannot become HTML/SVG assets.
+  const invalid = await page.request.post(origin + "/api/media", { headers: { "Content-Type": "image/png" }, data: "<svg onload='alert(1)'></svg>" });
+  assert.equal(invalid.status(), 400);
+  assert.equal((await page.request.get(origin + imageUrl)).status(), 200);
+  const unauthenticated = await browser.newContext();
+  const unauthorized = await unauthenticated.request.get(origin + imageUrl, { maxRedirects: 0 });
+  assert.ok([401, 302, 303, 307].includes(unauthorized.status()));
+  await unauthenticated.close();
+
+  await page.getByRole("button", { name: "Import & Datensicherung" }).click();
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Sicherung herunterladen" }).click();
+  const download = await downloadPromise;
+  const files = unzipSync(new Uint8Array(await readFile(await download.path())));
+  const saved = JSON.parse(strFromU8(files["workspace.json"]));
+  assert.equal(saved.cards.length, 1);
+  assert.ok(Object.keys(files).some(name => name.startsWith("media/")));
+  // Restore a ZIP, including newly uploaded private images with rewritten URLs.
+  const filePath = await download.path();
+  await page.getByRole("dialog").locator('input[type="file"]').setInputFiles({ name: "sicherung.zip", mimeType: "application/zip", buffer: await readFile(filePath) });
+  await page.getByRole("alertdialog").getByRole("button", { name: "Sammlung ersetzen", exact: true }).click();
+  await page.getByRole("alertdialog").waitFor({ state: "hidden" });
+  updated = await (await page.request.get(origin + "/api/brain")).json();
+  const restoredCard = updated.workspace.cards[0];
+  assert.equal(restoredCard.reviews, 1);
+  const newImageUrl = restoredCard.answer.match(/\/api\/media\/[0-9a-f-]{36}/)[0];
+  assert.notEqual(newImageUrl, imageUrl);
+  assert.equal((await page.request.get(origin + newImageUrl)).status(), 200);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload({ waitUntil: "networkidle" });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
+  await page.screenshot({ path: ".sites-runtime/qa/round2-mobile.png", fullPage: true });
+  assert.deepEqual(remoteImages, []);
+  assert.deepEqual(errors, []);
+  console.log("PASS: image upload, private read, captions, zoom, Mermaid rendering, uncluttered editor, flashcard creation/reveal/review persistence, ZIP media round-trip, mobile layout.");
+} finally {
+  if (initial) {
+    const latest = await (await page.request.get(origin + "/api/brain")).json();
+    assert.equal((await page.request.put(origin + "/api/brain", { data: { revision: latest.revision, workspace: initial } })).status(), 200);
+  }
+  await browser.close();
+}
