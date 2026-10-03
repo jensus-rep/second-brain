@@ -1,0 +1,10 @@
+Generated with the built-in image_gen tool.
+
+Use case: logo-brand
+Asset type: original app logo symbol for NewHope, a private German personal knowledge library and second brain.
+Primary request: one minimal, sophisticated abstract folded-page / connected-knowledge mark subtly suggestive of the letter N.
+Style/medium: clean flat geometric brand mark, vector-friendly crisp edges.
+Composition/framing: a single compact centered symbol on a square transparent canvas, with generous transparent margin; bold simple geometry that remains recognizable at 32px.
+Color palette: one solid royal blue #285cf4.
+Constraints: actual transparent background; only one logo symbol; no text or wordmark; balanced precise geometry; distinct folded-page idea with a clear internal negative-space connection.
+Avoid: brain shapes, decorative nodes, gradients, shadows, texture, 3D effects, outlines, mockups, multiple variations, extra objects, watermark.

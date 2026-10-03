@@ -1,12 +1,25 @@
 "use client";
-import { Children, isValidElement } from "react";
+import { Children, isValidElement, memo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Diagram, Figure } from "./visual";
 import { isPrivateImage } from "@/lib/brain/media";
 
-export function Markdown({ content }: { content: string }) {
-  return <div className="prose-brain"><ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml
+type MarkdownNode = { type: string; children?: MarkdownNode[]; data?: { hProperties?: Record<string, unknown> } };
+function remarkHeadingIds({ prefix }: { prefix?: string }) {
+  return (tree: unknown) => {
+    if (!prefix) return;
+    let index = 0;
+    const visit = (node: MarkdownNode) => {
+      if (node.type === "heading") node.data = { ...node.data, hProperties: { ...node.data?.hProperties, id: `${prefix}-${index++}` } };
+      node.children?.forEach(visit);
+    };
+    visit(tree as MarkdownNode);
+  };
+}
+
+export const Markdown = memo(function Markdown({ content, headingPrefix }: { content: string; headingPrefix?: string }) {
+  return <div className="prose-brain"><ReactMarkdown remarkPlugins={[remarkGfm, [remarkHeadingIds, { prefix: headingPrefix }]]} skipHtml
     urlTransform={(url, key) => key === "src" ? (isPrivateImage(url) ? url : "") : /^https?:\/\//i.test(url) ? url : ""}
     components={{
       img: ({ src, alt, title }) => <Figure src={typeof src === "string" ? src : ""} alt={alt || "Abbildung"} caption={title ?? ""} />,
@@ -19,5 +32,4 @@ export function Markdown({ content }: { content: string }) {
       },
       table: ({ children }) => <div className="table-scroll"><table>{children}</table></div>,
     }}>{content}</ReactMarkdown></div>;
-}
-
+});

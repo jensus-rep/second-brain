@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import "./visual-workspace.css";
+import "./reading-workspace.css";
 
 export const metadata: Metadata = {
   title: "NewHope · Dein Wissensatelier",
   description: "Dein persönlicher Ort für Wissen, neue Verbindungen und eigene Lernpfade.",
   icons: {
-    icon: "/favicon.svg",
-    shortcut: "/favicon.svg",
+    icon: "/brand/newhope-mark.png",
+    shortcut: "/brand/newhope-mark.png",
   },
 };
 

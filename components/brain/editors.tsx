@@ -51,6 +51,7 @@ export function NoteEditor({ note, workspace, save, saving, onClose }: {
       <DialogHeader><DialogTitle>{workspace.notes.some(n => n.id === note.id) ? "Notiz bearbeiten" : "Ein neuer Gedanke"}</DialogTitle><DialogDescription>Halte fest, was du verstehen und behalten möchtest.</DialogDescription></DialogHeader>
       <form onSubmit={submit} className="editor-form" inert={busy} aria-busy={busy}>
         <Field label="Titel"><Input value={draft.title} onChange={e => change("title", e.target.value)} placeholder="Was möchtest du festhalten?" required maxLength={160} autoFocus /></Field>
+        <Field label="Thema"><Select value={draft.topicId ?? "none"} onValueChange={v => change("topicId", v === "none" ? null : v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Ohne Thema</SelectItem>{workspace.topics.map(t => <SelectItem key={t.id} value={t.id}>{t.title}</SelectItem>)}</SelectContent></Select></Field>
         <Tabs value={mode} onValueChange={setMode}><TabsList aria-label="Inhaltsansicht"><TabsTrigger value="edit">Schreiben</TabsTrigger><TabsTrigger value="preview">Vorschau</TabsTrigger></TabsList>
           <TabsContent value="edit"><Field label="Inhalt" hint="Markdown: ## Überschrift · **fett** · - Aufzählung · [Quelle](https://…)"><Textarea className="markdown-input" value={draft.content} onChange={e => change("content", e.target.value)} placeholder="Deine Gedanken, Beispiele und Quellen …" maxLength={80000} rows={10} /></Field></TabsContent>
           <TabsContent value="preview"><div className="markdown-preview"><Markdown content={draft.content || "Deine Vorschau erscheint hier."} /></div></TabsContent>
@@ -58,7 +59,6 @@ export function NoteEditor({ note, workspace, save, saving, onClose }: {
         {mode === "edit" && <MediaToolbar onBusy={setUploading} insert={text => setDraft(d => ({ ...d, content: d.content + text }))} />}
         <Collapsible className="editor-details"><CollapsibleTrigger asChild><button type="button" className="details-trigger">Details & Verbindungen<ChevronDown size={16} /></button></CollapsibleTrigger><CollapsibleContent className="details-content">
         <div className="form-columns">
-          <Field label="Thema"><Select value={draft.topicId ?? "none"} onValueChange={v => change("topicId", v === "none" ? null : v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Noch nicht zugeordnet</SelectItem>{workspace.topics.map(t => <SelectItem key={t.id} value={t.id}>{t.title}</SelectItem>)}</SelectContent></Select></Field>
           <Field label="Tags" hint="Mit Komma trennen"><Input value={tags} onChange={e => setTags(e.target.value)} placeholder="z. B. ideen, schreiben" maxLength={800} /></Field>
         </div>
         <Field label="Kurzbeschreibung"><Textarea value={draft.summary} onChange={e => change("summary", e.target.value)} placeholder="Die wichtigste Idee in einem Satz." maxLength={600} rows={2} /></Field>

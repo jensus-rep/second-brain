@@ -14,7 +14,7 @@ page.on("request", request => { if (request.url().includes("image-probe.invalid"
 let initial;
 try {
   await page.goto(origin, { waitUntil: "networkidle" });
-  await page.getByText("Dein Wissen ist gespeichert").waitFor();
+  await page.getByText("Gespeichert").waitFor();
   initial = (await (await page.request.get(origin + "/api/brain")).json()).workspace;
   await mkdir(".sites-runtime/qa", { recursive: true });
   await page.screenshot({ path: ".sites-runtime/qa/round2-overview.png", fullPage: true });
@@ -63,13 +63,16 @@ try {
   await expect(page.getByRole("dialog", { name: "Vom Gedanken zur Anwendung", exact: true })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog", { name: "Visuell lernen – Prüfnote", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Lernkarte erstellen" }).click();
+  await page.getByRole("button", { name: "Weitere Notizaktionen" }).click();
+  await page.getByRole("menuitem", { name: "Lernkarte erstellen" }).click();
   dialog = page.getByRole("dialog");
   await dialog.getByRole("textbox", { name: "Frage", exact: true }).fill("Wie wird aus einer Fundstelle eigenes Wissen?");
   await dialog.getByRole("tab", { name: "Antwort", exact: true }).click();
   await dialog.getByRole("textbox", { name: "Antwort", exact: true }).fill("In eigenen Worten erklären, mit Bekanntem verknüpfen und anwenden.\n\n![Wissensweg](" + imageUrl + ' "Die drei Schritte.")');
   await dialog.getByRole("button", { name: "Lernkarte speichern" }).click();
-  await dialog.waitFor({ state: "hidden" });
+  await page.getByRole("dialog", { name: "Ein Gedanke zum Behalten", exact: true }).waitFor({ state: "hidden" });
+  await expect(page.getByRole("dialog", { name: "Visuell lernen – Prüfnote", exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Lernkarten", exact: true }).click();
   // Isolate the newly created card without modifying the user's original test data permanently.
   const snapshot = await (await page.request.get(origin + "/api/brain")).json();

@@ -11,8 +11,8 @@ page.on("pageerror", error => errors.push(error.message));
 let initial;
 try {
   await page.goto(origin + "/#note=%", { waitUntil: "networkidle" });
-  await page.getByRole("heading", { name: "Wissen, das bleibt." }).waitFor();
-  await page.getByText("Dein Wissen ist gespeichert").waitFor();
+  await page.getByRole("heading", { name: "Dein Wissen", exact: true }).waitFor();
+  await page.getByText("Gespeichert").waitFor();
   const response = await page.request.get(origin + "/api/brain");
   assert.equal(response.status(), 200);
   initial = (await response.json()).workspace;
@@ -70,7 +70,7 @@ try {
   await page.getByRole("button", { name: "Mein Überblick", exact: true }).click();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload({ waitUntil: "networkidle" });
-  await page.getByRole("heading", { name: "Wissen, das bleibt." }).waitFor();
+  await page.getByRole("heading", { name: "Dein Wissen", exact: true }).waitFor();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
   assert.equal(overflow, false, "Mobile layout must not overflow horizontally");
   await page.screenshot({ path: ".sites-runtime/qa/mobile.png", fullPage: true });

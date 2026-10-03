@@ -8,6 +8,9 @@ Eine private, deutschsprachige Second-Brain-Web-App. Wissen wird als Markdown mi
 - Eigene Themenräume, Tags sowie Verbindungen und automatisch sichtbare Rückverweise.
 - Volltextsuche über Titel, Zusammenfassung, Inhalt, Tags und Themennamen; kombinierbare Filter.
 - Karten- und Listenansicht sowie responsive Navigation.
+- Eigene Themenübersicht mit Eintragszahlen und einer Ansicht für noch nicht zugeordnete Einträge; Themen- und Tagfilter öffnen bei Bedarf.
+- Großzügige Eintragsansicht mit moderner Lesetypografie, Gliederung aus den tatsächlichen Markdown-Überschriften und einklappbaren Metadaten.
+- Verwandte Einträge mit Browsernavigation; nach dem Bearbeiten oder Erstellen einer Lernkarte zurück zum gelesenen Eintrag.
 - Lernpfade mit sortierbaren Schritten, eigenen Aufgaben und dauerhaftem Fortschritt.
 - JSON-Export und validierter Import mit ausdrücklicher Ersetzungsbestätigung.
 - Bilder (PNG, JPEG, WebP, GIF) mit Beschriftung, Kartenvorschau und vergrößerbarer Ansicht; private Speicherung in R2.
@@ -30,10 +33,12 @@ Eine private, deutschsprachige Second-Brain-Web-App. Wissen wird als Markdown mi
 | Arbeitsoberfläche | components/brain/brain-app.tsx |
 | Notiz-, Themen- und Lernpfad-Editoren | components/brain/editors.tsx |
 | Sicherer Markdown-Renderer | components/brain/markdown.tsx |
+| Leseansicht und kompakte Wissensfilter | components/brain/note-reader.tsx, knowledge-filters.tsx |
 | Abbildungen, Diagramme, Uploads | components/brain/visual.tsx, media-toolbar.tsx, app/api/media/ |
 | Lernkarten und Lernansicht | components/brain/flashcards.tsx |
 | Bildsicherungen und Import | lib/brain/backup.ts, components/brain/transfer-dialog.tsx |
 | Design-Tokens, Layout, responsive Gestaltung | app/globals.css |
+| Bibliotheks- und Lesegestaltung | app/reading-workspace.css |
 | Datenbankschema und Migrationen | db/schema.ts, drizzle/ |
 | Wiederverwendbare UI-Primitiven | components/ui/ |
 
@@ -64,11 +69,16 @@ npm run typecheck
 npm test
 npm run test:browser
 npm run test:visual
+npm run test:reading
 ~~~
 
 Für den Browsertest muss der lokale Entwicklungsserver laufen und Google Chrome installiert sein. Alternativ die Browserkonfiguration in tests/browser.mjs auf einen verfügbaren Playwright-Browser ändern. Der Test lehnt externe Ziele ab und stellt den lokalen Ausgangsbestand nach seinem Lauf wieder her.
 
 Er prüft Erstellen, Neuladen, Volltextsuche, Favoriten, Archivieren/Wiederherstellen, Lernfortschritt, eigene Lernpfade, konkurrierende Updates, ungültige Referenzen und die mobile Breite. Screenshots landen ausschließlich im ignorierten Verzeichnis .sites-runtime/qa/.
+
+Die Leseprüfung ergänzt Themenwechsel, nicht zugeordnete Einträge, Tags im Archiv, Gliederung mit wiederholten Überschriften, Rückkehr aus dem Editor, Zurück/Vorwärts im Browser, direkte Eintragslinks und die mobile Lesefläche. Alle veränderten lokalen Wissensdaten werden nach dem Test wiederhergestellt. Datenändernde Browsertests nacheinander ausführen.
+
+Das generierte Logo liegt in public/brand/newhope-mark.png. Der endgültige Imagegen-Prompt steht in public/brand/newhope-mark.prompt.txt.
 
 ## Gemeinsam Wissen pflegen
 

@@ -1,0 +1,98 @@
+import { chromium, expect } from "@playwright/test";
+import assert from "node:assert/strict";
+import { mkdir } from "node:fs/promises";
+
+const origin = process.env.BRAIN_TEST_URL ?? "http://127.0.0.1:5173";
+if (!["127.0.0.1", "localhost"].includes(new URL(origin).hostname)) throw new Error("Reading tests may only change local test data.");
+const browser = await chromium.launch({ channel: "chrome", headless: true });
+const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+const errors = [];
+page.on("pageerror", error => errors.push(error.message));
+let initial;
+try {
+  await page.goto(origin, { waitUntil: "networkidle" });
+  await page.getByText("Gespeichert", { exact: true }).waitFor();
+  initial = (await (await page.request.get(origin + "/api/brain")).json()).workspace;
+  const snapshot = await (await page.request.get(origin + "/api/brain")).json();
+  const now = new Date().toISOString();
+  const topic = { id: crypto.randomUUID(), title: "QA Wissensraum", description: "Zusammenhänge verständlich ordnen.", color: "blue" };
+  const base = { summary: "Ein Eintrag mit klarer Gliederung.", tags: ["lesepruefung"], relatedIds: [], favorite: false, archived: false, createdAt: now, updatedAt: now };
+  const second = { ...base, id: crypto.randomUUID(), title: "QA Weiterführender Gedanke", content: "Ein zweiter Gedanke.", topicId: null };
+  const note = { ...base, id: crypto.randomUUID(), title: "QA Lesefokus", topicId: topic.id, relatedIds: [second.id], content: "## Überblick\n\nEin Gedanke in eigenen Worten.\n\n```text\n## Kein Abschnitt\n```\n\n## Vertiefen\n\nEine klare Erklärung.\n\n### Ein Beispiel\n\nEine Anwendung.\n\n## Vertiefen\n\nEin weiterer Blickwinkel." };
+  const archived = { ...base, id: crypto.randomUUID(), title: "QA Archivgedanke", content: "Archivierter Eintrag.", topicId: null, archived: true, tags: ["nurimarchiv"] };
+  assert.equal((await page.request.put(origin + "/api/brain", { data: { revision: snapshot.revision, workspace: { ...snapshot.workspace, topics: [...snapshot.workspace.topics, topic], notes: [...snapshot.workspace.notes, note, second, archived] } } })).status(), 200);
+  await page.reload({ waitUntil: "networkidle" });
+  await mkdir(".sites-runtime/qa", { recursive: true });
+
+  await page.getByRole("button", { name: "Themen", exact: true }).click();
+  await page.screenshot({ path: ".sites-runtime/qa/redesign-topics.png", fullPage: true });
+  await page.getByRole("heading", { name: topic.title, exact: true }).click();
+  await expect(page.locator(".note-card")).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Themenfilter entfernen" })).toBeVisible();
+  await page.getByRole("heading", { name: note.title, exact: true }).click();
+  let reader = page.getByRole("dialog", { name: note.title, exact: true });
+  await expect(reader.locator(".entry-outline button")).toHaveCount(4);
+  await expect(reader.getByRole("button", { name: "#lesepruefung", exact: true })).not.toBeVisible();
+  const ids = await reader.locator('.prose-brain [id^="entry-section-"]').evaluateAll(elements => elements.map(element => element.id));
+  assert.equal(new Set(ids).size, 4, "Repeated headings must have distinct anchors");
+  await reader.locator(".entry-outline button").last().click();
+  assert.equal(await page.evaluate(() => document.activeElement?.id), ids.at(-1));
+  await reader.getByRole("button", { name: "Bearbeiten", exact: true }).click();
+  const editor = page.getByRole("dialog", { name: "Notiz bearbeiten", exact: true });
+  await expect(editor.getByRole("combobox", { name: "Thema", exact: true })).toBeVisible();
+  await expect(editor.getByLabel("Kurzbeschreibung")).not.toBeVisible();
+  await editor.getByRole("textbox", { name: "Inhalt", exact: false }).fill(note.content + "\n\nGespeicherte Ergänzung.");
+  await editor.getByRole("button", { name: "Notiz speichern", exact: true }).click();
+  await expect(reader).toBeVisible();
+  await expect(reader.getByText("Gespeicherte Ergänzung.", { exact: true })).toBeVisible();
+  await reader.getByRole("button", { name: second.title, exact: true }).click();
+  await expect(page.getByRole("dialog", { name: second.title, exact: true })).toBeVisible();
+  await page.goBack();
+  await expect(reader).toBeVisible();
+  await page.goForward();
+  await expect(page.getByRole("dialog", { name: second.title, exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.goto(origin + "/#note=" + note.id, { waitUntil: "networkidle" });
+  await expect(reader).toBeVisible();
+  await reader.getByRole("button", { name: "Details zum Eintrag" }).click();
+  await reader.getByRole("button", { name: "#lesepruefung", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Tagfilter entfernen" })).toBeVisible();
+  await expect(page.locator(".note-card")).toHaveCount(2);
+  await page.getByRole("button", { name: "Wissensbibliothek", exact: true }).click();
+  await expect(page.locator(".filter-chips")).toHaveCount(0);
+  await page.getByRole("button", { name: "Filtern", exact: true }).click();
+  await page.getByRole("combobox", { name: "Nach Thema filtern" }).click();
+  await page.getByRole("option", { name: "Ohne Thema", exact: true }).click();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("heading", { name: second.title, exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: note.title, exact: true })).not.toBeVisible();
+  await page.getByRole("button", { name: "Archiv", exact: true }).click();
+  await page.getByRole("button", { name: "Filtern", exact: true }).click();
+  await page.getByRole("button", { name: "#nurimarchiv", exact: true }).click();
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".note-card")).toHaveCount(1);
+
+  await page.goto(origin + "/#note=" + note.id, { waitUntil: "networkidle" });
+  await page.screenshot({ path: ".sites-runtime/qa/redesign-reader-desktop.png", animations: "disabled" });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(reader.locator(".mobile-outline")).toBeVisible();
+  await expect.poll(() => reader.evaluate(element => Math.round(element.getBoundingClientRect().left))).toBe(0);
+  assert.equal(await reader.evaluate(element => Math.round(element.getBoundingClientRect().right)), 390);
+  assert.equal(await reader.evaluate(element => element.scrollWidth > element.clientWidth), false);
+  assert.equal(await reader.locator(".entry-scroll").evaluate(element => element.scrollWidth > element.clientWidth), false);
+  await page.screenshot({ path: ".sites-runtime/qa/redesign-reader-mobile.png", animations: "disabled" });
+  await reader.locator(".mobile-outline").getByRole("button", { name: "In diesem Eintrag", exact: true }).click();
+  await reader.locator(".mobile-outline nav button").last().click();
+  assert.equal(await page.evaluate(() => document.activeElement?.id), ids.at(-1));
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.addStyleTag({ content: "html { font-size: 32px; }" });
+  assert.equal(await reader.locator(".entry-scroll").evaluate(element => element.scrollWidth > element.clientWidth), false, "Reading view must reflow with enlarged text");
+  assert.deepEqual(errors, []);
+  console.log("PASS: topic discovery, unassigned and archive filters, progressive details, rendered heading outline, repeated headings, editor return, related-entry history, deep links, mobile outline and enlarged text.");
+} finally {
+  if (initial) {
+    const latest = await (await page.request.get(origin + "/api/brain")).json();
+    assert.equal((await page.request.put(origin + "/api/brain", { data: { revision: latest.revision, workspace: initial } })).status(), 200);
+  }
+  await browser.close();
+}
