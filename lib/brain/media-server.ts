@@ -1,16 +1,6 @@
-import { env } from "cloudflare:workers";
 import { imageSize } from "image-size";
 import { MAX_IMAGE_BYTES } from "./media";
 
-export async function mediaKey(owner: string, id: string) {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(owner));
-  const namespace = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
-  return namespace + "/" + id;
-}
-export function bucket() {
-  if (!env.BUCKET) throw new Error("Bildspeicher nicht verfügbar.");
-  return env.BUCKET;
-}
 export async function imageBytes(request: Request) {
   if (Number(request.headers.get("content-length")) > MAX_IMAGE_BYTES) throw new Error("Bilder dürfen maximal 8 MB groß sein.");
   if (!request.body) throw new Error("Keine Bilddatei vorhanden.");

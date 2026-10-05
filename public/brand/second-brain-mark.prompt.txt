@@ -1,0 +1,10 @@
+Generated with the built-in image_gen tool.
+
+Use case: logo-brand
+Asset type: original standalone logo symbol for Second Brain, a private German personal knowledge library. Used next to the Second Brain wordmark in a light app sidebar and as its favicon.
+Primary request: design one refined, minimal geometric symbol combining the idea of two connected brain hemispheres with an open book. Two balanced rounded lobes with a clean central negative-space fold and a single subtle connecting bridge; abstract and memorable, bold silhouette, very few broad strokes. Evoke thinking, collecting knowledge and making connections.
+Style/medium: crisp flat graphic design, vector-friendly edges.
+Composition/framing: one compact centered mark on a square transparent canvas; symbol occupies about 82 percent of the canvas, balanced generous margin, legible at 32px.
+Color palette: one solid royal blue #285cf4 matching the existing app accent.
+Constraints: actual transparent background; one logo symbol only, no text or lettering. Simple geometry, clear generous negative space, balanced optical weight.
+Avoid: anatomical brain illustration, intricate neural lines, scattered dots, thin outlines, gradients, shadows, textures, 3D, mockups, multiple variations, watermark.

@@ -11,7 +11,7 @@ function download(bytes: Uint8Array | string, name: string, type: string) {
   const link = document.createElement("a"); link.href = url; link.download = name; link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-const fileName = () => "newhope-" + new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(new Date());
+const fileName = () => "second-brain-" + new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(new Date());
 export function exportJson(workspace: Workspace) { download(JSON.stringify(workspace, null, 2), fileName() + ".json", "application/json"); }
 export async function exportBackup(workspace: Workspace) {
   const files: Record<string, Uint8Array> = { "workspace.json": strToU8(JSON.stringify(workspace)) };
@@ -48,7 +48,7 @@ export async function readBackup(file: File): Promise<ImportBundle> {
     if (unpackedSize > MAX_BACKUP_BYTES || entry.originalSize > MAX_IMAGE_BYTES) throw new Error("Die entpackte Sicherung ist zu groß.");
     return entry.name === "workspace.json" || entry.name === "media-index.json" || /^media\/[0-9a-f-]{36}$/i.test(entry.name);
   } });
-  if (!files["workspace.json"] || !files["media-index.json"]) throw new Error("Keine gültige NewHope-Sicherung.");
+  if (!files["workspace.json"] || !files["media-index.json"]) throw new Error("Keine gültige Second-Brain-Sicherung.");
   const workspace = workspaceSchema.parse(JSON.parse(strFromU8(files["workspace.json"])));
   if (strToU8(JSON.stringify(workspace)).length > MAX_WORKSPACE_BYTES) throw new Error("Die Wissensdaten überschreiten 1,8 MB.");
   const index = JSON.parse(strFromU8(files["media-index.json"])) as Record<string, { file: string; mime: string }>;

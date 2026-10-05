@@ -4,6 +4,7 @@ import { Expand, ImageOff, Network } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { isPrivateImage } from "@/lib/brain/media";
 import { isAllowedDiagram } from "@/lib/brain/diagram";
+import { DiagramViewer } from "./diagram-viewer";
 
 function useLightboxEscape(open: boolean, close: () => void) {
   useEffect(() => {
@@ -57,6 +58,6 @@ export function Diagram({ source }: { source: string }) {
   }, [source, elementId]);
   return <figure className="diagram-figure">
     {error ? <div className="diagram-error"><Network size={20} /><p>{error}</p><details><summary>Diagrammtext anzeigen</summary><pre>{source}</pre></details></div> : svg ? <button ref={zoomRef} type="button" className="diagram-zoom" aria-label="Diagramm vergrößern" onClick={() => setOpen(true)}><img src={"data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg)} alt="Diagramm" /><span className="expand-label"><Expand size={16} /></span></button> : <div className="diagram-loading" role="status">Diagramm wird aufgebaut …</div>}
-    <Dialog open={open} onOpenChange={setOpen}><DialogContent className="lightbox diagram-lightbox" onCloseAutoFocus={e => { e.preventDefault(); zoomRef.current?.focus(); }}><DialogTitle className="sr-only">Diagramm</DialogTitle><DialogDescription className="sr-only">Vergrößerte Ansicht. Mit Escape schließen.</DialogDescription><img src={"data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg)} alt="Diagramm" /></DialogContent></Dialog>
+    <Dialog open={open} onOpenChange={setOpen}><DialogContent className="lightbox diagram-lightbox" onCloseAutoFocus={e => { e.preventDefault(); zoomRef.current?.focus(); }}><DialogTitle className="sr-only">Diagramm</DialogTitle><DialogDescription className="sr-only">Mit zwei Fingern oder den Zoomtasten vergrößern und durch Ziehen verschieben. Mit Escape schließen.</DialogDescription><DiagramViewer src={"data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg)} /></DialogContent></Dialog>
   </figure>;
 }

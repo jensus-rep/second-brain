@@ -10,6 +10,12 @@ const entries = [
   ["review", "Wissen, das mit dir weiterwächst", "Ein kurzer Rückblick hält deine Sammlung verständlich und nützlich.", "lernen", ["reflexion", "anwenden"], "## Ein Rückblick mit drei Fragen\n- Welche Notiz hat mir zuletzt geholfen?\n- Was ist unklar, doppelt oder nicht mehr relevant?\n- Welchen Gedanken möchte ich als Nächstes anwenden?\n\n## Prüfe dein Verständnis\nVersuche, einen Gedanken ohne Nachlesen zu erklären. Notiere anschließend, was dir gefehlt hat.\n\n## Jetzt ausprobieren\nVerbessere eine Notiz und leite einen nächsten Schritt ab. Nicht mehr benötigte Notizen kannst du archivieren und später wiederherstellen."],
 ] as const;
 
+const illustrations: Record<string, string> = {
+  understand: '\n\n## Vom Lesen zum Verstehen\n\n```mermaid\nflowchart TD\n  A[Fundstelle lesen] --> B[Kernaussage selbst formulieren]\n  B --> C[An eigenem Beispiel prüfen]\n  C --> D[Bedingungen und offene Fragen festhalten]\n```\n\nDie eigene Erklärung und das Beispiel zeigen, was du bereits verstanden hast.',
+  connect: '\n\n## Verbindungen sichtbar machen\n\n```mermaid\nflowchart TD\n  A[Ein Gedanke] --> B[Ergänzende Sichtweise]\n  A --> C[Konkretes Beispiel]\n  A --> D[Widersprechende Aussage]\n```\n\nHalte bei jeder Verbindung fest, wie sie deinen Gedanken ergänzt oder infrage stellt.',
+  path: '\n\n## Ein Lernweg mit klarem Ziel\n\n```mermaid\nflowchart TD\n  A[Ziel als Fähigkeit beschreiben] --> B[Orientierung gewinnen]\n  B --> C[Grundbegriffe verstehen]\n  C --> D[Selbst anwenden]\n  D --> E[Verständnis überprüfen]\n  E --> F[Nächsten Lernschritt wählen]\n```\n\nNach dem Rückblick entscheidest du, welche Grundlage oder Anwendung du als Nächstes vertiefst.',
+};
+
 export const seedWorkspace: Workspace = {
   schemaVersion: 1,
   cards: [],
@@ -19,7 +25,7 @@ export const seedWorkspace: Workspace = {
     { id: "lernen", title: "Lernen & Anwenden", description: "Aus Wissen neue Fähigkeiten machen.", color: "orange" },
   ],
   notes: entries.map(([id, title, summary, topicId, tags, content], i): Note => ({
-    id, title, summary, topicId, tags: [...tags], content, relatedIds: i < entries.length - 1 ? [entries[i + 1][0]] : ["start"],
+    id, title, summary, topicId, tags: [...tags], content: content + (illustrations[id] ?? ""), relatedIds: i < entries.length - 1 ? [entries[i + 1][0]] : ["start"],
     favorite: false, archived: false, createdAt, updatedAt: createdAt,
   })),
   paths: [{ id: "erster-pfad", title: "Dein Second Brain aufbauen", description: "Sechs kleine Schritte von deiner ersten Frage zu einer lebendigen Wissenssammlung.", steps: entries.map(([id], i) => ({ id: "einstieg-" + i, noteId: id, objective: ["Formuliere deine erste Wissensfrage.", "Erfasse einen Gedanken mit Kontext.", "Erkläre eine Idee in deinen eigenen Worten.", "Verbinde zwei verwandte Gedanken.", "Erstelle einen eigenen Lernpfad.", "Wende einen Gedanken im Alltag an."][i] })) }],

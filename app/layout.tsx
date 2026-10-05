@@ -4,11 +4,11 @@ import "./visual-workspace.css";
 import "./reading-workspace.css";
 
 export const metadata: Metadata = {
-  title: "NewHope · Dein Wissensatelier",
+  title: "Second Brain · Dein Wissensatelier",
   description: "Dein persönlicher Ort für Wissen, neue Verbindungen und eigene Lernpfade.",
   icons: {
-    icon: "/brand/newhope-mark.png",
-    shortcut: "/brand/newhope-mark.png",
+    icon: "/brand/second-brain-mark.png",
+    shortcut: "/brand/second-brain-mark.png",
   },
 };
 

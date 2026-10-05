@@ -41,6 +41,8 @@ try {
   await page.getByRole("button", { name: "Weitere Notizaktionen" }).click();
   await page.getByRole("menuitem", { name: "Wiederherstellen", exact: true }).click();
   await page.getByText("Notiz wiederhergestellt", { exact: true }).waitFor();
+  // The closing menu would otherwise consume the Escape meant for the reader.
+  await page.getByRole("menu").waitFor({ state: "detached" });
   await page.keyboard.press("Escape");
 
   await page.getByRole("button", { name: "Lernpfade", exact: true }).click();

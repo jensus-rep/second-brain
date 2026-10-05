@@ -3,6 +3,7 @@ import { Children, isValidElement, memo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Diagram, Figure } from "./visual";
+import { ComparisonVisual } from "./comparison-visual";
 import { isPrivateImage } from "@/lib/brain/media";
 
 type MarkdownNode = { type: string; children?: MarkdownNode[]; data?: { hProperties?: Record<string, unknown> } };
@@ -30,6 +31,6 @@ export const Markdown = memo(function Markdown({ content, headingPrefix }: { con
         if (isValidElement<{ className?: string; children?: unknown }>(child) && child.props.className === "language-mermaid") return <Diagram source={String(child.props.children ?? "").trim()} />;
         return <pre>{children}</pre>;
       },
-      table: ({ children }) => <div className="table-scroll"><table>{children}</table></div>,
+      table: ({ children }) => <ComparisonVisual>{children}</ComparisonVisual>,
     }}>{content}</ReactMarkdown></div>;
 });

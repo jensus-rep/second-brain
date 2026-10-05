@@ -1,0 +1,121 @@
+name: Build and deploy Second Brain to Azure Web App - second-brain
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-second-brain
+  cancel-in-progress: false
+
+env:
+  APP_NAME: second-brain
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck and model tests
+        run: |
+          npm run typecheck
+          npm test
+
+      - name: Build standalone server
+        run: npm run build
+
+      - name: Package release
+        run: |
+          cd .next/standalone
+          zip -qry ../../release.zip .
+          cd ../..
+          unzip -l release.zip | grep -E ' (server\.js|startup\.sh)$'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release
+          path: release.zip
+          retention-days: 7
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_C876B4683C964A358063EB5D76EDF4A4 }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_25EA69603A3F405198DBAEE71BF18E0F }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_023AB690DEBC471AB011BDBA2CF1B43D }}
+
+      - name: Resolve web app
+        id: app
+        run: |
+          RESOURCE_GROUP=$(az webapp list --query "[?name=='$APP_NAME'].resourceGroup | [0]" -o tsv)
+          if [ -z "$RESOURCE_GROUP" ]; then echo "Azure Web App $APP_NAME not found"; exit 1; fi
+          echo "resource_group=$RESOURCE_GROUP" >> "$GITHUB_OUTPUT"
+          echo "host=$(az webapp show -g "$RESOURCE_GROUP" -n "$APP_NAME" --query defaultHostName -o tsv)" >> "$GITHUB_OUTPUT"
+
+      # Reads setting names only; values never reach the log.
+      - name: Check required app settings
+        run: |
+          NAMES=$(az webapp config appsettings list -g "${{ steps.app.outputs.resource_group }}" -n "$APP_NAME" --query "[].name" -o tsv)
+          MISSING=""
+          for NAME in AZURE_SQL_SERVER AZURE_SQL_DATABASE AZURE_SQL_USERNAME AZURE_SQL_PASSWORD SESSION_SECRET; do
+            echo "$NAMES" | grep -qx "$NAME" || MISSING="$MISSING $NAME"
+          done
+          if [ -n "$MISSING" ]; then echo "Missing app settings:$MISSING"; exit 1; fi
+          echo "All required app settings are present."
+
+      - name: Configure runtime
+        env:
+          SETUP_TOKEN: ${{ secrets.NEWHOPE_SETUP_TOKEN }}
+        run: |
+          RG="${{ steps.app.outputs.resource_group }}"
+          az webapp config appsettings set -g "$RG" -n "$APP_NAME" -o none \
+            --settings SCM_DO_BUILD_DURING_DEPLOYMENT=false ENABLE_ORYX_BUILD=false NODE_ENV=production
+          if [ -n "$SETUP_TOKEN" ]; then
+            az webapp config appsettings set -g "$RG" -n "$APP_NAME" -o none --settings NEWHOPE_SETUP_TOKEN="$SETUP_TOKEN"
+          fi
+          az webapp config set -g "$RG" -n "$APP_NAME" -o none \
+            --linux-fx-version "NODE|22-lts" --startup-file "sh startup.sh"
+
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.APP_NAME }}
+          slot-name: Production
+          package: release.zip
+
+      - name: Smoke test
+        run: |
+          HOST="https://${{ steps.app.outputs.host }}"
+          for i in $(seq 1 30); do
+            STATUS=$(curl -s -o /dev/null -w '%{http_code}' "$HOST/login" || true)
+            if [ "$STATUS" = "200" ]; then break; fi
+            echo "Waiting for app ($STATUS)..."; sleep 10
+          done
+          [ "$STATUS" = "200" ] || { echo "Login page not reachable: $STATUS"; exit 1; }
+          API=$(curl -s -o /dev/null -w '%{http_code}' "$HOST/api/brain")
+          [ "$API" = "401" ] || { echo "Unauthenticated API returned $API instead of 401"; exit 1; }
+          echo "Live: $HOST"

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { imageMarkdown, uploadImage, MAX_IMAGE_BYTES } from "@/lib/brain/media";
-export const DIAGRAM_TEMPLATE = "\n\n```mermaid\nflowchart LR\n  A[Gedanke] --> B[Verstehen]\n  B --> C[Anwenden]\n```\n";
+export const DIAGRAM_TEMPLATE = "\n\n```mermaid\nflowchart TD\n  A[Gedanke] --> B[Verstehen]\n  B --> C[Anwenden]\n```\n";
 
 export function MediaToolbar({ insert, onBusy }: { insert: (text: string) => void; onBusy?: (busy: boolean) => void }) {
   const input = useRef<HTMLInputElement>(null);

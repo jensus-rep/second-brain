@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { Archive, BookOpen, Check, ChevronRight, Compass, Download, FileText, FolderOpen, GitBranch, GraduationCap, LayoutGrid, Link2, List, LockKeyhole, Network, Pencil, Plus, Search, Star, X, Layers3, ChevronDown } from "lucide-react";
+import { Archive, BookOpen, Check, ChevronRight, Compass, Download, FileText, FolderOpen, GitBranch, GraduationCap, LayoutGrid, Link2, List, LockKeyhole, LogOut, Network, Pencil, Plus, Search, Star, X, Layers3, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SidebarProvider, Sidebar, SidebarContent, SidebarHeader, SidebarFooter, SidebarGroup, SidebarGroupLabel, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarInset, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
@@ -34,18 +34,23 @@ const labels: Record<View, string> = { home: "Mein Überblick", library: "Wissen
 const UNASSIGNED = "::unassigned";
 const getDate = (date: string) => new Intl.DateTimeFormat("de-DE", { day: "numeric", month: "short", timeZone: "Europe/Berlin" }).format(new Date(date));
 
+async function signOut() {
+  await fetch("/api/auth/logout", { method: "POST" }).catch(() => undefined);
+  window.location.assign("/login");
+}
+
 function Navigation({ view, go, workspace, topicId, setTopic, newTopic }: {
   view: View; go: (v: View) => void; workspace: Workspace; topicId: string; setTopic: (id: string) => void; newTopic: () => void;
 }) {
   const { setOpenMobile } = useSidebar();
   function navigate(v: View) { go(v); setOpenMobile(false); }
   return <Sidebar className="brain-sidebar">
-    <SidebarHeader><button className="brand" onClick={() => navigate("home")} aria-label="NewHope Startseite"><span className="brand-mark"><img src="/brand/newhope-mark.png" alt="" /></span><span>newhope<span className="brand-sub">Wissensatelier</span></span></button></SidebarHeader>
+    <SidebarHeader><button className="brand" onClick={() => navigate("home")} aria-label="Second Brain Startseite"><span className="brand-mark"><img src="/brand/second-brain-mark.png" alt="" width={39} height={39} /></span><span>Second Brain<span className="brand-sub">Wissensatelier</span></span></button></SidebarHeader>
     <SidebarContent><SidebarGroup><SidebarGroupLabel>WISSEN</SidebarGroupLabel><SidebarMenu>{nav.slice(0, 3).map(({ id, label, icon: Icon }) => <SidebarMenuItem key={id}><SidebarMenuButton isActive={view === id && !topicId} onClick={() => navigate(id)}><Icon /><span>{label}</span></SidebarMenuButton></SidebarMenuItem>)}</SidebarMenu></SidebarGroup>
     <SidebarGroup><SidebarGroupLabel>LERNEN & VERBINDEN</SidebarGroupLabel><SidebarMenu>{nav.slice(3).map(({ id, label, icon: Icon }) => <SidebarMenuItem key={id}><SidebarMenuButton isActive={view === id} onClick={() => navigate(id)}><Icon /><span>{label}</span></SidebarMenuButton></SidebarMenuItem>)}</SidebarMenu></SidebarGroup>
     {workspace.topics.length > 0 && <SidebarGroup className="sidebar-topics"><Collapsible defaultOpen><div className="side-section-heading"><CollapsibleTrigger asChild><button className="sidebar-topics-trigger">THEMEN<ChevronDown size={14} /></button></CollapsibleTrigger><button onClick={newTopic} aria-label="Neues Thema"><Plus size={16} /></button></div><CollapsibleContent><SidebarMenu>{workspace.topics.slice(0, 4).map(t => <SidebarMenuItem key={t.id}><SidebarMenuButton isActive={topicId === t.id} onClick={() => { setTopic(t.id); setOpenMobile(false); }}><span className={"topic-dot " + t.color} /><span>{t.title}</span></SidebarMenuButton></SidebarMenuItem>)}</SidebarMenu>{workspace.topics.length > 4 && <button className="all-topics-link" onClick={() => navigate("topics")}>Alle {workspace.topics.length} Themen</button>}</CollapsibleContent></Collapsible></SidebarGroup>}
     <SidebarGroup><SidebarMenu><SidebarMenuItem><SidebarMenuButton isActive={view === "favorites"} onClick={() => navigate("favorites")}><Star /><span>Favoriten</span></SidebarMenuButton></SidebarMenuItem><SidebarMenuItem><SidebarMenuButton isActive={view === "archive"} onClick={() => navigate("archive")}><Archive /><span>Archiv</span></SidebarMenuButton></SidebarMenuItem></SidebarMenu></SidebarGroup></SidebarContent>
-    <SidebarFooter><div className="private-label"><LockKeyhole size={14} />Privater Wissensraum</div></SidebarFooter>
+    <SidebarFooter><div className="private-label"><LockKeyhole size={14} />Privater Wissensraum<button className="sign-out" onClick={() => void signOut()}><LogOut size={14} />Abmelden</button></div></SidebarFooter>
   </Sidebar>;
 }
 

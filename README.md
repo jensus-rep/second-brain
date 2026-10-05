@@ -1,4 +1,4 @@
-# NewHope · Dein Wissensatelier
+# Second Brain · Dein Wissensatelier
 
 Eine private, deutschsprachige Second-Brain-Web-App. Wissen wird als Markdown mit strukturierten Metadaten gespeichert und als Bibliothek, Notizleser, Verknüpfungskarte und Lernpfad dargestellt.
 
@@ -13,12 +13,13 @@ Eine private, deutschsprachige Second-Brain-Web-App. Wissen wird als Markdown mi
 - Verwandte Einträge mit Browsernavigation; nach dem Bearbeiten oder Erstellen einer Lernkarte zurück zum gelesenen Eintrag.
 - Lernpfade mit sortierbaren Schritten, eigenen Aufgaben und dauerhaftem Fortschritt.
 - JSON-Export und validierter Import mit ausdrücklicher Ersetzungsbestätigung.
-- Bilder (PNG, JPEG, WebP, GIF) mit Beschriftung, Kartenvorschau und vergrößerbarer Ansicht; private Speicherung in R2.
+- Bilder (PNG, JPEG, WebP, GIF) mit Beschriftung, Kartenvorschau und vergrößerbarer Ansicht; private Speicherung in der Datenbank.
 - Sichere Mermaid-Ablaufdiagramme, Sequenzdiagramme und Mindmaps direkt im Markdown.
+- Markdown-Tabellen erscheinen als responsive SVG-Karten mit umbrechender Schrift. Eine aufklappbare Textansicht erhält Formatierungen und bedienbare Links; Notizen und Lernkarten nutzen dieselbe Darstellung.
 - Lernkarten mit Frage, aufdeckbarer Antwort und geplanten Wiederholungen; Bilder und Diagramme auf beiden Seiten.
 - Vollständige ZIP-Sicherungen inklusive Bilder und Lernkarten; JSON bleibt zum Bearbeiten der Wissensdaten verfügbar.
 - Sechs editierbare Einstiegsnotizen und ein unbegonnener Beispiel-Lernpfad.
-- Private Sites-Bereitstellung; Speicherung in Cloudflare D1 pro angemeldetem Nutzer.
+- Private Bereitstellung auf Azure App Service mit eigenem Login; Speicherung in Azure SQL pro Konto.
 - Konflikterkennung über Revisionen statt stiller Überschreibung in mehreren Fenstern.
 
 ## Architektur
@@ -27,7 +28,8 @@ Eine private, deutschsprachige Second-Brain-Web-App. Wissen wird als Markdown mi
 | --- | --- |
 | Typen, Datenvalidierung, Suche, Fortschritt | lib/brain/model.ts |
 | Editierbare Startinhalte für neue Sammlungen | lib/brain/seed.ts |
-| Datenbankzugriff | lib/brain/storage.ts |
+| Datenbankzugriff | lib/brain/storage.ts, lib/server/store*.ts |
+| Anmeldung und Sessions | lib/server/auth.ts, app/login/, app/api/auth/ |
 | Authentifizierte GET-/PUT-Schnittstelle | app/api/brain/route.ts |
 | Clientseitiges Laden und Speichern | lib/brain/use-brain.ts |
 | Arbeitsoberfläche | components/brain/brain-app.tsx |
@@ -39,28 +41,24 @@ Eine private, deutschsprachige Second-Brain-Web-App. Wissen wird als Markdown mi
 | Bildsicherungen und Import | lib/brain/backup.ts, components/brain/transfer-dialog.tsx |
 | Design-Tokens, Layout, responsive Gestaltung | app/globals.css |
 | Bibliotheks- und Lesegestaltung | app/reading-workspace.css |
-| Datenbankschema und Migrationen | db/schema.ts, drizzle/ |
 | Wiederverwendbare UI-Primitiven | components/ui/ |
 
-React 19, TypeScript, Vinext/Vite und Tailwind. Die Plattform stellt private Zugriffssteuerung und ChatGPT-Anmeldung bereit. Anfragen ohne Identität werden von der API abgelehnt. Nutzer-IDs kommen ausschließlich aus serverseitigen Plattform-Headern.
+React 19, TypeScript, Next.js 16 (eigenständiger Node-Server) und Tailwind. Die App hat ein eigenes Konto mit E-Mail und Passwort (scrypt-Hash, signiertes HttpOnly-Cookie, Sperre nach wiederholten Fehlversuchen). Anfragen ohne gültige Session werden von der API abgelehnt. Nutzer-IDs kommen ausschließlich aus der serverseitigen Session.
+
+In Produktion liegen Konten, Sammlungen und Bilder in Azure SQL (Tabellen `newhope_users`, `newhope_workspaces`, `newhope_media`; sie werden beim ersten Start angelegt). Die Tabellen `second_brain_*` der Vorgänger-App bleiben unberührt. Lokal verwendet die App eine SQLite-Datei unter `.data/`.
 
 Die erste Version speichert eine vollständige Sammlung atomar als versioniertes Dokument. Dadurch bleiben Verknüpfungen, Lernpfade und Fortschritte beim Speichern konsistent. Die Update-Abfrage prüft Eigentümer und Revision. Für umfangreiche Sammlungen lässt sich die isolierte Speicherschicht später in einzelne Datensätze und einen Suchindex aufteilen.
 
 ## Lokal entwickeln
 
-Node.js 24 LTS empfohlen, mindestens 22.13. Abhängigkeiten mit npm installieren.
+Node.js 24 LTS empfohlen, mindestens 22.13.
 
 ~~~sh
 npm install
-npm run db:generate
-npm run build
-node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0000_ambiguous_zodiak.sql
 npm run dev
 ~~~
 
-Die bestehende Migration nur beim erstmaligen Anlegen der lokalen Datenbank ausführen. Weitere Migrationen in Reihenfolge anwenden. Der Entwicklungsserver gibt seine URL aus, standardmäßig http://127.0.0.1:5173. Lokale Vorschauen verwenden eine Testidentität und eine getrennte lokale Datenbank; Produktivdaten werden nicht heruntergeladen.
-
-Falls die npm-CMD-Weiterleitung auf Windows fehlschlägt, kann man die npm-CLI direkt aus dem Node.js-Installationsverzeichnis starten. Auch der Framework-Befehl ist direkt ausführbar: `node scripts/run-framework.mjs build` beziehungsweise `node scripts/run-framework.mjs dev`.
+Der Entwicklungsserver läuft unter http://127.0.0.1:5173. Lokal meldet sich der Browser automatisch als Testnutzer an (`/api/auth/dev-login`, nur im Entwicklungsmodus). Daten liegen in `.data/newhope.sqlite`; die Azure-Datenbank wird lokal nie verwendet, solange `AZURE_SQL_SERVER` nicht gesetzt ist. Mit `NEWHOPE_DEV_AUTOLOGIN=false` lässt sich der echte Login-Ablauf lokal prüfen.
 
 ## Prüfen
 
@@ -70,6 +68,7 @@ npm test
 npm run test:browser
 npm run test:visual
 npm run test:reading
+npm run test:comparisons
 ~~~
 
 Für den Browsertest muss der lokale Entwicklungsserver laufen und Google Chrome installiert sein. Alternativ die Browserkonfiguration in tests/browser.mjs auf einen verfügbaren Playwright-Browser ändern. Der Test lehnt externe Ziele ab und stellt den lokalen Ausgangsbestand nach seinem Lauf wieder her.
@@ -78,7 +77,9 @@ Er prüft Erstellen, Neuladen, Volltextsuche, Favoriten, Archivieren/Wiederherst
 
 Die Leseprüfung ergänzt Themenwechsel, nicht zugeordnete Einträge, Tags im Archiv, Gliederung mit wiederholten Überschriften, Rückkehr aus dem Editor, Zurück/Vorwärts im Browser, direkte Eintragslinks und die mobile Lesefläche. Alle veränderten lokalen Wissensdaten werden nach dem Test wiederhergestellt. Datenändernde Browsertests nacheinander ausführen.
 
-Das generierte Logo liegt in public/brand/newhope-mark.png. Der endgültige Imagegen-Prompt steht in public/brand/newhope-mark.prompt.txt.
+Das generierte Second-Brain-Logo liegt in `public/brand/second-brain-mark.png` und wird in Navigation, Login und als Browser-Icon verwendet. Es verbindet zwei abstrakte Gehirnhälften mit einem offenen Buch. Der endgültige Imagegen-Prompt steht in `public/brand/second-brain-mark.prompt.txt`.
+
+Der Produktname lautet Second Brain. Bestehende technische Bezeichner (`newhope_*`, `NEWHOPE_*`, Session-Cookie und SQLite-Pfad) bleiben für die Kompatibilität mit gespeicherten Daten und der Serverkonfiguration erhalten.
 
 ## Gemeinsam Wissen pflegen
 
@@ -90,9 +91,11 @@ Neue Inhalte lassen sich über die Oberfläche erfassen. Für vorbereitete Inhal
 
 Das Format ist in lib/brain/model.ts beschrieben. Ein Import ersetzt den gesamten Bestand; vorher eine Sicherung aufbewahren. Änderungen an seed.ts beeinflussen ausschließlich neu angelegte Nutzer-Sammlungen.
 
-Der Markdown-Renderer verwendet react-markdown und remark-gfm: Überschriften, Listen, Tabellen, Zitate, Code, Links und private Bilder. Bilder über „Bild einfügen“ hochladen; Bildunterschriften stehen im Markdown-Titel. Externe Bilder werden nicht automatisch abgerufen. HTML wird nicht ausgeführt.
+Der Markdown-Renderer verwendet react-markdown und remark-gfm: Überschriften, Listen, Vergleiche als SVG-Karten, Zitate, Code, Links und private Bilder. Bestehende Markdown-Tabellen werden beim Lesen automatisch als SVG-Karten dargestellt; die gespeicherten Inhalte bleiben erhalten. Bilder über „Bild einfügen“ hochladen; Bildunterschriften stehen im Markdown-Titel. Externe Bilder werden nicht automatisch abgerufen. HTML wird nicht ausgeführt.
 
 „Diagramm einfügen“ legt eine editierbare Mermaid-Vorlage an. Unterstützt sind klassische flowchart/graph-Diagramme, sequenceDiagram und mindmap. HTML, Konfigurationsdirektiven, externe Ressourcen und Bildformen sind ausgeschlossen. Das Ergebnis wird mit DOMPurify bereinigt und als isoliertes SVG-Bild angezeigt.
+
+Die Diagrammvorlage verläuft von oben nach unten, damit sie auch mobil lesbar bleibt. Drei Einstiegsnotizen neuer Sammlungen erklären Verstehen, Verbindungen und Lernplanung zusätzlich mit SVG-Diagrammen. `test:comparisons` prüft die SVG-Vergleiche auf Desktop und bei 320/390 Pixel Breite, lange Wörter, Links, Vorschau, Lernkarten und die neuen Diagramme; lokale Ausgangsdaten werden anschließend wiederhergestellt.
 
 ## Lernen mit Karten
 
@@ -114,4 +117,14 @@ ZIP-Sicherungen enthalten die Wissensdaten sowie hochgeladene Bilder. Beim Impor
 
 ## Veröffentlichung
 
-Die Sites-Projektidentität und DB-Bindung stehen in .openai/hosting.json. Veröffentlichung über den Sites-Workflow; Builds erzeugen den Cloudflare Worker samt Assets und Migrationen. Der private Zugriff bleibt erhalten. Zugangsdaten gehören weder in das Repository noch in Browsercode.
+Ein Push auf `main` baut die App mit GitHub Actions (`.github/workflows/main_second-brain.yml`) und deployt sie auf die Azure Web App `second-brain` (Linux, Node 22). Der Workflow prüft vorab, dass die benötigten App-Einstellungen vorhanden sind, und testet danach Anmeldeseite und API.
+
+Benötigte App-Einstellungen der Web App:
+
+| Einstellung | Zweck |
+| --- | --- |
+| `AZURE_SQL_SERVER`, `AZURE_SQL_DATABASE`, `AZURE_SQL_USERNAME`, `AZURE_SQL_PASSWORD` | Datenbankzugang (optional `AZURE_SQL_PORT`, `AZURE_SQL_ENCRYPT`, `AZURE_SQL_TRUST_SERVER_CERTIFICATE`, `AZURE_SQL_CONNECTION_TIMEOUT`) |
+| `SESSION_SECRET` | Mindestens 32 zufällige Zeichen zum Signieren der Sessions |
+| `NEWHOPE_SETUP_TOKEN` | Einmaliger Einrichtungscode für das erste Konto; wird aus dem GitHub-Secret gleichen Namens gesetzt |
+
+Beim ersten Aufruf zeigt `/login` die Kontoeinrichtung. Sie verlangt den Einrichtungscode und ist gesperrt, sobald ein Konto existiert. Danach die ZIP-Sicherung über „Import & Datensicherung“ einspielen.

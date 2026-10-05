@@ -60,12 +60,31 @@
 .lightbox { width: calc(100vw - 40px) !important; max-width: 1300px !important; max-height: 94dvh; padding: 38px; overflow: auto; }
 .lightbox > img { width: 100%; max-height: 77dvh; object-fit: contain; border-radius: 5px; }
 .lightbox > p { text-align: center; color: #7a899e; font-size: 14px; }
+.diagram-lightbox { overflow: hidden; }
+.diagram-viewer { min-width: 0; }
+.diagram-viewer-controls { display: flex; justify-content: center; align-items: center; gap: 10px; margin-bottom: 12px; }
+.diagram-viewer-controls output { min-width: 65px; text-align: center; font-size: 14px; font-variant-numeric: tabular-nums; }
+.diagram-viewport { width: 100%; height: min(65dvh, 700px); overflow: auto; touch-action: none; overscroll-behavior: contain; cursor: grab; border-radius: 5px; }
+.diagram-viewport:active { cursor: grabbing; }
+/* Real layout dimensions keep both edges reachable at every zoom level. */
+.diagram-canvas { min-width: 100%; min-height: 100%; display: grid; place-items: center; }
+.diagram-canvas > img { display: block; max-width: none; user-select: none; }
 .diagram-figure { padding: 26px 22px; border: 1px solid #e3eaf5; border-radius: 12px; margin: 26px 0; background: #f8faff; }
 .diagram-zoom { position: relative; display: block; width: 100%; }
 .diagram-zoom > img { width: 100%; min-height: 90px; max-height: 500px; object-fit: contain; }
 .diagram-loading { text-align: center; color: #8c9db6; padding: 35px; font-size: 14px; }
 .diagram-error { color: #7c8ea8; font-size: 14px; line-height: 1.7; }.diagram-error > p { margin: 10px 0; }.diagram-error summary { cursor: pointer; }.diagram-error pre { font-size: 12px; white-space: pre-wrap; }
-.table-scroll { overflow-x: auto; margin: 20px 0; }.table-scroll table { border-collapse: collapse; width: 100%; font-size: 15px; }.table-scroll td,.table-scroll th { border: 1px solid #dfe6f0; padding: 10px 13px; text-align: left; }.table-scroll th { background: #f2f6fc; }
+.comparison-visual { margin: 24px 0; min-width: 0; }
+.comparison-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); align-items: start; gap: 14px; }
+.comparison-card { min-width: 0; }
+.comparison-card svg { display: block; max-width: 100%; height: auto; }
+.comparison-text { margin-top: 12px; font-size: 0.9375rem; }
+.comparison-text summary { width: fit-content; cursor: pointer; color: #526b93; text-decoration: underline; text-underline-offset: 3px; }
+.comparison-text summary:focus-visible { outline: 2px solid #789bdb; outline-offset: 4px; }
+.comparison-text dl { margin: 14px 0; padding: 16px; border: 1px solid #dce4f0; border-radius: 10px; }
+.comparison-text dl > div + div { margin-top: 12px; }
+.comparison-text dt { font-weight: 600; color: #344761; }
+.comparison-text dd { margin: 4px 0 0; }
 .prose-brain input[type="checkbox"] { margin-right: 8px; }.prose-brain hr { border-top: 1px solid var(--border); margin: 22px 0; }
 .flashcards-intro { display: flex; justify-content: space-between; align-items: center; gap: 30px; padding: 30px 32px; border: 1px solid #e0e8f5; background: linear-gradient(115deg,#eef4ff,#fafcff); border-radius: 15px; margin-bottom: 34px; }
 .flashcards-intro .eyebrow { font-size: 11px; color: #8098bf; margin-bottom: 13px; }

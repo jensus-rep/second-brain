@@ -10,6 +10,8 @@ import type { Note, Workspace } from "@/lib/brain/model";
 import { Markdown } from "./markdown";
 
 type Heading = { id: string; title: string; level: number };
+// Related notes remount the reader; only the first one in a reading session plays the entrance.
+let mountedReaders = 0;
 const date = (value: string) => new Intl.DateTimeFormat("de-DE", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/Berlin" }).format(new Date(value));
 
 export function NoteReader({ note, workspace, saving, onClose, onOpen, onEdit, onFlashcard, onFavorite, onArchive, onTopic, onTag }: {
@@ -22,9 +24,23 @@ export function NoteReader({ note, workspace, saving, onClose, onOpen, onEdit, o
   const [headings, setHeadings] = useState<Heading[]>([]);
   const [outlineOpen, setOutlineOpen] = useState(false);
   const [activeHeading, setActiveHeading] = useState("");
+  const [entrance] = useState(() => mountedReaders > 0 ? "is-switch" : "is-enter");
+  const [open, setOpen] = useState(true);
+  const closeTimer = useRef<number | undefined>(undefined);
   const topic = workspace.topics.find(t => t.id === note.topicId);
   const related = workspace.notes.filter(n => note.relatedIds.includes(n.id) || n.relatedIds.includes(note.id));
   const minutes = Math.max(1, Math.ceil(note.content.split(/\s+/).filter(Boolean).length / 220));
+
+  useEffect(() => {
+    mountedReaders++;
+    return () => { mountedReaders--; window.clearTimeout(closeTimer.current); };
+  }, []);
+
+  function requestClose() {
+    if (!open) return;
+    setOpen(false);
+    closeTimer.current = window.setTimeout(onClose, window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 240);
+  }
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
@@ -60,8 +76,8 @@ export function NoteReader({ note, workspace, saving, onClose, onOpen, onEdit, o
 
   const outline = <nav aria-label="In diesem Eintrag">{headings.map(heading => <button key={heading.id} className={heading.level > 2 ? "outline-subheading" : ""} aria-current={activeHeading === heading.id ? "location" : undefined} onClick={() => jump(heading.id)}>{heading.title}</button>)}</nav>;
 
-  return <Dialog open onOpenChange={open => { if (!open) onClose(); }}>
-    <DialogContent className="entry-reader" showCloseButton={false} onOpenAutoFocus={event => { event.preventDefault(); articleRef.current?.focus(); }} onEscapeKeyDown={event => { if (document.querySelector(".lightbox")) event.preventDefault(); }} onInteractOutside={event => { if (document.querySelector(".lightbox")) event.preventDefault(); }}>
+  return <Dialog open={open} onOpenChange={value => { if (!value) requestClose(); }}>
+    <DialogContent className={"entry-reader " + entrance} overlayClassName={"reader-backdrop " + entrance} showCloseButton={false} onOpenAutoFocus={event => { event.preventDefault(); articleRef.current?.focus(); }} onEscapeKeyDown={event => { if (document.querySelector(".lightbox")) event.preventDefault(); }} onInteractOutside={event => { if (document.querySelector(".lightbox")) event.preventDefault(); }}>
       <header className="entry-toolbar">
         <DialogClose asChild><Button variant="ghost" className="reader-back"><X size={17} /><span>Schließen</span></Button></DialogClose>
         <span className="entry-toolbar-label">Wissenseintrag</span>
