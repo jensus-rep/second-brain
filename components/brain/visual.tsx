@@ -50,7 +50,17 @@ export function Diagram({ source }: { source: string }) {
         mermaid.initialize({ startOnLoad: false, securityLevel: "strict", htmlLabels: false, suppressErrorRendering: true, theme: "base", fontFamily: "Segoe UI, sans-serif", themeVariables: { primaryColor: "#eef3ff", primaryTextColor: "#344761", primaryBorderColor: "#9fb6e4", lineColor: "#8c9db5", tertiaryColor: "#f6f8fc", background: "#ffffff" }, flowchart: { htmlLabels: false, useMaxWidth: true }, maxTextSize: 12000, maxEdges: 150 });
         const { svg: raw } = await mermaid.render(elementId, source);
         const clean = DOMPurify.sanitize(raw, { USE_PROFILES: { svg: true, svgFilters: true }, FORBID_TAGS: ["foreignObject", "script", "a", "image"], FORBID_ATTR: ["href", "xlink:href"] });
-        if (!cancelled) setSvg(clean);
+        // Mermaid uses percentage dimensions for inline SVG. An SVG loaded as an
+        // image needs intrinsic dimensions, especially in mobile WebKit.
+        const document = new DOMParser().parseFromString(clean, "image/svg+xml");
+        const root = document.documentElement;
+        const bounds = root.getAttribute("viewBox")?.trim().split(/[\s,]+/).map(Number);
+        if (root.localName !== "svg" || !bounds || bounds.length !== 4 || !bounds.every(Number.isFinite) || bounds[2] <= 0 || bounds[3] <= 0) throw new Error("Invalid diagram dimensions");
+        root.setAttribute("width", String(bounds[2]));
+        root.setAttribute("height", String(bounds[3]));
+        root.setAttribute("preserveAspectRatio", "xMidYMid meet");
+        root.removeAttribute("style");
+        if (!cancelled) setSvg(new XMLSerializer().serializeToString(root));
       } catch { if (!cancelled) setError("Das Diagramm konnte nicht dargestellt werden. Prüfe die Schreibweise in der Bearbeitung."); }
     };
     renderQueue = renderQueue.then(job, job);

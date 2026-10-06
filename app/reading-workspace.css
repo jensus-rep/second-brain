@@ -305,3 +305,68 @@ body, .brain-main { background: #f6f7f9; }
 .sign-out { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; color: #63738c; font-size: inherit; border-radius: 6px; padding: 2px 4px; }
 .sign-out:hover { color: var(--primary); }
 @media (max-width: 480px) { .auth-panel { padding: 30px 22px 26px; } }
+
+/* Shared size constraints keep intrinsic media and grid children inside their surface. */
+.prose-brain, .figure-paragraph, .knowledge-figure, .diagram-figure,
+.editor-form, .field, .markdown-preview, .learning-step > div,
+.path-editor-step > div, .note-card-body, .page-heading > div { min-width: 0; }
+.figure-zoom, .diagram-zoom { max-width: 100%; }
+.figure-zoom img, .diagram-zoom > img { display: block; width: 100%; height: auto; }
+.knowledge-figure figcaption, .lightbox > p, .topic-caption,
+.path-card, .path-detail, .note-picker button, .checkbox-list label { overflow-wrap: anywhere; }
+.topic-caption { min-width: 0; }
+.favorite-button { flex-shrink: 0; }
+.lightbox { grid-template-columns: minmax(0, 1fr); }
+.lightbox > img { display: block; min-width: 0; height: auto; }
+.knowledge-map svg { display: block; height: auto; }
+
+.editor-dialog, .editor-form { grid-template-columns: minmax(0, 1fr); }
+.editor-form [data-slot="tabs"], .editor-form [data-slot="tabs-content"] { min-width: 0; }
+.editor-form textarea { min-width: 0; max-width: 100%; }
+
+@media (max-width: 767px) {
+  .workspace-content { padding: 22px 16px; }
+  .topbar { gap: 8px; }
+  .breadcrumb { min-width: 0; }
+  .breadcrumb strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .topbar-right { flex-shrink: 0; }
+  .mobile-toggle, .favorite-button { min-width: 44px; min-height: 44px; }
+  .step-actions button { width: 44px; height: 44px; }
+  .heading-actions, .library-toolbar, .library-controls { flex-wrap: wrap; }
+  .heading-actions { gap: 8px; }
+  .heading-actions > button, .primary-action { min-height: 44px; }
+  .library-toolbar { align-items: flex-start; gap: 12px; }
+  .library-controls { flex: 1; gap: 10px; }
+  .library-toolbar [data-slot="tabs-list"], .filter-button { min-height: 44px; }
+  .topic-shortcuts button, .filter-chips button, .applied-filters > button { min-height: 44px; max-width: 100%; overflow-wrap: anywhere; text-align: left; }
+  .topic-shortcuts button > svg, .map-caption > svg { flex-shrink: 0; }
+  .entry-reader { height: 100dvh; }
+  .entry-toolbar { padding-top: max(8px, env(safe-area-inset-top)); flex-wrap: wrap; }
+  .entry-toolbar button { min-height: 44px; }
+  .entry-layout { padding: 26px 16px max(32px, env(safe-area-inset-bottom)); }
+  .entry-topic { min-width: 0; text-align: left; overflow-wrap: anywhere; }
+  .entry-topic > .topic-dot { flex-shrink: 0; }
+  .prose-brain pre { max-width: 100%; padding: 14px; font-size: .875rem; }
+  .prose-brain blockquote { padding: 14px 16px; }
+  .diagram-figure { padding: 16px 10px; margin: 22px 0; }
+  .figure-zoom img { max-height: 60dvh; }
+  .lightbox { width: calc(100% - 16px) !important; max-height: calc(100dvh - 16px); padding: 52px 12px 16px; }
+  .lightbox > img { max-height: calc(100dvh - 140px); }
+  .lightbox [data-slot="dialog-close"], .editor-dialog [data-slot="dialog-close"] { top: 8px; right: 8px; width: 44px; height: 44px; display: grid; place-items: center; }
+  .diagram-viewer-controls button { width: 44px; height: 44px; }
+  .diagram-viewport { height: min(65dvh, calc(100dvh - 160px)); }
+  .editor-dialog { width: calc(100% - 16px); max-width: calc(100% - 16px) !important; max-height: calc(100dvh - 16px); padding: 24px 16px 16px; }
+  .editor-dialog [data-slot="dialog-header"] { padding-right: 40px; text-align: left; }
+  .editor-form input, .editor-form textarea, .editor-form [data-slot="select-trigger"], .auth-form input, .search-bar input, .card-search { font-size: 16px; }
+  .dialog-actions { flex-wrap: wrap; }
+  .dialog-actions > button { flex: 1 1 120px; min-height: 44px; }
+  .media-toolbar button { min-height: 44px; }
+  .flashcards-intro { padding: 22px 18px; }
+  .study-card { padding: 24px 16px; }
+  .study-rating > div { flex-wrap: wrap; }
+  .study-rating button { flex: 1 1 120px; min-width: 0; }
+  .map-caption { align-items: flex-start; padding: 14px 16px; line-height: 1.6; }
+  .path-editor-step { flex-wrap: wrap; }
+  .path-editor-step > div:not(.step-actions) { flex: 1 1 160px; }
+  .path-editor-step .step-actions { margin-left: auto; }
+}

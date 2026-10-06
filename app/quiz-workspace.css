@@ -1,0 +1,48 @@
+.quizzes { display: grid; gap: 22px; }
+.quiz-panel { background: #fff; border: 1px solid #dfe6f0; border-radius: 14px; padding: 26px; min-width: 0; margin: 18px 0; }
+.quizzes > .quiz-panel { margin: 0; }
+.quiz-panel h2, .quiz-panel h3, .quiz-journal-title { color: #30425d; font-size: 19px; font-weight: 600; line-height: 1.5; margin-bottom: 12px; overflow-wrap: anywhere; }
+.quiz-panel p, .quiz-session-end p { color: #617189; font-size: 14px; line-height: 1.8; margin: 12px 0; overflow-wrap: anywhere; }
+.quiz-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.quiz-actions > span { font-size: 13px; color: #63738c; flex: 1; min-width: 150px; }
+.quiz-config { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.quizzes select, .editor-form select { border: 1px solid #d6deeb; border-radius: 7px; min-height: 40px; padding: 8px 10px; background: #fff; color: #30425d; font-size: 14px; width: 100%; }
+.quiz-profile { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
+.quiz-profile article { border-radius: 9px; padding: 18px; background: #f5f8fd; }
+.quiz-profile h3 { font-size: 16px; margin-bottom: 8px; }
+.quiz-profile small, .quiz-history small { font-size: 13px; color: #63738c; display: block; line-height: 1.6; }
+.quiz-option { display: flex; align-items: flex-start; gap: 12px; border: 1px solid #d6deeb; border-radius: 9px; padding: 17px; margin: 10px 0; font-size: 16px; line-height: 1.6; cursor: pointer; overflow-wrap: anywhere; }
+.quiz-option:has([data-state="checked"]) { border-color: #7da0f0; background: #f1f6ff; }
+.quiz-option [data-slot="checkbox"] { flex-shrink: 0; margin-top: 4px; }
+.quiz-question h2 { font-size: 23px; margin: 18px 0; }
+.quiz-question .quiz-actions { margin-top: 22px; }
+.quiz-session-top { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; color: #435775; font-size: 14px; }
+.quiz-question-nav { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 20px; }
+.quiz-feedback { border-left: 3px solid #ddaa62; background: #fffbf4; padding: 19px; margin: 20px 0; border-radius: 0 9px 9px 0; }
+.quiz-feedback.correct { border-left-color: #5eaa83; background: #f3fbf6; }
+.quiz-feedback ul { list-style: disc; padding-left: 22px; font-size: 14px; line-height: 1.8; color: #685b45; }
+.quiz-feedback a { color: #315fbd; text-decoration: underline; font-size: 14px; }
+.quiz-reflection { display: grid; gap: 12px; margin-top: 20px; }
+.quiz-reflection button { justify-self: start; }
+.quiz-session-end { display: flex; justify-content: space-between; align-items: center; gap: 18px; margin-bottom: 20px; }
+.quiz-history, .reminder-list { display: grid; gap: 12px; }
+.quiz-history li, .reminder-list li { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 14px 0; border-bottom: 1px solid #e6ebf3; overflow-wrap: anywhere; }
+.quiz-history li > div, .reminder-list li > div { min-width: 0; }
+.quiz-history button { text-align: left; }
+.quiz-history span { display: block; font-size: 14px; line-height: 1.7; }
+.quiz-panel h3:has(svg), .reminder-panel h2 { display: flex; gap: 10px; align-items: center; }
+.reminder-form { display: grid; gap: 12px; }
+.reminder-form p { margin-top: 0; }
+.reminder-form .field { max-width: 420px; }
+.reminder-form > button { justify-self: start; }
+.quiz-editor-options { display: grid; gap: 15px; }
+.quiz-editor-options > div { display: grid; gap: 12px; padding: 16px; background: #f6f8fc; border-radius: 9px; }
+.quiz-correct-toggle { display: flex; gap: 9px; align-items: center; font-size: 14px; }
+@media (max-width: 767px) {
+  .quiz-panel { padding: 18px; }
+  .quiz-config, .quiz-profile { grid-template-columns: minmax(0, 1fr); }
+  .quiz-session-end, .reminder-list li { flex-direction: column; align-items: flex-start; }
+  .quiz-question h2 { font-size: 20px; }
+  .quiz-option { padding: 13px; font-size: 15px; }
+  .quiz-actions [data-slot="button"] { white-space: normal; min-height: 38px; height: auto; }
+}
