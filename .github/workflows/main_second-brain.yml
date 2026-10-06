@@ -12,6 +12,7 @@ concurrency:
 
 env:
   APP_NAME: second-brain
+  RESOURCE_GROUP: rg-toolhub-dev-we
 
 jobs:
   build:
@@ -64,15 +65,13 @@ jobs:
       - name: Login to Azure
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_C876B4683C964A358063EB5D76EDF4A4 }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_25EA69603A3F405198DBAEE71BF18E0F }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_023AB690DEBC471AB011BDBA2CF1B43D }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Resolve web app
         id: app
         run: |
-          RESOURCE_GROUP=$(az webapp list --query "[?name=='$APP_NAME'].resourceGroup | [0]" -o tsv)
-          if [ -z "$RESOURCE_GROUP" ]; then echo "Azure Web App $APP_NAME not found"; exit 1; fi
           echo "resource_group=$RESOURCE_GROUP" >> "$GITHUB_OUTPUT"
           echo "host=$(az webapp show -g "$RESOURCE_GROUP" -n "$APP_NAME" --query defaultHostName -o tsv)" >> "$GITHUB_OUTPUT"
 

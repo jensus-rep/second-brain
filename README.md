@@ -137,6 +137,8 @@ ZIP-Sicherungen enthalten die Wissensdaten sowie hochgeladene Bilder. Beim Impor
 
 Ein Push auf `main` baut die App mit GitHub Actions (`.github/workflows/main_second-brain.yml`) und deployt sie auf die Azure Web App `second-brain` (Linux, Node 22). Der Workflow prüft vorab, dass die benötigten App-Einstellungen vorhanden sind, und testet danach Anmeldeseite und API.
 
+Die Azure-Anmeldung verwendet OIDC mit den GitHub-Secrets `AZURE_CLIENT_ID`, `AZURE_TENANT_ID` und `AZURE_SUBSCRIPTION_ID`. Die Deployment-Identität erhält die Rolle `Website Contributor` ausschließlich für die Web App in `rg-toolhub-dev-we`. Ihre föderierte Identität vertraut nur dem Branch `main` dieses Repositorys; beim Anlegen oder Umziehen eines Repositorys muss das tatsächliche OIDC-Subject aus den GitHub-Einstellungen übernommen werden, einschließlich unveränderlicher Besitzer- und Repository-IDs, falls aktiviert. Ein Client-Kennwort wird nicht benötigt.
+
 Benötigte App-Einstellungen der Web App:
 
 | Einstellung | Zweck |
