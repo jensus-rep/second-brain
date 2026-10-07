@@ -27,7 +27,7 @@ export function Figure({ src, alt = "Abbildung", caption = "" }: { src: string; 
   return <figure className="knowledge-figure">
     {failed ? <div className="figure-unavailable"><ImageOff />Diese Abbildung ist nicht verfügbar.</div> : <button ref={zoomRef} type="button" className="figure-zoom" onClick={() => setOpen(true)} aria-label={alt + " vergrößern"}><img src={src} alt={alt} loading="lazy" onError={() => setFailed(true)} /><span><Expand size={16} /></span></button>}
     {caption && <figcaption>{caption}</figcaption>}
-    <Dialog open={open} onOpenChange={setOpen}><DialogContent className="lightbox" onCloseAutoFocus={e => { e.preventDefault(); zoomRef.current?.focus(); }}><DialogTitle className="sr-only">{alt}</DialogTitle><DialogDescription className="sr-only">Vergrößerte Abbildung. Mit Escape schließen.</DialogDescription><img src={src} alt={alt} />{caption && <p>{caption}</p>}</DialogContent></Dialog>
+    <Dialog open={open} onOpenChange={setOpen}><DialogContent className="lightbox zoom-lightbox" onCloseAutoFocus={e => { e.preventDefault(); zoomRef.current?.focus(); }}><DialogTitle className="zoom-lightbox-title">{alt}</DialogTitle><DialogDescription className="sr-only">Mit zwei Fingern oder den Zoomtasten vergrößern und durch Ziehen verschieben. Mit Escape schließen.</DialogDescription><DiagramViewer key={src} src={src} alt={alt} />{caption && <p className="zoom-lightbox-caption">{caption}</p>}</DialogContent></Dialog>
   </figure>;
 }
 
@@ -68,6 +68,6 @@ export function Diagram({ source }: { source: string }) {
   }, [source, elementId]);
   return <figure className="diagram-figure">
     {error ? <div className="diagram-error"><Network size={20} /><p>{error}</p><details><summary>Diagrammtext anzeigen</summary><pre>{source}</pre></details></div> : svg ? <button ref={zoomRef} type="button" className="diagram-zoom" aria-label="Diagramm vergrößern" onClick={() => setOpen(true)}><img src={"data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg)} alt="Diagramm" /><span className="expand-label"><Expand size={16} /></span></button> : <div className="diagram-loading" role="status">Diagramm wird aufgebaut …</div>}
-    <Dialog open={open} onOpenChange={setOpen}><DialogContent className="lightbox diagram-lightbox" onCloseAutoFocus={e => { e.preventDefault(); zoomRef.current?.focus(); }}><DialogTitle className="sr-only">Diagramm</DialogTitle><DialogDescription className="sr-only">Mit zwei Fingern oder den Zoomtasten vergrößern und durch Ziehen verschieben. Mit Escape schließen.</DialogDescription><DiagramViewer src={"data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg)} /></DialogContent></Dialog>
+    <Dialog open={open} onOpenChange={setOpen}><DialogContent className="lightbox diagram-lightbox zoom-lightbox" onCloseAutoFocus={e => { e.preventDefault(); zoomRef.current?.focus(); }}><DialogTitle className="zoom-lightbox-title">Diagramm</DialogTitle><DialogDescription className="sr-only">Mit zwei Fingern oder den Zoomtasten vergrößern und durch Ziehen verschieben. Mit Escape schließen.</DialogDescription><DiagramViewer key={svg} src={"data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg)} /></DialogContent></Dialog>
   </figure>;
 }

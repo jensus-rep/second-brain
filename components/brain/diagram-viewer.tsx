@@ -1,26 +1,65 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState, type PointerEvent } from "react";
-import { Minus, Plus, RotateCcw } from "lucide-react";
+import { useCallback, useLayoutEffect, useRef, useState, type PointerEvent } from "react";
+import { Minus, Plus, RotateCcw, Scan } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 type Point = { x: number; y: number };
 
-export function DiagramViewer({ src }: { src: string }) {
+export function DiagramViewer({ src, alt = "Diagramm" }: { src: string; alt?: string }) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
   const pointers = useRef(new Map<number, Point>());
   const pendingScroll = useRef<Point | null>(null);
   const zoomRef = useRef(1);
+  const sizeRef = useRef({ width: 0, height: 0, naturalWidth: 0 });
+  const fitted = useRef(false);
   const [zoom, setZoom] = useState(1);
-  const [size, setSize] = useState({ width: 0, height: 0 });
+  const [size, setSize] = useState({ width: 0, height: 0, naturalWidth: 0 });
+  const naturalZoom = size.width ? size.naturalWidth / size.width : 1;
+  const maxZoom = Math.max(6, naturalZoom * 4);
+  const label = alt === "Diagramm" ? "Diagramm" : "Abbildung";
 
-  const measure = () => {
+  const changeZoom = useCallback((value: number, anchor?: Point, previousAnchor = anchor, nextSize = sizeRef.current, preserveFit = false) => {
+    const viewport = viewportRef.current;
+    if (!viewport || !nextSize.width) return;
+    const previousSize = sizeRef.current;
+    const limit = Math.max(6, nextSize.naturalWidth / nextSize.width * 4);
+    const next = Math.max(1, Math.min(limit, value)), previous = zoomRef.current;
+    if (!preserveFit) fitted.current = next === 1;
+    const target = anchor ?? { x: viewport.clientWidth / 2, y: viewport.clientHeight / 2 };
+    const origin = previousAnchor ?? target;
+    // Account for centering while the image is smaller than the viewport.
+    const oldOffset = { x: Math.max(0, (viewport.clientWidth - previousSize.width * previous) / 2), y: Math.max(0, (viewport.clientHeight - previousSize.height * previous) / 2) };
+    const newOffset = { x: Math.max(0, (viewport.clientWidth - nextSize.width * next) / 2), y: Math.max(0, (viewport.clientHeight - nextSize.height * next) / 2) };
+    const ratio = previousSize.width ? nextSize.width * next / (previousSize.width * previous) : 1;
+    const scroll = {
+      x: previousSize.width ? (viewport.scrollLeft + origin.x - oldOffset.x) * ratio + newOffset.x - target.x : 0,
+      y: previousSize.width ? (viewport.scrollTop + origin.y - oldOffset.y) * ratio + newOffset.y - target.y : 0,
+    };
+    if (next === previous && nextSize === previousSize) {
+      viewport.scrollLeft = scroll.x;
+      viewport.scrollTop = scroll.y;
+    } else {
+      pendingScroll.current = scroll;
+      zoomRef.current = next;
+      sizeRef.current = nextSize;
+      setZoom(next);
+      setSize(nextSize);
+    }
+  }, []);
+
+  const measure = useCallback(() => {
     const viewport = viewportRef.current, image = imageRef.current;
-    if (!viewport || !image?.naturalWidth || !image.naturalHeight) return;
+    if (!viewport?.clientWidth || !viewport.clientHeight || !image?.naturalWidth || !image.naturalHeight) return;
     const fit = Math.min(viewport.clientWidth / image.naturalWidth, viewport.clientHeight / image.naturalHeight, 1);
-    setSize({ width: image.naturalWidth * fit, height: image.naturalHeight * fit });
-  };
+    const nextSize = { width: image.naturalWidth * fit, height: image.naturalHeight * fit, naturalWidth: image.naturalWidth };
+    if (nextSize.width === sizeRef.current.width && nextSize.height === sizeRef.current.height) return;
+    // Original size can also equal 100% of the fitted view. Track the user's
+    // fit choice separately so rotating back to portrait keeps labels readable.
+    const nextZoom = !sizeRef.current.width ? 1 / fit : fitted.current ? 1 : zoomRef.current * sizeRef.current.width / nextSize.width;
+    changeZoom(nextZoom, undefined, undefined, nextSize, true);
+  }, [changeZoom]);
 
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
@@ -28,7 +67,7 @@ export function DiagramViewer({ src }: { src: string }) {
     const observer = new ResizeObserver(measure);
     observer.observe(viewport);
     return () => observer.disconnect();
-  }, []);
+  }, [measure]);
 
   useLayoutEffect(() => {
     const viewport = viewportRef.current, scroll = pendingScroll.current;
@@ -37,30 +76,7 @@ export function DiagramViewer({ src }: { src: string }) {
       viewport.scrollTop = scroll.y;
       pendingScroll.current = null;
     }
-  }, [zoom]);
-
-  const changeZoom = (value: number, anchor?: Point, previousAnchor = anchor) => {
-    const viewport = viewportRef.current;
-    if (!viewport || !size.width) return;
-    const next = Math.max(1, Math.min(6, value)), previous = zoomRef.current;
-    const target = anchor ?? { x: viewport.clientWidth / 2, y: viewport.clientHeight / 2 };
-    const origin = previousAnchor ?? target;
-    // Account for centering while the image is smaller than the viewport.
-    const oldOffset = { x: Math.max(0, (viewport.clientWidth - size.width * previous) / 2), y: Math.max(0, (viewport.clientHeight - size.height * previous) / 2) };
-    const newOffset = { x: Math.max(0, (viewport.clientWidth - size.width * next) / 2), y: Math.max(0, (viewport.clientHeight - size.height * next) / 2) };
-    const scroll = {
-      x: (viewport.scrollLeft + origin.x - oldOffset.x) * next / previous + newOffset.x - target.x,
-      y: (viewport.scrollTop + origin.y - oldOffset.y) * next / previous + newOffset.y - target.y,
-    };
-    if (next === previous) {
-      viewport.scrollLeft = scroll.x;
-      viewport.scrollTop = scroll.y;
-    } else {
-      pendingScroll.current = scroll;
-      zoomRef.current = next;
-      setZoom(next);
-    }
-  };
+  }, [zoom, size]);
 
   const pointerMove = (event: PointerEvent<HTMLDivElement>) => {
     const viewport = viewportRef.current, previous = pointers.current.get(event.pointerId);
@@ -84,13 +100,15 @@ export function DiagramViewer({ src }: { src: string }) {
   };
 
   return <div className="diagram-viewer">
-    <div className="diagram-viewer-controls" role="group" aria-label="Diagrammzoom">
-      <Button variant="outline" size="icon" aria-label="Diagramm verkleinern" disabled={zoom <= 1} onClick={() => changeZoom(zoom / 1.5)}><Minus size={16} /></Button>
-      <output aria-live="polite">{Math.round(zoom * 100)} %</output>
-      <Button variant="outline" size="icon" aria-label="Diagramm weiter vergrößern" disabled={zoom >= 6} onClick={() => changeZoom(zoom * 1.5)}><Plus size={16} /></Button>
-      <Button variant="outline" size="icon" aria-label="Diagramm einpassen" onClick={() => changeZoom(1)}><RotateCcw size={16} /></Button>
+    <div className="diagram-viewer-controls" role="group" aria-label={`${label} zoomen`}>
+      <Button variant="outline" size="icon" aria-label={`${label} verkleinern`} disabled={zoom <= 1} onClick={() => changeZoom(zoom / 1.5)}><Minus size={16} /></Button>
+      <output aria-live="polite" aria-label="Zoom relativ zur eingepassten Ansicht">{Math.round(zoom * 100)} %</output>
+      <Button variant="outline" size="icon" aria-label={`${label} weiter vergrößern`} disabled={!size.width || zoom >= maxZoom} onClick={() => changeZoom(zoom * 1.5)}><Plus size={16} /></Button>
+      <Button variant="outline" size="icon" aria-label={`${label} einpassen`} onClick={() => changeZoom(1)}><RotateCcw size={16} /></Button>
+      <Button variant="outline" size="icon" aria-label="Originalgröße anzeigen" onClick={() => { changeZoom(naturalZoom); fitted.current = false; }}><Scan size={16} /></Button>
     </div>
-    <div ref={viewportRef} className="diagram-viewport" tabIndex={0} role="region" aria-label="Vergrößertes Diagramm, mit zwei Fingern zoomen und durch Ziehen verschieben"
+    <p className="diagram-viewer-hint">Mit zwei Fingern zoomen · Zum Verschieben ziehen</p>
+    <div ref={viewportRef} className="diagram-viewport" tabIndex={0} role="region" aria-label={`${alt}, mit zwei Fingern zoomen und durch Ziehen verschieben`}
       onPointerDown={event => {
         const rect = event.currentTarget.getBoundingClientRect();
         if (event.button !== 0 || event.clientX - rect.left >= event.currentTarget.clientWidth || event.clientY - rect.top >= event.currentTarget.clientHeight) return;
@@ -99,7 +117,7 @@ export function DiagramViewer({ src }: { src: string }) {
       }}
       onPointerMove={pointerMove} onPointerUp={releasePointer} onPointerCancel={releasePointer} onLostPointerCapture={releasePointer}>
       <div className="diagram-canvas" style={{ width: size.width * zoom, height: size.height * zoom }}>
-        <img ref={imageRef} src={src} alt="Diagramm" draggable={false} onLoad={measure} style={{ width: size.width ? size.width * zoom : undefined, height: size.height ? size.height * zoom : undefined }} />
+        <img ref={imageRef} src={src} alt={alt} draggable={false} onLoad={measure} style={{ width: size.width ? size.width * zoom : undefined, height: size.height ? size.height * zoom : undefined }} />
       </div>
     </div>
   </div>;

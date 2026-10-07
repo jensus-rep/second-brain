@@ -318,6 +318,15 @@ body, .brain-main { background: #f6f7f9; }
 .favorite-button { flex-shrink: 0; }
 .lightbox { grid-template-columns: minmax(0, 1fr); }
 .lightbox > img { display: block; min-width: 0; height: auto; }
+.zoom-lightbox { height: 90dvh; overflow: hidden; display: flex; flex-direction: column; gap: 12px; padding: 24px; }
+.zoom-lightbox-title { padding-right: 44px; flex-shrink: 0; overflow-wrap: anywhere; }
+.zoom-lightbox .diagram-viewer { flex: 1; min-height: 0; display: grid; grid-template-rows: auto auto minmax(0, 1fr); }
+.zoom-lightbox .diagram-viewer-controls { margin-bottom: 8px; flex-wrap: wrap; }
+.zoom-lightbox .diagram-viewer-controls button { width: 44px; height: 44px; }
+.zoom-lightbox [data-slot="dialog-close"] { width: 44px; height: 44px; display: grid; place-items: center; top: 12px; right: 12px; }
+.diagram-viewer-hint { text-align: center; font-size: 12px; color: #586579; margin-bottom: 12px; }
+.zoom-lightbox .diagram-viewport { height: 100%; min-height: 0; background: #f7f9fc; }
+.zoom-lightbox-caption { flex-shrink: 0; max-height: 10dvh; overflow: auto; }
 .knowledge-map svg { display: block; height: auto; }
 
 .editor-dialog, .editor-form { grid-template-columns: minmax(0, 1fr); }
@@ -369,4 +378,10 @@ body, .brain-main { background: #f6f7f9; }
   .path-editor-step { flex-wrap: wrap; }
   .path-editor-step > div:not(.step-actions) { flex: 1 1 160px; }
   .path-editor-step .step-actions { margin-left: auto; }
+}
+
+@media (max-width: 767px), (max-height: 500px) and (pointer: coarse) {
+  .zoom-lightbox { top: 0; left: 0; translate: none; width: 100% !important; max-width: 100% !important; height: 100dvh; max-height: 100dvh; border: 0; border-radius: 0; padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
+  .zoom-lightbox [data-slot="dialog-close"] { top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); }
+  .zoom-lightbox-title { min-height: 36px; display: flex; align-items: center; }
 }

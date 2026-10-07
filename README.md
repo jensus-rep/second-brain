@@ -73,6 +73,8 @@ npm run test:visual
 npm run test:reading
 npm run test:quizzes
 npm run test:comparisons
+npm run test:mobile
+npm run test:zoom
 ~~~
 
 Für den Browsertest muss der lokale Entwicklungsserver laufen und Google Chrome installiert sein. Alternativ die Browserkonfiguration in tests/browser.mjs auf einen verfügbaren Playwright-Browser ändern. Der Test lehnt externe Ziele ab und stellt den lokalen Ausgangsbestand nach seinem Lauf wieder her.
@@ -114,6 +116,8 @@ Der Markdown-Renderer verwendet react-markdown und remark-gfm: Überschriften, L
 „Diagramm einfügen“ legt eine editierbare Mermaid-Vorlage an. Unterstützt sind klassische flowchart/graph-Diagramme, sequenceDiagram und mindmap. HTML, Konfigurationsdirektiven, externe Ressourcen und Bildformen sind ausgeschlossen. Das Ergebnis wird mit DOMPurify bereinigt und als isoliertes SVG-Bild angezeigt.
 
 Die Diagrammvorlage verläuft von oben nach unten, damit sie auch mobil lesbar bleibt. Drei Einstiegsnotizen neuer Sammlungen erklären Verstehen, Verbindungen und Lernplanung zusätzlich mit SVG-Diagrammen. `test:comparisons` prüft die SVG-Vergleiche auf Desktop und bei 320/390 Pixel Breite, lange Wörter, Links, Vorschau, Lernkarten und die neuen Diagramme; lokale Ausgangsdaten werden anschließend wiederhergestellt.
+
+Abbildungen und Diagramme öffnen in Originalgröße. Auf dem Handy nutzt die Ansicht im Hoch- und Querformat den ganzen Bildschirm. Zwei Finger oder die Zoomtasten vergrößern die Grafik; durch Ziehen lassen sich alle Bildränder erreichen. „Einpassen“ zeigt die Übersicht, „Originalgröße anzeigen“ stellt die ursprüngliche Größe wieder her. Beim Drehen bleibt der gewählte Maßstab erhalten; eine eingepasste Grafik wird erneut eingepasst. `test:zoom` prüft echte Touch-Gesten, Bildränder, Originalgröße, Drehung und die Rückkehr zur Vorschau. `test:mobile` prüft zusätzlich Abbildungen, Editor und Navigation von 320 bis 1440 Pixeln; mit `BRAIN_TEST_ENGINE=webkit` läuft diese Prüfung in WebKit.
 
 ## Lernen mit Karten
 

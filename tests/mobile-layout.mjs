@@ -71,6 +71,7 @@ try {
     const viewport = lightbox.locator(".diagram-viewport");
     const bounds = await viewport.boundingBox();
     assert.ok(bounds.width > 100 && bounds.height > 100);
+    await page.getByRole("button", { name: "Diagramm einpassen", exact: true }).click();
     await page.getByRole("button", { name: "Diagramm weiter vergrößern", exact: true }).click();
     await expect(lightbox.locator("output")).toHaveText("150 %");
     await page.getByRole("button", { name: "Diagramm einpassen", exact: true }).click();
@@ -84,8 +85,18 @@ try {
       await reader.getByRole("button", { name: alt + " vergrößern", exact: true }).click();
       const imagebox = page.getByRole("dialog", { name: alt, exact: true });
       await loaded(imagebox.getByRole("img")); await fits(imagebox);
+      await expect.poll(() => imagebox.getByRole("img").evaluate(img => Math.abs(img.getBoundingClientRect().width - img.naturalWidth))).toBeLessThan(1);
+      const imageViewport = imagebox.locator(".diagram-viewport");
+      assert.ok(await imageViewport.evaluate(el => el.scrollWidth > el.clientWidth || el.scrollHeight > el.clientHeight), "Original-size images have reachable overflow");
+      await imagebox.getByRole("button", { name: "Abbildung einpassen", exact: true }).click();
       const imageBounds = await imagebox.getByRole("img").boundingBox();
       assert.ok(imageBounds.width <= width && imageBounds.height <= 844);
+      assert.equal(await imageViewport.evaluate(el => el.scrollWidth > el.clientWidth || el.scrollHeight > el.clientHeight), false, "Fit shows the whole image");
+      await imagebox.getByRole("button", { name: "Abbildung weiter vergrößern", exact: true }).click();
+      await expect(imagebox.locator("output")).toHaveText("150 %");
+      assert.ok(await imagebox.getByRole("img").evaluate(img => img.getBoundingClientRect().width) > imageBounds.width * 1.4, "Figure zoom changes rendered dimensions");
+      await imagebox.getByRole("button", { name: "Originalgröße anzeigen", exact: true }).click();
+      await expect.poll(() => imagebox.getByRole("img").evaluate(img => Math.abs(img.getBoundingClientRect().width - img.naturalWidth))).toBeLessThan(1);
       await page.keyboard.press("Escape");
     }
     await reader.getByRole("button", { name: "Bearbeiten", exact: true }).click();
