@@ -6,7 +6,7 @@
 - Wissen nach allgemeinen Fachthemen ablegen, nicht nach Hochschulmodulen. Titel, Themen, Tags, Lernpfade, Lernkarten und Grafiken verwenden keine Uni- oder Kurskürzel. Erklärungen stehen für sich und nutzen übertragbare Praxisbeispiele; Quellen und fachliche Einschränkungen bleiben nachvollziehbar. Bestehende interne IDs erhalten, damit Verknüpfungen und Lernfortschritte stabil bleiben.
 - Modell und Validierung: lib/brain/model.ts. Beispielinhalte: lib/brain/seed.ts.
 - Persistenz: lib/server/store.ts (Azure SQL in Produktion, lokale SQLite-Datei in Entwicklung) über lib/brain/storage.ts und app/api/brain/route.ts. Eigene Tabellen `newhope_*`; die Tabellen `second_brain_*` der Vorgänger-App nicht verändern.
-- Anmeldung: lib/server/auth.ts (eigenes Konto, scrypt, signiertes Session-Cookie). Eigentümer immer aus der serverseitigen Session ableiten. Das erste Konto entsteht nur mit `NEWHOPE_SETUP_TOKEN`.
+- Anmeldung: lib/server/auth.ts (eigenes Konto, scrypt, signiertes Session-Cookie). Eigentümer immer aus der serverseitigen Session ableiten. Das erste Konto entsteht nur mit `NEWHOPE_SETUP_TOKEN`. Persönliche Zugangsschlüssel (lib/server/access-keys.ts, Tabelle `newhope_access_keys`, nur SHA-256-Hash gespeichert) gelten ausschließlich für die Datenrouten `/api/brain` und `/api/media` über `getApiUser`; Schlüssel anlegen und widerrufen (`/api/keys`) bleibt an die Browser-Session gebunden.
 - Keine Wissensinhalte oder Fortschritte ausschließlich im Browser speichern.
 - Schreibvorgänge verwenden eine Revision. Konflikte niemals still überschreiben.
 - UI: components/brain/, Gestaltung: app/globals.css und app/reading-workspace.css. Vorhandene components/ui-Primitiven wiederverwenden.

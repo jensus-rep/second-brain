@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { Archive, BookOpen, Check, ChevronRight, Compass, Download, FileText, FolderOpen, GitBranch, GraduationCap, LayoutGrid, Link2, List, LockKeyhole, LogOut, Network, Pencil, Plus, Search, Star, X, Layers3, ChevronDown } from "lucide-react";
+import { Archive, BookOpen, Check, ChevronRight, Compass, Download, FileText, FolderOpen, GitBranch, GraduationCap, KeyRound, LayoutGrid, Link2, List, LockKeyhole, LogOut, Network, Pencil, Plus, Search, Star, X, Layers3, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SidebarProvider, Sidebar, SidebarContent, SidebarHeader, SidebarFooter, SidebarGroup, SidebarGroupLabel, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarInset, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
@@ -18,6 +18,7 @@ import { NoteReader } from "./note-reader";
 import { KnowledgeFilters } from "./knowledge-filters";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { TransferDialog } from "./transfer-dialog";
+import { AccessKeysDialog } from "./access-keys-dialog";
 import { Flashcards, FlashcardEditor, newFlashcard } from "./flashcards";
 import { Quizzes, LearningReminders } from "./quizzes";
 import { firstImage, noteExcerpt } from "@/lib/brain/media";
@@ -41,8 +42,8 @@ async function signOut() {
   window.location.assign("/login");
 }
 
-function Navigation({ view, go, workspace, topicId, setTopic, newTopic }: {
-  view: View; go: (v: View) => void; workspace: Workspace; topicId: string; setTopic: (id: string) => void; newTopic: () => void;
+function Navigation({ view, go, workspace, topicId, setTopic, newTopic, openKeys }: {
+  view: View; go: (v: View) => void; workspace: Workspace; topicId: string; setTopic: (id: string) => void; newTopic: () => void; openKeys: () => void;
 }) {
   const { setOpenMobile } = useSidebar();
   function navigate(v: View) { go(v); setOpenMobile(false); }
@@ -51,7 +52,7 @@ function Navigation({ view, go, workspace, topicId, setTopic, newTopic }: {
     <SidebarContent><SidebarGroup><SidebarGroupLabel>WISSEN</SidebarGroupLabel><SidebarMenu>{nav.slice(0, 3).map(({ id, label, icon: Icon }) => <SidebarMenuItem key={id}><SidebarMenuButton isActive={view === id && !topicId} onClick={() => navigate(id)}><Icon /><span>{label}</span></SidebarMenuButton></SidebarMenuItem>)}</SidebarMenu></SidebarGroup>
     <SidebarGroup><SidebarGroupLabel>LERNEN & VERBINDEN</SidebarGroupLabel><SidebarMenu>{nav.slice(3).map(({ id, label, icon: Icon }) => <SidebarMenuItem key={id}><SidebarMenuButton isActive={view === id} onClick={() => navigate(id)}><Icon /><span>{label}</span></SidebarMenuButton></SidebarMenuItem>)}</SidebarMenu></SidebarGroup>
     {workspace.topics.length > 0 && <SidebarGroup className="sidebar-topics"><Collapsible defaultOpen><div className="side-section-heading"><CollapsibleTrigger asChild><button className="sidebar-topics-trigger">THEMEN<ChevronDown size={14} /></button></CollapsibleTrigger><button onClick={newTopic} aria-label="Neues Thema"><Plus size={16} /></button></div><CollapsibleContent><SidebarMenu>{workspace.topics.slice(0, 4).map(t => <SidebarMenuItem key={t.id}><SidebarMenuButton isActive={topicId === t.id} onClick={() => { setTopic(t.id); setOpenMobile(false); }}><span className={"topic-dot " + t.color} /><span>{t.title}</span></SidebarMenuButton></SidebarMenuItem>)}</SidebarMenu>{workspace.topics.length > 4 && <button className="all-topics-link" onClick={() => navigate("topics")}>Alle {workspace.topics.length} Themen</button>}</CollapsibleContent></Collapsible></SidebarGroup>}
-    <SidebarGroup><SidebarMenu><SidebarMenuItem><SidebarMenuButton isActive={view === "favorites"} onClick={() => navigate("favorites")}><Star /><span>Favoriten</span></SidebarMenuButton></SidebarMenuItem><SidebarMenuItem><SidebarMenuButton isActive={view === "archive"} onClick={() => navigate("archive")}><Archive /><span>Archiv</span></SidebarMenuButton></SidebarMenuItem></SidebarMenu></SidebarGroup></SidebarContent>
+    <SidebarGroup><SidebarMenu><SidebarMenuItem><SidebarMenuButton isActive={view === "favorites"} onClick={() => navigate("favorites")}><Star /><span>Favoriten</span></SidebarMenuButton></SidebarMenuItem><SidebarMenuItem><SidebarMenuButton isActive={view === "archive"} onClick={() => navigate("archive")}><Archive /><span>Archiv</span></SidebarMenuButton></SidebarMenuItem><SidebarMenuItem><SidebarMenuButton onClick={() => { openKeys(); setOpenMobile(false); }}><KeyRound /><span>Zugangsschlüssel</span></SidebarMenuButton></SidebarMenuItem></SidebarMenu></SidebarGroup></SidebarContent>
     <SidebarFooter><div className="private-label"><LockKeyhole size={14} />Privater Wissensraum<button className="sign-out" onClick={() => void signOut()}><LogOut size={14} />Abmelden</button></div></SidebarFooter>
   </Sidebar>;
 }
@@ -89,6 +90,7 @@ export function BrainApp() {
   const [editingCard, setEditingCard] = useState<Flashcard | null>(null);
   const [selectedPathId, setSelectedPathId] = useState<string | null>(null);
   const [showTransfer, setShowTransfer] = useState(false);
+  const [showKeys, setShowKeys] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const note = w.notes.find(n => n.id === selectedId);
   const selectedPath = w.paths.find(p => p.id === selectedPathId);
@@ -124,7 +126,7 @@ export function BrainApp() {
     return () => controller.abort();
   }, [w, topicId, editingNote, editingPath, editingTopic, editingCard]);
 
-  return <SidebarProvider style={{ "--sidebar-width": "250px" } as CSSProperties}><Navigation view={view} go={go} workspace={w} topicId={topicId} setTopic={setTopic} newTopic={() => setEditingTopic({ id: crypto.randomUUID(), title: "", description: "", color: "blue" })} /><SidebarInset className="brain-main">
+  return <SidebarProvider style={{ "--sidebar-width": "250px" } as CSSProperties}><Navigation view={view} go={go} workspace={w} topicId={topicId} setTopic={setTopic} newTopic={() => setEditingTopic({ id: crypto.randomUUID(), title: "", description: "", color: "blue" })} openKeys={() => setShowKeys(true)} /><SidebarInset className="brain-main">
     <header className="topbar"><div className="breadcrumb"><SidebarTrigger className="mobile-toggle" /><span>Wissensatelier</span><ChevronRight size={14} /><strong>{topic?.title ?? labels[view]}</strong></div><div className="topbar-right"><span className="save-state"><Check size={14} className={saving ? "pulse" : ""} />{saving ? "Speichert …" : loading ? "Lädt …" : brain.error ? "Bitte prüfen" : "Gespeichert"}</span><Button variant="ghost" size="icon" aria-label="Import & Datensicherung" onClick={() => setShowTransfer(true)}><Download size={18} /></Button></div></header>
     <div className="workspace-content">
       {!(view === "flashcards" && studying) && <><div className="page-heading"><div><div className="eyebrow">{view === "home" ? "PLATZ FÜR DEINE GEDANKEN" : "DEIN PERSÖNLICHER WISSENSRAUM"}</div><h1>{topic?.title ?? (topicId === UNASSIGNED ? "Ohne Thema" : view === "home" ? "Dein Wissen" : labels[view])}</h1><p>{topic?.description ?? ({ home: "Gedanken festhalten. Zusammenhänge entdecken.", library: "Deine Einträge an einem Ort.", topics: "Wissen nach Fachthemen ordnen.", paths: "Aus einzelnen Gedanken wird ein Weg. Lerne in deinem Tempo.", connections: "Entdecke, wie deine Gedanken zusammengehören.", favorites: "Die Gedanken, zu denen du gern zurückkommst.", archive: "Aufbewahrt für später. Hier geht kein Gedanke verloren.", flashcards: "Weniger nachlesen. Mehr im Gedächtnis behalten.", quizzes: "Wissen prüfen, Denkfehler verstehen und gezielt weiterüben." }[view])}</p></div><div className="heading-actions">{topic && <Button variant="outline" onClick={() => setEditingTopic(topic)} aria-label="Thema bearbeiten"><Pencil size={16} /></Button>}{view !== "quizzes" && <Button className="primary-action" disabled={loading} onClick={() => view === "flashcards" ? setEditingCard(newFlashcard()) : view === "topics" ? setEditingTopic({ id: crypto.randomUUID(), title: "", description: "", color: "blue" }) : view === "paths" ? setEditingPath({ id: crypto.randomUUID(), title: "", description: "", steps: [] }) : setEditingNote(freshNote())}><Plus size={18} />{view === "flashcards" ? "Neue Lernkarte" : view === "topics" ? "Neues Thema" : view === "paths" ? "Neuer Lernpfad" : "Neue Notiz"}</Button>}</div></div>
@@ -158,6 +160,7 @@ export function BrainApp() {
   {editingTopic && <TopicEditor topic={editingTopic} save={save} saving={saving} onClose={() => setEditingTopic(null)} />}
   {editingPath && <PathEditor path={editingPath} workspace={w} save={save} saving={saving} onClose={() => setEditingPath(null)} />}
   <TransferDialog open={showTransfer} setOpen={setShowTransfer} workspace={w} save={save} saving={saving} onImported={() => go("home")} />
+  <AccessKeysDialog open={showKeys} setOpen={setShowKeys} />
   </SidebarProvider>;
 }
 

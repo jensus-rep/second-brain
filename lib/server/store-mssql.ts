@@ -1,5 +1,5 @@
 import sql from "mssql";
-import type { MediaRow, Store, UserRecord } from "./store";
+import type { AccessKeyRecord, MediaRow, Store, UserRecord } from "./store";
 
 // Own tables next to the previous app's `second_brain_*` tables; those stay untouched.
 const schema = `
@@ -22,13 +22,25 @@ IF OBJECT_ID(N'dbo.newhope_media', N'U') IS NULL
     mime NVARCHAR(40) NOT NULL,
     bytes VARBINARY(MAX) NOT NULL,
     created_at NVARCHAR(40) NOT NULL,
-    CONSTRAINT newhope_media_pk PRIMARY KEY (owner_id, id));`;
+    CONSTRAINT newhope_media_pk PRIMARY KEY (owner_id, id));
+IF OBJECT_ID(N'dbo.newhope_access_keys', N'U') IS NULL
+  CREATE TABLE dbo.newhope_access_keys (
+    id NVARCHAR(36) NOT NULL PRIMARY KEY,
+    owner_id NVARCHAR(64) NOT NULL,
+    name NVARCHAR(60) NOT NULL,
+    key_hash NVARCHAR(64) NOT NULL CONSTRAINT newhope_access_keys_hash UNIQUE,
+    hint NVARCHAR(4) NOT NULL,
+    created_at NVARCHAR(40) NOT NULL,
+    last_used_at NVARCHAR(40) NULL);`;
 
 const flag = (value: string | undefined, fallback: boolean) => value === undefined ? fallback : ["1", "true", "yes"].includes(value.toLowerCase());
 const now = () => new Date().toISOString();
 const isDuplicate = (error: unknown) => typeof error === "object" && error !== null && [2627, 2601].includes((error as { number?: number }).number ?? 0);
 type UserRow = { id: string; email: string; password_hash: string; created_at: string };
 const toUser = (row: UserRow | undefined): UserRecord | null => row ? { id: row.id, email: row.email, passwordHash: row.password_hash, createdAt: row.created_at } : null;
+type KeyRow = { id: string; owner_id: string; name: string; hint: string; created_at: string; last_used_at: string | null };
+const toKey = (row: KeyRow): AccessKeyRecord => ({ id: row.id, ownerId: row.owner_id, name: row.name, hint: row.hint, createdAt: row.created_at, lastUsedAt: row.last_used_at });
+const KEY_COLUMNS = "id, owner_id, name, hint, created_at, last_used_at";
 
 export async function createMssqlStore(): Promise<Store> {
   const env = process.env;
@@ -96,6 +108,26 @@ export async function createMssqlStore(): Promise<Store> {
       const result = await q().input("owner", sql.NVarChar(64), owner).input("id", sql.NVarChar(36), id).query<{ mime: string; bytes: Buffer }>("SELECT mime, bytes FROM dbo.newhope_media WHERE owner_id = @owner AND id = @id");
       const row = result.recordset[0];
       return row ? { mime: row.mime, bytes: new Uint8Array(row.bytes) } : null;
+    },
+    async createAccessKey(key) {
+      await q().input("id", sql.NVarChar(36), key.id).input("owner", sql.NVarChar(64), key.ownerId).input("name", sql.NVarChar(60), key.name)
+        .input("hash", sql.NVarChar(64), key.hash).input("hint", sql.NVarChar(4), key.hint).input("at", sql.NVarChar(40), key.createdAt)
+        .query("INSERT INTO dbo.newhope_access_keys (id, owner_id, name, key_hash, hint, created_at, last_used_at) VALUES (@id, @owner, @name, @hash, @hint, @at, NULL)");
+    },
+    async listAccessKeys(owner) {
+      const result = await q().input("owner", sql.NVarChar(64), owner).query<KeyRow>(`SELECT ${KEY_COLUMNS} FROM dbo.newhope_access_keys WHERE owner_id = @owner ORDER BY created_at`);
+      return result.recordset.map(toKey);
+    },
+    async findAccessKey(hash) {
+      const result = await q().input("hash", sql.NVarChar(64), hash).query<KeyRow>(`SELECT ${KEY_COLUMNS} FROM dbo.newhope_access_keys WHERE key_hash = @hash`);
+      return result.recordset[0] ? toKey(result.recordset[0]) : null;
+    },
+    async touchAccessKey(id, at) {
+      await q().input("id", sql.NVarChar(36), id).input("at", sql.NVarChar(40), at).query("UPDATE dbo.newhope_access_keys SET last_used_at = @at WHERE id = @id");
+    },
+    async deleteAccessKey(owner, id) {
+      const result = await q().input("owner", sql.NVarChar(64), owner).input("id", sql.NVarChar(36), id).query("DELETE FROM dbo.newhope_access_keys WHERE owner_id = @owner AND id = @id");
+      return result.rowsAffected[0] === 1;
     },
   };
 }

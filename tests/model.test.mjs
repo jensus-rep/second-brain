@@ -6,6 +6,7 @@ import { seedWorkspace } from "../lib/brain/seed.ts";
 import { emptyWorkspace } from "../lib/brain/model.ts";
 import { isCorrect, learningProfile, selectQuestions, reminderCalendar } from "../lib/brain/quiz.ts";
 import { quizExamples } from "../lib/brain/quiz-examples.ts";
+import { ACCESS_KEY_PATTERN, accessKeyHash, accessKeyName, bearerKey, newAccessKey } from "../lib/server/access-keys.ts";
 test("seed is a valid portable workspace with no fake learning progress", () => {
   assert.equal(workspaceSchema.parse(seedWorkspace).notes.length, 6);
   assert.deepEqual(seedWorkspace.completedStepIds, []);
@@ -121,4 +122,22 @@ test("calendar reminders escape content, use UTC and include a display alarm", (
   assert.match(calendar, /Produkt\\, Projekt\\;\\n/);
   assert.match(calendar, /BEGIN:VALARM/);
   for (const line of calendar.split("\r\n")) assert.ok(Buffer.byteLength(line, "utf8") <= 75);
+});
+test("access keys are random, stored only as hash and parsed strictly from the Authorization header", () => {
+  const a = newAccessKey(), b = newAccessKey();
+  assert.match(a.key, ACCESS_KEY_PATTERN);
+  assert.notEqual(a.key, b.key);
+  assert.equal(a.hash, accessKeyHash(a.key));
+  assert.match(a.hash, /^[0-9a-f]{64}$/);
+  assert.equal(a.hint, a.key.slice(-4));
+  assert.equal(bearerKey(null), undefined);
+  assert.equal(bearerKey("Bearer " + a.key), a.key);
+  assert.equal(bearerKey("bearer  " + a.key + " "), a.key);
+  assert.equal(bearerKey("Bearer nh_short"), null);
+  assert.equal(bearerKey("Basic " + a.key), null);
+  assert.equal(bearerKey(a.key), null);
+  assert.equal(accessKeyName("  Laptop  "), "Laptop");
+  assert.equal(accessKeyName(""), null);
+  assert.equal(accessKeyName("x".repeat(61)), null);
+  assert.equal(accessKeyName(42), null);
 });

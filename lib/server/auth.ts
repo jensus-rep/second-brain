@@ -2,6 +2,7 @@ import { createHash, createHmac, randomBytes, scrypt, timingSafeEqual } from "no
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { store } from "./store";
+import { accessKeyHash, bearerKey } from "./access-keys";
 
 export type SessionUser = { userId: string; email: string };
 
@@ -42,6 +43,29 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   if (userId === DEV_USER.userId) return devAutoLogin() ? DEV_USER : null;
   const user = await (await store()).findUserById(userId);
   return user ? { userId: user.id, email: user.email } : null;
+}
+
+/**
+ * For the data routes (workspace and images): a personal access key as Bearer token, otherwise the session cookie.
+ * Creating and revoking keys stays session-only, so a key can never mint further keys.
+ */
+export async function getApiUser(request: Request): Promise<SessionUser | null> {
+  const key = bearerKey(request.headers.get("authorization"));
+  if (key === undefined) return getSessionUser();
+  if (key === null) return null;
+  const db = await store();
+  const record = await db.findAccessKey(accessKeyHash(key));
+  if (!record) return null;
+  let user: SessionUser | null = null;
+  if (record.ownerId === DEV_USER.userId) user = devAutoLogin() ? DEV_USER : null;
+  else {
+    const found = await db.findUserById(record.ownerId);
+    user = found ? { userId: found.id, email: found.email } : null;
+  }
+  if (user && (!record.lastUsedAt || Date.now() - Date.parse(record.lastUsedAt) > 60_000)) {
+    await db.touchAccessKey(record.id, new Date().toISOString()).catch(error => console.error("Access key touch failed", error));
+  }
+  return user;
 }
 
 export async function requireUser(returnTo: string): Promise<SessionUser> {

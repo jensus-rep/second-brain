@@ -1,18 +1,18 @@
-import { getSessionUser, sameOrigin } from "@/lib/server/auth";
+import { getApiUser, sameOrigin } from "@/lib/server/auth";
 import { readWorkspace, writeWorkspace } from "@/lib/brain/storage";
 import { workspaceSchema, MAX_WORKSPACE_BYTES } from "@/lib/brain/model";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
 const response = (body: unknown, status = 200) => Response.json(body, { status, headers: { "Cache-Control": "private, no-store" } });
-export async function GET() {
-  const user = await getSessionUser();
+export async function GET(request: Request) {
+  const user = await getApiUser(request);
   if (!user) return response({ error: "Bitte melde dich erneut an." }, 401);
   try { return response(await readWorkspace(user.userId)); }
   catch (error) { console.error("Workspace read failed", error); return response({ error: "Dein Wissen ist gerade nicht erreichbar. Bitte versuche es erneut." }, 503); }
 }
 export async function PUT(request: Request) {
-  const user = await getSessionUser();
+  const user = await getApiUser(request);
   if (!user) return response({ error: "Bitte melde dich erneut an." }, 401);
   if (!sameOrigin(request)) return response({ error: "Ungültiger Ursprung." }, 403);
   if (!request.headers.get("content-type")?.includes("application/json")) return response({ error: "JSON erwartet." }, 415);

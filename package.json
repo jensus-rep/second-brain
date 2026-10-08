@@ -16,6 +16,7 @@
     "test:visual": "node tests/visual-learning.mjs",
     "test:reading": "node tests/reading-workspace.mjs",
     "test:quizzes": "node tests/quizzes.mjs",
+    "test:keys": "node tests/access-keys.mjs",
     "test:mobile": "node tests/mobile-layout.mjs",
     "test:zoom": "node tests/diagram-zoom.mjs",
     "test:comparisons": "node --experimental-strip-types tests/comparison-visual.mjs"

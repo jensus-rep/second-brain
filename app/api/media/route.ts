@@ -1,9 +1,9 @@
-import { getSessionUser, sameOrigin } from "@/lib/server/auth";
+import { getApiUser, sameOrigin } from "@/lib/server/auth";
 import { store } from "@/lib/server/store";
 import { imageBytes } from "@/lib/brain/media-server";
 export const dynamic = "force-dynamic";
 export async function POST(request: Request) {
-  const user = await getSessionUser();
+  const user = await getApiUser(request);
   if (!user) return Response.json({ error: "Bitte melde dich erneut an." }, { status: 401 });
   if (!sameOrigin(request)) return Response.json({ error: "Ungültiger Ursprung." }, { status: 403 });
   let image;

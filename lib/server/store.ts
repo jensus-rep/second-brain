@@ -1,7 +1,8 @@
-// Persistence for users, workspaces and images. Azure SQL in production, a local SQLite file otherwise.
+// Persistence for users, workspaces, images and access keys. Azure SQL in production, a local SQLite file otherwise.
 export type UserRecord = { id: string; email: string; passwordHash: string; createdAt: string };
 export type WorkspaceRow = { body: string; revision: number };
 export type MediaRow = { mime: string; bytes: Uint8Array };
+export type AccessKeyRecord = { id: string; ownerId: string; name: string; hint: string; createdAt: string; lastUsedAt: string | null };
 
 export interface Store {
   getWorkspace(owner: string): Promise<WorkspaceRow | null>;
@@ -16,6 +17,12 @@ export interface Store {
   createFirstUser(user: UserRecord): Promise<boolean>;
   putMedia(owner: string, id: string, media: MediaRow): Promise<void>;
   getMedia(owner: string, id: string): Promise<MediaRow | null>;
+  createAccessKey(key: AccessKeyRecord & { hash: string }): Promise<void>;
+  listAccessKeys(owner: string): Promise<AccessKeyRecord[]>;
+  findAccessKey(hash: string): Promise<AccessKeyRecord | null>;
+  touchAccessKey(id: string, at: string): Promise<void>;
+  /** Returns false when the key does not exist or belongs to someone else. */
+  deleteAccessKey(owner: string, id: string): Promise<boolean>;
 }
 
 const globalStore = globalThis as typeof globalThis & { newhopeStore?: Promise<Store> };
