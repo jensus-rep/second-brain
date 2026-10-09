@@ -37,7 +37,7 @@ export async function readBackup(file: File): Promise<ImportBundle> {
   if (file.size > MAX_BACKUP_BYTES) throw new Error("Die Sicherungsdatei darf höchstens 64 MB groß sein.");
   if (file.name.toLowerCase().endsWith(".json")) {
     const workspace = workspaceSchema.parse(JSON.parse(await file.text()));
-    if (strToU8(JSON.stringify(workspace)).length > MAX_WORKSPACE_BYTES) throw new Error("Die Wissensdaten überschreiten 1,8 MB.");
+    if (strToU8(JSON.stringify(workspace)).length > MAX_WORKSPACE_BYTES) throw new Error("Die Wissensdaten überschreiten 4 MB.");
     return { workspace, assets: [], complete: false };
   }
   let unpackedSize = 0;
@@ -50,7 +50,7 @@ export async function readBackup(file: File): Promise<ImportBundle> {
   } });
   if (!files["workspace.json"] || !files["media-index.json"]) throw new Error("Keine gültige Second-Brain-Sicherung.");
   const workspace = workspaceSchema.parse(JSON.parse(strFromU8(files["workspace.json"])));
-  if (strToU8(JSON.stringify(workspace)).length > MAX_WORKSPACE_BYTES) throw new Error("Die Wissensdaten überschreiten 1,8 MB.");
+  if (strToU8(JSON.stringify(workspace)).length > MAX_WORKSPACE_BYTES) throw new Error("Die Wissensdaten überschreiten 4 MB.");
   const index = JSON.parse(strFromU8(files["media-index.json"])) as Record<string, { file: string; mime: string }>;
   const assets = mediaReferences(workspace).map(oldUrl => {
     const item = index[oldUrl];

@@ -18,10 +18,10 @@ export async function PUT(request: Request) {
   if (!request.headers.get("content-type")?.includes("application/json")) return response({ error: "JSON erwartet." }, 415);
   try {
     const text = await request.text();
-    if (new TextEncoder().encode(text).length > MAX_WORKSPACE_BYTES + 1000) return response({ error: "Die Sammlung ist zu groß (maximal 1,8 MB)." }, 413);
+    if (new TextEncoder().encode(text).length > MAX_WORKSPACE_BYTES + 1000) return response({ error: "Die Sammlung ist zu groß (maximal 4 MB)." }, 413);
     const input = z.object({ revision: z.number().int().nonnegative(), workspace: workspaceSchema }).safeParse(JSON.parse(text));
     if (!input.success) return response({ error: input.error.issues[0]?.message ?? "Ungültige Daten." }, 400);
-    if (new TextEncoder().encode(JSON.stringify(input.data.workspace)).length > MAX_WORKSPACE_BYTES) return response({ error: "Die Sammlung ist zu groß (maximal 1,8 MB)." }, 413);
+    if (new TextEncoder().encode(JSON.stringify(input.data.workspace)).length > MAX_WORKSPACE_BYTES) return response({ error: "Die Sammlung ist zu groß (maximal 4 MB)." }, 413);
     const saved = await writeWorkspace(user.userId, input.data.workspace, input.data.revision);
     if (!saved) return response({ error: "Die Sammlung wurde in einem anderen Fenster geändert. Deine Eingabe bleibt erhalten. Sichere sie und lade den aktuellen Stand neu.", conflict: true }, 409);
     return response(saved);

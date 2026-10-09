@@ -4,7 +4,7 @@ import { workspaceSchema, normalizeTags, searchNotes, pathProgress, reviewCard }
 import { isAllowedDiagram } from "../lib/brain/diagram.ts";
 import { seedWorkspace } from "../lib/brain/seed.ts";
 import { emptyWorkspace } from "../lib/brain/model.ts";
-import { isCorrect, learningProfile, selectQuestions, reminderCalendar } from "../lib/brain/quiz.ts";
+import { isCorrect, learningProfile, selectQuestions, reminderCalendar, compactQuizRuns, restoreQuestion, ARCHIVED_EXPLANATION, ARCHIVED_TEXT, FULL_RUNS_PER_SUBJECT } from "../lib/brain/quiz.ts";
 import { quizExamples } from "../lib/brain/quiz-examples.ts";
 import { ACCESS_KEY_PATTERN, accessKeyHash, accessKeyName, bearerKey, newAccessKey } from "../lib/server/access-keys.ts";
 test("seed is a valid portable workspace with no fake learning progress", () => {
@@ -140,4 +140,94 @@ test("access keys are random, stored only as hash and parsed strictly from the A
   assert.equal(accessKeyName(""), null);
   assert.equal(accessKeyName("x".repeat(61)), null);
   assert.equal(accessKeyName(42), null);
+});
+
+const historyRun = (questions, n, overrides = {}) => {
+  const start = Date.parse("2026-09-01T08:00:00.000Z") + n * 3600000;
+  // Every third answer picks a wrong option so the profile has mistakes to keep.
+  const selected = questions.map((q, i) => (n + i) % 3 ? q.correctOptionIds : [q.options.find(o => !q.correctOptionIds.includes(o.id)).id]);
+  return quizRun(questions, selected, { id: "history-" + n, startedAt: new Date(start).toISOString(), finishedAt: new Date(start + 600000).toISOString(), ...overrides });
+};
+const runScore = run => run.questions.filter(q => isCorrect(q, run.answers.find(a => a.questionId === q.id)?.selectedOptionIds ?? [])).length;
+const wordingTrimmed = q => q.explanation === ARCHIVED_EXPLANATION && q.prompt === ARCHIVED_TEXT && q.options.every(o => o.text === ARCHIVED_TEXT && o.feedback === "") && q.source === "";
+test("older finished quiz runs are trimmed per subject without changing results or the learning profile", () => {
+  assert.equal(FULL_RUNS_PER_SUBJECT, 5);
+  const project = quizExamples.filter(q => q.subject === "Projektmanagement"), product = quizExamples.filter(q => q.subject === "Produktmanagement");
+  const software = project.map(q => ({ ...q, id: q.id.replace("example", "software"), subject: "Softwareentwicklung" }));
+  // Older project runs are stored after newer ones: the age comes from startedAt, not the array order.
+  const projectRuns = Array.from({ length: 12 }, (_, n) => historyRun(project, n)).reverse();
+  const productRuns = Array.from({ length: 3 }, (_, n) => historyRun(product, 20 + n));
+  const softwareRuns = Array.from({ length: 6 }, (_, n) => historyRun(software, 40 + n));
+  const active = historyRun(project, 0, { id: "active", startedAt: "2026-08-01T08:00:00.000Z", finishedAt: null, answers: [] });
+  const bank = [...quizExamples, ...software];
+  const workspace = workspaceSchema.parse({ ...emptyWorkspace, quizQuestions: bank, quizRuns: [active, ...projectRuns, ...productRuns, ...softwareRuns] });
+  const compacted = compactQuizRuns(workspace);
+  assert.equal(workspaceSchema.safeParse(compacted).success, true);
+  const trimmed = compacted.quizRuns.filter(run => run.questions.some(q => q.explanation === ARCHIVED_EXPLANATION)).map(run => run.id).sort();
+  assert.deepEqual(trimmed, ["history-0", "history-1", "history-2", "history-3", "history-4", "history-40", "history-5", "history-6"], "Only the oldest finished runs beyond five per subject");
+  assert.deepEqual(compacted.quizRuns.find(run => run.id === "active"), active, "A running round is never trimmed");
+  for (const id of ["history-7", "history-11", "history-20", "history-41"]) assert.deepEqual(compacted.quizRuns.find(run => run.id === id), workspace.quizRuns.find(run => run.id === id));
+  for (const id of trimmed) {
+    const old = compacted.quizRuns.find(run => run.id === id), original = workspace.quizRuns.find(run => run.id === id);
+    assert.ok(old.questions.every(wordingTrimmed), "Unchanged bank questions lose their wording in the run");
+    assert.deepEqual(old.answers, original.answers);
+    assert.deepEqual(old.questions.map(({ id, subject, concept, difficulty, correctOptionIds, options }) => [id, subject, concept, difficulty, correctOptionIds, options.map(o => o.id)]),
+      original.questions.map(({ id, subject, concept, difficulty, correctOptionIds, options }) => [id, subject, concept, difficulty, correctOptionIds, options.map(o => o.id)]));
+    assert.deepEqual(old.questions.map(q => restoreQuestion(q, bank)), original.questions, "Lossless while the bank is unchanged");
+  }
+  assert.deepEqual(compacted.quizRuns.map(runScore), workspace.quizRuns.map(runScore));
+  assert.deepEqual(learningProfile(bank, compacted.quizRuns), learningProfile(bank, workspace.quizRuns));
+  for (const subject of ["Projektmanagement", "Softwareentwicklung"]) for (const mode of ["practice", "exam"]) {
+    assert.deepEqual(selectQuestions(bank, compacted.quizRuns, subject, mode, 6, () => 0.3), selectQuestions(bank, workspace.quizRuns, subject, mode, 6, () => 0.3));
+  }
+  assert.equal(compactQuizRuns(compacted), compacted, "Trimming is idempotent and leaves an unchanged workspace as is");
+  const few = { ...workspace, quizRuns: productRuns };
+  assert.equal(compactQuizRuns(few), few, "Five or fewer finished runs per subject stay complete");
+});
+test("trimmed runs keep their wording unless the bank holds exactly the same question", () => {
+  const [q, other] = quizExamples;
+  const newer = Array.from({ length: FULL_RUNS_PER_SUBJECT }, (_, n) => historyRun([q, other], n + 1));
+  const edited = { ...q, prompt: q.prompt + " (überarbeitet)" };
+  const result = compactQuizRuns({ ...emptyWorkspace, quizQuestions: [edited], quizRuns: [historyRun([q, other], 0), ...newer] }).quizRuns[0];
+  const [changed, missing] = result.questions;
+  assert.equal(changed.prompt, q.prompt, "A changed prompt keeps the old wording");
+  assert.deepEqual(changed.options.map(o => o.text), q.options.map(o => o.text));
+  assert.equal(changed.explanation, ARCHIVED_EXPLANATION);
+  assert.equal(missing.prompt, other.prompt, "A question missing from the bank keeps its wording");
+  assert.deepEqual(missing.options.map(o => o.text), other.options.map(o => o.text));
+  assert.equal(restoreQuestion(changed, [edited]).prompt, q.prompt, "Kept wording is shown as it was");
+});
+test("trimmed wording is restored from the bank, written back on bank changes and falls back to a notice", () => {
+  const [q, other] = quizExamples;
+  const runs = [historyRun([q, other], 0), ...Array.from({ length: FULL_RUNS_PER_SUBJECT }, (_, n) => historyRun([q, other], n + 1))];
+  const before = compactQuizRuns({ ...emptyWorkspace, quizQuestions: [q, other], quizRuns: runs });
+  const [archived] = before.quizRuns[0].questions;
+  assert.ok(wordingTrimmed(archived));
+  assert.deepEqual(restoreQuestion(archived, [q, other]), q);
+  // Edited or removed in the app: the previous bank still had the wording, so it goes back into the run.
+  const edited = { ...q, prompt: "Neu formuliert", options: q.options.map(o => ({ ...o, text: o.text + "!" })) };
+  for (const bank of [[edited, other], [other]]) {
+    const after = compactQuizRuns({ ...before, quizQuestions: bank }, before);
+    const kept = after.quizRuns[0].questions[0];
+    assert.equal(kept.prompt, q.prompt); assert.deepEqual(kept.options.map(o => o.text), q.options.map(o => o.text));
+    assert.equal(kept.explanation, ARCHIVED_EXPLANATION);
+    assert.ok(wordingTrimmed(after.quizRuns[0].questions[1]), "Unchanged questions stay trimmed");
+    assert.equal(workspaceSchema.safeParse(after).success, true);
+  }
+  const untouched = { ...before, quizQuestions: [q, other] };
+  assert.equal(compactQuizRuns(untouched, before), untouched, "A new but equal bank keeps runs trimmed");
+  // Imported runs were trimmed against the imported bank: the old local bank must not fill them in.
+  const imported = { ...before, quizQuestions: [edited, other], quizRuns: before.quizRuns.map(run => ({ ...run, id: "imported-" + run.id })) };
+  assert.ok(wordingTrimmed(compactQuizRuns(imported, before).quizRuns[0].questions[0]));
+  // Without the previous state (e.g. a direct API write) only a notice is possible.
+  const gone = restoreQuestion(archived, [other]);
+  assert.match(gone.prompt, /nicht mehr verfügbar/); assert.match(gone.explanation, /letzten 5 Runden/);
+  assert.ok(gone.options.every(o => /nicht mehr verfügbar/.test(o.text) && o.feedback === ""));
+  const solution = restoreQuestion(archived, [{ ...q, correctOptionIds: q.options.filter(o => !q.correctOptionIds.includes(o.id)).map(o => o.id) }]);
+  assert.match(solution.prompt, /nicht mehr verfügbar/, "A changed solution never shows the new wording as the old one");
+  // Only the explanation was trimmed (runs trimmed before wording was dropped): explanation comes back, texts stay.
+  const partly = { ...q, options: q.options.map(o => ({ ...o, feedback: "" })), explanation: ARCHIVED_EXPLANATION, source: "" };
+  assert.deepEqual(restoreQuestion(partly, [q]), q);
+  assert.match(restoreQuestion(partly, []).explanation, /letzten 5 Runden/); assert.equal(restoreQuestion(partly, []).prompt, q.prompt);
+  assert.equal(restoreQuestion(q, []), q, "Complete questions stay untouched");
 });

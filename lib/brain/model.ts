@@ -91,7 +91,7 @@ export function reviewCard(card: Flashcard, known: boolean, now = new Date()): F
 export function normalizeTags(value: string): string[] {
   return [...new Set(value.split(",").map(s => s.trim().toLocaleLowerCase("de")).filter(Boolean))];
 }
-export const MAX_WORKSPACE_BYTES = 1_800_000;
+export const MAX_WORKSPACE_BYTES = 4_000_000;
 export function searchNotes(notes: Note[], query: string, topics: Topic[] = []): Note[] {
   const terms = query.toLocaleLowerCase("de").trim().split(/\s+/).filter(Boolean);
   return notes.filter(n => {

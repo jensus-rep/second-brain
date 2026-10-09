@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { emptyWorkspace, workspaceSchema, MAX_WORKSPACE_BYTES, type Snapshot, type Workspace } from "./model";
+import { compactQuizRuns } from "./quiz";
 
 export function useBrain() {
   const [snapshot, setSnapshot] = useState<Snapshot>({ workspace: emptyWorkspace, revision: -1 });
@@ -27,8 +28,10 @@ export function useBrain() {
     if (busy.current || current.current.revision < 0) return false;
     busy.current = true; setSaving(true);
     try {
-      const workspace = workspaceSchema.parse(update(current.current.workspace));
-      if (new TextEncoder().encode(JSON.stringify(workspace)).length > MAX_WORKSPACE_BYTES) throw new Error("Deine Sammlung überschreitet 1,8 MB. Bitte sichere und verkleinere sie vor dem Speichern.");
+      // Every save trims older quiz runs, so stored runs shrink on the next save as well.
+      // The previous state lets trimmed runs keep their wording when the bank changes.
+      const workspace = workspaceSchema.parse(compactQuizRuns(update(current.current.workspace), current.current.workspace));
+      if (new TextEncoder().encode(JSON.stringify(workspace)).length > MAX_WORKSPACE_BYTES) throw new Error("Deine Sammlung überschreitet 4 MB. Bitte sichere und verkleinere sie vor dem Speichern.");
       const response = await fetch("/api/brain", {
         method: "PUT", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ workspace, revision: current.current.revision }),
