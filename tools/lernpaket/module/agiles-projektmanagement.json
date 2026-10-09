@@ -1,0 +1,79 @@
+{
+  "modul": "Agiles Projektmanagement",
+  "fachthema": "Agiles Projektmanagement",
+  "arbeitsordner": "C:/Users/jensm/Documents/Project/Studium/agpm-i/10_Testvorbereitung",
+  "kurs_url": "https://dbuappliedsciences.mrooms.net/course/view.php?id=321",
+  "pruefung": "Abschlusstest: 20 Fragen aus allen Bereichen, 30 Minuten, ein Versuch, eine oder mehrere Antworten richtig, keine Teilpunkte",
+  "referenzwerke": ["Scrum Guide"],
+  "referenz_zeilen": ["Scrum Guide 2020:", "Lehrbuch-Hinweis:", "Hinweis (Lehrmeinung):"],
+  "karten": {
+    "neue_id_praefix": "agpm1-card-",
+    "notiz_praefix": "agpm1-note-",
+    "deck_karten_praefixe": ["agpm1-", "pm-card-", "agile-card-"],
+    "deck_notiz_praefixe": ["agpm1-", "pm-note-", "agile-note-"],
+    "faellig_ab": "2026-10-09T00:00:00.000Z",
+    "notiz_stand": "2026-10-09T10:00:00.000Z",
+    "befunde": ["C-(0[1-9]|[12][0-9]|30)", "Lücke", "Kursfassung", "Beispiel", "Neue Quelle"],
+    "veraltete_ausdruecke": [{"muster": "Team-App", "grund": "altes Beispiel „Team-App“"}]
+  },
+  "beispiel": {
+    "marker": ["Vereins-App", "Mitglieder-App", "Sportverein"],
+    "pflichthinweis": "Campus-App einer Hochschule",
+    "zeile": "Beispiel übertragen: Der Kurs verwendet dafür eine Campus-App einer Hochschule; hier dieselbe Mechanik an der Mitglieder-App eines Sportvereins."
+  },
+  "quiz": {
+    "id_praefix": "apm-q-",
+    "poolgroesse": [150, 220],
+    "lernbereiche": [
+      {"name": "Scrum-Rollen und -Events", "kuerzel": "events", "ziel": [6, 6, 4]},
+      {"name": "Artefakte, Done und Ready", "kuerzel": "artefakte", "ziel": [6, 6, 5]},
+      {"name": "Schätzen, Velocity und Releaseplanung", "kuerzel": "schaetzen", "ziel": [5, 5, 5]},
+      {"name": "Produktvision und Design Thinking", "kuerzel": "vision", "ziel": [4, 4, 3]},
+      {"name": "Impact Mapping, Story Mapping und MVP", "kuerzel": "mapping", "ziel": [3, 3, 3]},
+      {"name": "Projektstart und Stakeholder", "kuerzel": "start", "ziel": [4, 4, 3]},
+      {"name": "Klassische Planung und Projektorganisation", "kuerzel": "klassisch", "ziel": [5, 4, 4]},
+      {"name": "Umfeld, Führung und Management", "kuerzel": "fuehrung", "ziel": [5, 4, 3]},
+      {"name": "Menschen und Teams", "kuerzel": "menschen", "ziel": [3, 3, 3]},
+      {"name": "Agile Haltung, Skalierung und Datenprojekte", "kuerzel": "skalierung", "ziel": [3, 3, 3]},
+      {"name": "Projekt und Projektmanagement: Grundlagen", "kuerzel": "grundlagen", "ziel": [5, 5, 4]},
+      {"name": "Agilität und agiles Manifest", "kuerzel": "manifest", "ziel": [6, 5, 4]},
+      {"name": "Lean Startup und Kanban", "kuerzel": "ansaetze", "ziel": [4, 3, 3]},
+      {"name": "Klassisch, agil oder hybrid", "kuerzel": "hybrid", "ziel": [4, 4, 4]},
+      {"name": "Risiko und Controlling", "kuerzel": "risiko", "ziel": [3, 3, 3]},
+      {"name": "Agile Veranstaltungsformate", "kuerzel": "formate", "ziel": [3, 3, 3]}
+    ]
+  },
+  "doppelte_nummern": ["3", "4", "7"],
+  "verbotene_ausdruecke": [
+    {"muster": "\\bDBU\\b", "grund": "Hochschulkürzel"},
+    {"muster": "Digital\\s+Business\\s+University", "grund": "Hochschulname"},
+    {"muster": "(?i)\\bagpm\\b", "grund": "Modulkürzel"},
+    {"muster": "(?i)\\bLV\\s?\\d", "grund": "Lehreinheitskürzel (Format: „Aufzeichnung 22 [00:59]“)"},
+    {"muster": "(?i)martin fischer", "grund": "Name des Dozenten"},
+    {"muster": "(?i)\\bhager\\b", "grund": "Firmenname"},
+    {"muster": "(?i)finance hub", "grund": "Firmenprodukt"},
+    {"muster": "(?i)customer assignment", "grund": "Firmenprodukt"},
+    {"muster": "\\bCA Flow\\b", "grund": "Firmenprodukt"},
+    {"muster": "(?i)taskpilot", "grund": "Firmenwerkzeug"},
+    {"muster": "\\bINWT\\b", "grund": "Firmenname (Podcast)"},
+    {"muster": "(?i)\\b(dibo|dwu)\\b", "grund": "Fehlhörung Hochschulname"},
+    {"muster": "(?i)\\buni\\b|uni-app", "grund": "Uni-Bezug"},
+    {"muster": "(?i)hochschul-app|campus news|präsenzplan|notenübersicht|immatrikulation", "grund": "Kursbeispiel nicht übertragen"}
+  ],
+  "fehlhoerungen": [
+    {"muster": "\\b(Vaupa|VAUPA|Fokra|Wuka|Golco|Azik|Valible|Vaible|Plentschert|Levine)\\b", "grund": "Fehlhörung aus dem Transkript"},
+    {"muster": "\\bGant\\b", "grund": "Fehlhörung (Gantt)"},
+    {"muster": "Ruth\\s+Cohen", "grund": "Fehlhörung (Ruth Cohn)"},
+    {"muster": "SCALE\\s+HIL", "grund": "Fehlhörung"}
+  ],
+  "weiche_ausdruecke": [
+    {"muster": "\\bDozent", "grund": "„laut Kurs“ statt Personenbezug"},
+    {"muster": "\\bStudierende", "grund": "Kursbeispiel nicht übertragen"},
+    {"muster": "\\b(Vorlesung|Lehreinheit|Modul)\\b", "grund": "Kursbezug statt Fachbezug"}
+  ],
+  "absicherungsfloskeln": [
+    "keine allgemeine Regel", "keine Erfolgsformel", "keine allgemeine Erfolgsformel", "keine allgemeine Definition",
+    "mögliche Einteilung", "mögliches Modell", "keine allgemeingültige Pflichtliste", "eine mögliche Fibonacci",
+    "ersetzt keine vollständige Beschreibung", "keine feste Regel", "keine pauschale Regel"
+  ]
+}

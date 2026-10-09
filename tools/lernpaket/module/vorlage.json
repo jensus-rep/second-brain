@@ -1,0 +1,45 @@
+{
+  "modul": "<Name des Moduls, nur für die Arbeitsdateien>",
+  "fachthema": "<Fachthema im Second Brain, allgemein und ohne Kurskürzel, z. B. „Forschungsmethoden“>",
+  "arbeitsordner": "<Modulordner>/lernpaket",
+  "kurs_url": "https://<moodle>/course/view.php?id=<id>",
+  "pruefung": "<Prüfungsform laut Kursraum: Fragenzahl, Zeit, Versuche, Antwortformat, Teilpunkte>",
+  "referenzwerke": [],
+  "referenz_zeilen": ["Lehrbuch-Hinweis:", "Hinweis (Lehrmeinung):"],
+  "karten": {
+    "neue_id_praefix": "<thema>-card-",
+    "notiz_praefix": "<thema>-note-",
+    "deck_karten_praefixe": ["<thema>-card-"],
+    "deck_notiz_praefixe": ["<thema>-note-"],
+    "faellig_ab": "<JJJJ-MM-TT>T00:00:00.000Z",
+    "notiz_stand": "<JJJJ-MM-TT>T10:00:00.000Z",
+    "befunde": ["Lücke", "Kursfassung", "Beispiel", "Neue Quelle"],
+    "veraltete_ausdruecke": []
+  },
+  "beispiel": {
+    "marker": [],
+    "pflichthinweis": "",
+    "zeile": ""
+  },
+  "quiz": {
+    "id_praefix": "<kurz>-q-",
+    "poolgroesse": [80, 200],
+    "lernbereiche": [
+      {"name": "<Lernbereich wörtlich, wird nie mehr umbenannt>", "kuerzel": "<kleinbuchstaben>", "ziel": [3, 3, 3]}
+    ]
+  },
+  "doppelte_nummern": [],
+  "verbotene_ausdruecke": [
+    {"muster": "\\bDBU\\b", "grund": "Hochschulkürzel"},
+    {"muster": "Digital\\s+Business\\s+University", "grund": "Hochschulname"},
+    {"muster": "(?i)\\b<MODULKÜRZEL>\\b", "grund": "Modulkürzel"},
+    {"muster": "(?i)\\bLV\\s?\\d", "grund": "Lehreinheitskürzel"},
+    {"muster": "(?i)<Name der Lehrperson>", "grund": "Personenname"}
+  ],
+  "fehlhoerungen": [],
+  "weiche_ausdruecke": [
+    {"muster": "\\bDozent", "grund": "„laut Kurs“ statt Personenbezug"},
+    {"muster": "\\b(Vorlesung|Lehreinheit|Modul)\\b", "grund": "Kursbezug statt Fachbezug"}
+  ],
+  "absicherungsfloskeln": ["keine allgemeine Regel", "keine feste Regel", "keine pauschale Regel"]
+}
