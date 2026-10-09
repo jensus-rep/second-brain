@@ -1,0 +1,191 @@
+{
+  "modul": "Advanced Research Methods",
+  "fachthema": "Forschungsmethoden",
+  "arbeitsordner": "C:/Users/jensm/Documents/Project/Studium/ADRM02_Advanced_Research_Methods/lernpaket",
+  "kurs_url": "https://dbuappliedsciences.mrooms.net/course/view.php?id=730",
+  "pruefung": "Forschungsskizze (50 %) und mündliche Prüfung (50 %), drei Termine im Studienjahr; kein Multiple-Choice-Test. Der Fragepool dient dem Selbsttest und der Vorbereitung auf die mündliche Prüfung.",
+  "referenzwerke": [],
+  "referenz_zeilen": [
+    "Lehrbuch-Hinweis:",
+    "Literatur:",
+    "Hinweis (Lehrmeinung):"
+  ],
+  "karten": {
+    "neue_id_praefix": "fm-card-",
+    "notiz_praefix": "fm-note-",
+    "deck_karten_praefixe": [
+      "fm-card-"
+    ],
+    "deck_notiz_praefixe": [
+      "fm-note-"
+    ],
+    "faellig_ab": "2026-10-10T00:00:00.000Z",
+    "notiz_stand": "2026-10-09T10:00:00.000Z",
+    "befunde": [
+      "Lücke",
+      "Kursfassung",
+      "Beispiel",
+      "Neue Quelle"
+    ],
+    "veraltete_ausdruecke": []
+  },
+  "beispiel": {
+    "marker": [],
+    "pflichthinweis": "",
+    "zeile": ""
+  },
+  "quiz": {
+    "id_praefix": "fm-q-",
+    "poolgroesse": [
+      80,
+      100
+    ],
+    "lernbereiche": [
+      {
+        "name": "Forschungslogik, Paradigmen und Gütekriterien",
+        "kuerzel": "logik",
+        "ziel": [
+          4,
+          4,
+          3
+        ]
+      },
+      {
+        "name": "Von der Idee zur Hypothese",
+        "kuerzel": "hypothese",
+        "ziel": [
+          3,
+          3,
+          3
+        ]
+      },
+      {
+        "name": "Stichprobe und quantitative Erhebung",
+        "kuerzel": "erhebung",
+        "ziel": [
+          4,
+          4,
+          3
+        ]
+      },
+      {
+        "name": "Quantitative Auswertung",
+        "kuerzel": "auswertung",
+        "ziel": [
+          4,
+          4,
+          4
+        ]
+      },
+      {
+        "name": "Qualitative Forschung: Prozess und Erhebung",
+        "kuerzel": "qualerhebung",
+        "ziel": [
+          4,
+          4,
+          3
+        ]
+      },
+      {
+        "name": "Qualitative Auswertung",
+        "kuerzel": "qualauswertung",
+        "ziel": [
+          3,
+          3,
+          3
+        ]
+      },
+      {
+        "name": "Fallstudien und Design Science",
+        "kuerzel": "design",
+        "ziel": [
+          5,
+          5,
+          4
+        ]
+      },
+      {
+        "name": "Forschungsskizze und wissenschaftliche Praxis",
+        "kuerzel": "praxis",
+        "ziel": [
+          3,
+          4,
+          3
+        ]
+      }
+    ]
+  },
+  "doppelte_nummern": [],
+  "verbotene_ausdruecke": [
+    {
+      "muster": "\\bDBU\\b",
+      "grund": "Hochschulkürzel"
+    },
+    {
+      "muster": "Digital\\s+Business\\s+University",
+      "grund": "Hochschulname"
+    },
+    {
+      "muster": "(?i)\\bADRM\\d*\\b",
+      "grund": "Modulkürzel"
+    },
+    {
+      "muster": "(?i)\\bLV\\s?\\d",
+      "grund": "Lehreinheitskürzel (Format: „Aufzeichnung 122 [00:59]“)"
+    },
+    {
+      "muster": "(?i)baldermann",
+      "grund": "Name der Dozentin"
+    },
+    {
+      "muster": "(?i)\\b(dibo|dwu)\\b",
+      "grund": "Fehlhörung Hochschulname"
+    }
+  ],
+  "fehlhoerungen": [],
+  "weiche_ausdruecke": [
+    {
+      "muster": "\\bDozent",
+      "grund": "„laut Kurs“ statt Personenbezug"
+    },
+    {
+      "muster": "\\bStudierende",
+      "grund": "Kursbeispiel nicht übertragen"
+    },
+    {
+      "muster": "\\b(Vorlesung|Lehreinheit|Modul)\\b",
+      "grund": "Kursbezug statt Fachbezug"
+    }
+  ],
+  "absicherungsfloskeln": [
+    "keine allgemeine Regel",
+    "keine feste Regel",
+    "keine pauschale Regel"
+  ],
+  "themen": [
+    {
+      "id": "fm-topic",
+      "title": "Forschungsmethoden",
+      "description": "Forschung planen und begründen: Forschungslogik, Paradigmen, Gütekriterien, von der Idee zur Hypothese, Forschungsskizze und wissenschaftliche Praxis.",
+      "color": "purple"
+    },
+    {
+      "id": "fm-quantitativ",
+      "title": "Quantitative Forschung",
+      "description": "Stichproben, Befragung, Fragebogen, Skalen, Experimente und statistische Auswertung bis zu multivariaten Verfahren.",
+      "color": "blue"
+    },
+    {
+      "id": "fm-qualitativ",
+      "title": "Qualitative Forschung",
+      "description": "Qualitativer Forschungsprozess und seine Gütekriterien, Fallauswahl, Interviews, Gruppenverfahren, Beobachtung, Transkription und Auswertung.",
+      "color": "orange"
+    },
+    {
+      "id": "fm-konstruktiv",
+      "title": "Fallstudien & Design Science",
+      "description": "Fallstudienforschung und konstruktive Forschung: Design Research Methodology, Prototyping, Simulation und Referenzmodelle.",
+      "color": "green"
+    }
+  ]
+}

@@ -63,7 +63,7 @@ Optionen.
 Literaturzeile → ggf. Zeile zum übertragenen Beispiel → „Fundstelle: …“. `source` ist leer oder eine HTTP(S)-URL.
 
 **Größe:** höchstens 2,5 KB JSON je Aufgabe. Jede Übungsrunde speichert eine Kopie ihrer Aufgaben; der ganze
-Arbeitsraum hat 1,8 MB.
+Arbeitsraum hat 4 MB.
 
 **IDs nach dem Import nie ändern** (Runden verweisen darauf); `concept` nie umbenennen (Lernprofil hängt daran).
 

@@ -82,6 +82,9 @@ python -I tools\lernpaket\skripte\quellen_nummern.py <Arbeitsordner>
 ```
 - Nummern beginnen nach der höchsten im Deck zitierten Aufzeichnung (nächster Zehner) und folgen der Kursreihenfolge;
   inhaltsgleiche Transkripte werden als Dublette markiert.
+- **Jedes Modul bekommt einen eigenen Hunderterblock** (`--start 101`, `--start 201` …), weil der Pull noch nicht die
+  Nummern eines parallel vorbereiteten Moduls enthält. Vergeben: Agiles Projektmanagement 1–71, Forschungsmethoden
+  101–169, Softwareentwicklung 201–231.
 - **Von Hand prüfen:** Titel (aus Dateinamen; fachlich passend benennen), und ob ein neues Transkript schon unter einer
   alten Nummer im Deck steckt (gleiche Dauer, gleicher Anfang). Beides ist im ersten Durchlauf passiert.
 - Kursinventar gegen vorhandene Transkripte abgleichen und festhalten, was fehlt (Beispiel:
@@ -96,9 +99,10 @@ python -I tools\lernpaket\skripte\quellen_nummern.py <Arbeitsordner>
 ### 5 · Plan
 - Lernbereiche mit Zielverteilung je Stufe in `modul.json` (`quiz.lernbereiche`): mindestens drei Aufgaben je Bereich
   und Stufe, prüfungsrelevante Bereiche mehr. Namen sind danach fest (das Lernprofil hängt daran).
-- **Speicherbudget:** Arbeitsraum höchstens 1,8 MB. Grob 2 KB je Aufgabe und 1–1,5 KB je Karte; jede Übungsrunde
-  speichert ihre Aufgaben mit (etwa 40 KB je 20er-Runde). Ziel: Platz für mindestens 20 Runden. Lieber weniger, dafür
-  geprüfte Aufgaben.
+- **Speicherbudget:** Arbeitsraum höchstens 4 MB (bis 09.10.2026: 1,8 MB). Grob 2 KB je Aufgabe, 1–1,5 KB je Karte,
+  5–10 KB je Notiz; jede Übungsrunde speichert ihre Aufgaben mit (etwa 40 KB je 20er-Runde). Die App behält je
+  Fachthema die letzten 5 Runden vollständig und kürzt ältere verlustfrei auf etwa 12 KB. Ziel: nach dem Einspielen
+  mindestens 1 MB frei. Lieber weniger, dafür geprüfte Aufgaben.
 
 ### 6 · Entwürfe
 - `stand.json` frisch ziehen: `node %USERPROFILE%\.newhope\brain-api.mjs pull <Arbeitsordner>\stand.json`.
@@ -178,3 +182,14 @@ node %USERPROFILE%\.newhope\brain-api.mjs pull <…>\kontrolle.json
 | Eine Literaturangabe nannte eine Firma als Quelle; ein Kurstext-Zitat übernahm einen Tippfehler | Prüfskripte prüfen Firmen- und Fehlhörungslisten jetzt auch in Karten |
 | Der Downloader-Test las die lokale `.env` und rief die echte Login-Seite auf | Test überschreibt `LOGIN_URL`; Regel „Tests nie gegen das echte System“ |
 | Ein Agent-Ergebnis überschritt den Richtwert deutlich (über 100 neue Aufgaben vorgeschlagen) | Speicherbudget in Schritt 5 vor den Entwürfen festlegen |
+
+## Lehren aus dem zweiten Durchlauf (Forschungsmethoden, Softwareentwicklung, 09.10.2026)
+
+| Was passiert ist | Was das Verfahren jetzt tut |
+|---|---|
+| Keins der Module endet mit einem MC-Test (Forschungsskizze und mündliche Prüfung; Projekt mit Report) | Schritt 0 klärt mit dem Nutzer, ob ein Fragepool sinnvoll ist; ohne Pool entfallen die Quiz-Schritte |
+| Abschnittsseiten werden nicht in Kursreihenfolge gelesen; ganze Kapitel landeten hinten | `quellen_nummern.py` sortiert nach Abschnitt, dann nach Position |
+| Podcast und Video derselben Einheit unterscheiden sich um 1–3 Sekunden; 5 von 30 Paaren blieben unerkannt | Dubletten bei höchstens 5 s Unterschied |
+| `--start` wurde samt Zahl als zweiter Ordner gelesen | Argumente korrigiert |
+| Videos ohne Titel im Kurs und bei Vimeo (nur Nummern) | Die Soll-Liste vergibt Titel nach Inhalt; danach in `quellen.json` übernehmen |
+| Große Literatur-PDFs (bis 2,5 MB Text) im Kursraum | Soll-Liste liest Kurstexte und Folienskript vollständig, Literatur nur gezielt; große Module auf zwei Soll-Listen-Agenten verteilen |

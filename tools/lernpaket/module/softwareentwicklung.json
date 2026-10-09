@@ -1,0 +1,185 @@
+{
+  "modul": "Applied Data Science III: Softwareparadigmen",
+  "fachthema": "Softwareentwicklung",
+  "arbeitsordner": "C:/Users/jensm/Documents/Project/Studium/ADSC32_Applied_Data_Science_3/lernpaket",
+  "kurs_url": "https://dbuappliedsciences.mrooms.net/course/view.php?id=593",
+  "pruefung": "Eigenes Projekt (webbasierte Lösung wie API oder Dashboard, oder Forschungsfrage als Simulation) mit datenbasiertem Report; drei Abgabetermine. Kein Test: Lernpaket nur Notizen und Karten, kein Fragepool.",
+  "referenzwerke": [],
+  "referenz_zeilen": [
+    "Dokumentation:",
+    "Lehrbuch-Hinweis:",
+    "Hinweis (Lehrmeinung):"
+  ],
+  "karten": {
+    "neue_id_praefix": "swe-card-",
+    "notiz_praefix": "swe-note-",
+    "deck_karten_praefixe": [
+      "swe-card-"
+    ],
+    "deck_notiz_praefixe": [
+      "swe-note-"
+    ],
+    "faellig_ab": "2026-10-10T00:00:00.000Z",
+    "notiz_stand": "2026-10-09T10:00:00.000Z",
+    "befunde": [
+      "Lücke",
+      "Kursfassung",
+      "Beispiel",
+      "Neue Quelle"
+    ],
+    "veraltete_ausdruecke": []
+  },
+  "beispiel": {
+    "marker": [],
+    "pflichthinweis": "",
+    "zeile": ""
+  },
+  "quiz": {
+    "id_praefix": "swe-q-",
+    "poolgroesse": [
+      0,
+      0
+    ],
+    "lernbereiche": [
+      {
+        "name": "Programmierparadigmen",
+        "kuerzel": "paradigmen",
+        "ziel": [
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "name": "Funktionale Techniken in Python",
+        "kuerzel": "funktional",
+        "ziel": [
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "name": "Simulation mit SimPy",
+        "kuerzel": "simpy",
+        "ziel": [
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "name": "Objektorientierung und UML",
+        "kuerzel": "oop",
+        "ziel": [
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "name": "Django: Architektur, Views, URLs und Inbetriebnahme",
+        "kuerzel": "django",
+        "ziel": [
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "name": "Django-ORM und Administration",
+        "kuerzel": "orm",
+        "ziel": [
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "name": "Templates, CRUD und REST-APIs",
+        "kuerzel": "api",
+        "ziel": [
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "name": "Ausblick: Next.js, Typisierung, Sicherheit",
+        "kuerzel": "ausblick",
+        "ziel": [
+          0,
+          0,
+          0
+        ]
+      }
+    ]
+  },
+  "doppelte_nummern": [],
+  "verbotene_ausdruecke": [
+    {
+      "muster": "\\bDBU\\b",
+      "grund": "Hochschulkürzel"
+    },
+    {
+      "muster": "Digital\\s+Business\\s+University",
+      "grund": "Hochschulname"
+    },
+    {
+      "muster": "(?i)\\bADSC\\d*\\b",
+      "grund": "Modulkürzel"
+    },
+    {
+      "muster": "(?i)\\bLV\\s?\\d",
+      "grund": "Lehreinheitskürzel (Format: „Aufzeichnung 212 [00:59]“)"
+    },
+    {
+      "muster": "(?i)hebing",
+      "grund": "Name des Dozenten bzw. seiner Lehrseite"
+    },
+    {
+      "muster": "(?i)\\b(dibo|dwu)\\b",
+      "grund": "Fehlhörung Hochschulname"
+    }
+  ],
+  "fehlhoerungen": [],
+  "weiche_ausdruecke": [
+    {
+      "muster": "\\bDozent",
+      "grund": "„laut Kurs“ statt Personenbezug"
+    },
+    {
+      "muster": "\\bStudierende",
+      "grund": "Kursbeispiel nicht übertragen"
+    },
+    {
+      "muster": "\\b(Vorlesung|Lehreinheit|Modul)\\b",
+      "grund": "Kursbezug statt Fachbezug"
+    }
+  ],
+  "absicherungsfloskeln": [
+    "keine allgemeine Regel",
+    "keine feste Regel",
+    "keine pauschale Regel"
+  ],
+  "themen": [
+    {
+      "id": "swe-topic",
+      "title": "Softwareentwicklung",
+      "description": "Programmierparadigmen im Vergleich, statische Typisierung und Sicherheit von Anwendungen.",
+      "color": "purple"
+    },
+    {
+      "id": "swe-python",
+      "title": "Python: funktional und objektorientiert",
+      "description": "Funktionen als Objekte, Decorator, Generatoren, Klassen, Vererbung, UML und Simulation mit SimPy.",
+      "color": "green"
+    },
+    {
+      "id": "swe-web",
+      "title": "Webentwicklung mit Django",
+      "description": "Django-Architektur, Views und URLs, ORM und Admin, Templates, CRUD, REST-APIs, Inbetriebnahme und Ausblick auf Next.js.",
+      "color": "blue"
+    }
+  ]
+}

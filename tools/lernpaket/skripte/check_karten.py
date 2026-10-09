@@ -62,8 +62,9 @@ data = json.load(open(BACKUP, encoding="utf-8"))
 ws = data["workspace"]
 cards = {c["id"]: c for c in ws["cards"]}
 notes = {n["id"]: n for n in ws["notes"]}
-topics = {t["id"] for t in ws["topics"]}
-ch = json.load(open(CHANGES, encoding="utf-8"))
+# Neue Fachthemen stehen in modul.json („themen“) und werden beim Einspielen angelegt
+topics = {t["id"] for t in ws["topics"]} | {t["id"] for t in CFG.get("themen", [])}
+ch =json.load(open(CHANGES, encoding="utf-8"))
 
 # --- Struktur
 for key in ("new_cards", "modified_cards", "new_notes", "modified_notes", "delete_proposals"):

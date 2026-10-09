@@ -267,7 +267,7 @@ def check_question(r, q, index):
 
     size = len(json.dumps(q, ensure_ascii=False).encode("utf-8"))
     if size > 3500:
-        r.hint(where, f"{size} Byte; jede Testrunde speichert eine Kopie der Aufgabe (Arbeitsraum max. 1,8 MB)")
+        r.hint(where, f"{size} Byte; jede Testrunde speichert eine Kopie der Aufgabe (Arbeitsraum max. 4 MB)")
     last = LAST_SENTENCE.split(prompt)[-1] if prompt else ""
     singular = STEM_SINGULAR.search(prompt or "")
     return {"id": qid, "concept": concept, "difficulty": d, "multi": len(correct) > 1, "bytes": size, "prompt": prompt,
@@ -350,6 +350,12 @@ def main(argv):
     if not isinstance(data, list):
         r.err("Datei", "erwartet eine JSON-Liste von Aufgaben oder {\"quizQuestions\": [...]}")
         data = []
+    if pool_mode:
+        # Der Pool enthält alle Fachthemen; geprüft wird nur das Fachthema dieses Moduls
+        others = sum(1 for q in data if q.get("subject") != SUBJECT)
+        data = [q for q in data if q.get("subject") == SUBJECT]
+        if others:
+            print(f"{others} Aufgaben anderer Fachthemen übersprungen")
     stats = [s for i, q in enumerate(data) if (s := check_question(r, q, i))]
 
     ids = Counter(s["id"] for s in stats)

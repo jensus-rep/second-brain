@@ -9,7 +9,7 @@ Liest:
 Schreibt:
   quellen.json           [{aufzeichnung, titel, art, kursabschnitt, datei, dublette_von?}]
 
-Inhaltsgleiche Transkripte (gleiche Dauer, mindestens 90 % gleicher Wortbestand; die Spracherkennung liefert bei
+Inhaltsgleiche Transkripte (Dauer höchstens 5 s verschieden, mindestens 90 % gleicher Wortbestand; die Spracherkennung liefert bei
 derselben Datei nicht exakt denselben Text) bekommen keine eigene Nummer, sondern einen Verweis.
 Ob ein neues Transkript schon unter einer alten Nummer im Deck steckt, prüft das Skript nicht: das bei gleicher
 Dauer und ähnlichem Anfang von Hand klären.
@@ -22,13 +22,15 @@ import unicodedata
 from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8")
-args = [a for a in sys.argv[1:] if not a.startswith("--")]
+args = sys.argv[1:]
+start = None
+if "--start" in args:
+    i = args.index("--start")
+    start = int(args[i + 1])
+    del args[i:i + 2]
 if len(args) != 1:
     raise SystemExit(__doc__)
 root = Path(args[0])
-start = None
-if "--start" in sys.argv:
-    start = int(sys.argv[sys.argv.index("--start") + 1])
 
 stand = json.loads((root / "stand.json").read_text(encoding="utf-8"))["workspace"]
 texts = [c["answer"] for c in stand["cards"]] + [n["content"] for n in stand["notes"]] + [q["explanation"] for q in stand["quizQuestions"]]
@@ -64,15 +66,23 @@ for md in sorted((root / "transkripte").glob("*.md")):
     title = re.sub(r"^(\d+\s+)?(Podcast\s+|Video\s+)?(LV\s?\d+\s+)?", "", title)
     title = re.sub(r"\s{2,}", " & ", title).strip()
     idx, sec = position.get(key, (10 ** 6, None))
-    entries.append({"pos": idx, "titel": title, "art": "Video" if key and key.startswith("vimeo_") else "Audio",
+    entries.append({"pos": idx, "abschnitt": sec, "titel": title, "art": "Video" if key and key.startswith("vimeo_") else "Audio",
                     "kursabschnitt": sections.get(sec, ""), "datei": str(md),
                     "woerter": words, "dauer": meta.group(1) if meta else ""})
-entries.sort(key=lambda e: (e["pos"], e["datei"]))
+# Abschnittsseiten werden nicht in Kursreihenfolge gelesen: erst nach Abschnitt, dann nach Position sortieren
+entries.sort(key=lambda e: (e["abschnitt"] if e["abschnitt"] is not None else 10 ** 6, e["pos"], e["datei"]))
+
+
+def seconds(mmss):
+    m, s = mmss.split(":")
+    return int(m) * 60 + int(s)
 
 
 def same(a, b):
-    """Same recording: equal duration and at least 90 % shared vocabulary."""
-    if not a["dauer"] or a["dauer"] != b["dauer"] or not a["woerter"] or not b["woerter"]:
+    """Same recording: duration within 5 s (podcast and video cut differ slightly), at least 90 % shared vocabulary."""
+    if not a["dauer"] or not b["dauer"] or abs(seconds(a["dauer"]) - seconds(b["dauer"])) > 5:
+        return False
+    if not a["woerter"] or not b["woerter"]:
         return False
     return len(a["woerter"] & b["woerter"]) / len(a["woerter"] | b["woerter"]) >= 0.9
 

@@ -2,7 +2,8 @@
 
     python -I build_nachher.py <arbeitsordner> <vorher.json> <nachher.json>
 
-Liest aenderungen-final.json und pool-final.json aus dem Arbeitsordner.
+Liest aenderungen-final.json und pool-final.json aus dem Arbeitsordner; legt Themen aus modul.json („themen“) an,
+die es noch nicht gibt.
 
 Keeps every unknown top-level key and all learning state; refuses if a 'before' text no longer
 matches the fresh pull (someone changed the card in the meantime).
@@ -42,6 +43,11 @@ for item in ch["new_notes"] + ch["new_cards"]:
 if errors:
     print("\n".join(errors))
     raise SystemExit(1)
+modul = S / "modul.json"
+known_topics = {t["id"] for t in w["topics"]}
+for t in json.loads(modul.read_text(encoding="utf-8")).get("themen", []) if modul.exists() else []:
+    if t["id"] not in known_topics:  # neue Fachthemen aus modul.json; bestehende bleiben unverändert
+        w["topics"].append({k: t[k] for k in ("id", "title", "description", "color")})
 w["notes"].extend(ch["new_notes"])
 w["cards"].extend(ch["new_cards"])
 
