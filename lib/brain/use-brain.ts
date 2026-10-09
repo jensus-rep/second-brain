@@ -37,7 +37,7 @@ export function useBrain() {
       if (!response.ok) { if (response.status === 409) setConflict(true); throw new Error(data.error); }
       const next = { workspace: workspaceSchema.parse(data.workspace), revision: data.revision };
       current.current = next; setSnapshot(next); setError("");
-      toast.success(message); return true;
+      if (message) toast.success(message); return true;
     } catch (e) {
       const message = e instanceof Error ? e.message : "Speichern nicht möglich.";
       setError(message); toast.error(message); return false;

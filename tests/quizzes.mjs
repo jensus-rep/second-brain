@@ -33,20 +33,30 @@ try {
   const first = run.questions[0];
   const wrong = first.options.find(o => !first.correctOptionIds.includes(o.id));
   await page.getByRole("checkbox", { name: wrong.text, exact: true }).check();
-  await page.getByRole("button", { name: "Antwort speichern", exact: true }).click();
-  await page.getByRole("heading", { name: "Hier kannst du ansetzen" }).waitFor();
+  await page.getByRole("button", { name: "Bestätigen", exact: true }).click();
+  await page.getByRole("heading", { name: "Nicht ganz richtig" }).waitFor();
   await page.getByText(wrong.feedback, { exact: true }).waitFor();
+  // The answers stay in place and are marked: own wrong choice with its feedback, missed correct answers.
+  const reviewList = page.getByRole("list", { name: "Antwortmöglichkeiten mit Lösung" });
+  assert.equal(await reviewList.getByRole("listitem").count(), first.options.length);
+  assert.match(await reviewList.getByRole("listitem").filter({ hasText: wrong.text }).innerText(), /Deine Wahl · falsch/);
+  for (const option of first.options.filter(o => first.correctOptionIds.includes(o.id))) assert.match(await reviewList.getByRole("listitem").filter({ hasText: option.text }).innerText(), /Richtige Antwort · nicht gewählt/);
+  await page.waitForFunction(() => document.activeElement?.textContent?.includes("Nächste Aufgabe"));
   await page.getByLabel("Mein Denkfehler / Merksatz").fill("Ich habe Arbeitsmenge und Lernziel verwechselt.");
   await page.getByRole("button", { name: "Merksatz speichern" }).click();
   await page.getByText("Denkfehler gespeichert", { exact: true }).waitFor();
   await reload();
   assert.equal(await page.getByLabel("Mein Denkfehler / Merksatz").inputValue(), "Ich habe Arbeitsmenge und Lernziel verwechselt.");
   await page.getByRole("button", { name: "Nächste Aufgabe" }).click();
+  await page.getByRole("heading", { name: /^Aufgabe 2:/ }).waitFor();
+  // Keyboard only: digits toggle answers in display order, Enter confirms and Enter moves on.
   const second = run.questions[1];
-  for (const option of second.options.filter(o => second.correctOptionIds.includes(o.id))) await page.getByRole("checkbox", { name: option.text, exact: true }).check();
-  await page.getByRole("button", { name: "Antwort speichern", exact: true }).click();
+  for (const [i, option] of second.options.entries()) if (second.correctOptionIds.includes(option.id)) await page.keyboard.press(String(i + 1));
+  for (const option of second.options) assert.equal(await page.getByRole("checkbox", { name: option.text, exact: true }).isChecked(), second.correctOptionIds.includes(option.id));
+  await page.keyboard.press("Enter");
   await page.getByRole("heading", { name: "Richtig beantwortet" }).waitFor();
-  await page.getByRole("button", { name: "Runde abschließen" }).click();
+  await page.waitForFunction(() => document.activeElement?.textContent?.includes("Runde abschließen"));
+  await page.keyboard.press("Enter");
   await page.getByRole("heading", { name: "1 von 2 richtig · 50 %" }).waitFor();
 
   // Reminder survives reload, appears on the home page and exports an actual alarm.

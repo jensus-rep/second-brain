@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Bell, Check, ClipboardCheck, Download, Pencil, Plus, RotateCcw } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { ArrowRight, Bell, Check, ClipboardCheck, Download, Pencil, Plus, RotateCcw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -59,10 +59,23 @@ function QuestionEditor({ question, workspace, save, saving, onClose }: Props & 
   }}><div className="form-columns"><label className="field"><span>Fachthema</span><Input required maxLength={160} value={draft.subject} onChange={e => setDraft({ ...draft, subject: e.target.value })} /></label><label className="field"><span>Lernbereich</span><Input required maxLength={160} value={draft.concept} onChange={e => setDraft({ ...draft, concept: e.target.value })} placeholder="z. B. Nutzen und Bedienbarkeit" /></label></div><label className="field"><span>Schwierigkeit</span><select aria-label="Schwierigkeit" value={draft.difficulty} onChange={e => setDraft({ ...draft, difficulty: Number(e.target.value) })}>{[1, 2, 3].map(level => <option key={level} value={level}>{difficultyLabels[level]}</option>)}</select></label><label className="field"><span>Fragestellung</span><Textarea required maxLength={3000} value={draft.prompt} onChange={e => setDraft({ ...draft, prompt: e.target.value })} /></label><fieldset className="quiz-editor-options"><legend>Antwortmöglichkeiten</legend>{draft.options.map((option, index) => <div key={option.id}><label className="field"><span>Antwort {index + 1}</span><Input required maxLength={1000} value={option.text} onChange={e => setDraft({ ...draft, options: draft.options.map(o => o.id === option.id ? { ...o, text: e.target.value } : o) })} /></label><label className="quiz-correct-toggle"><Checkbox checked={draft.correctOptionIds.includes(option.id)} onCheckedChange={checked => setDraft({ ...draft, correctOptionIds: checked ? [...draft.correctOptionIds, option.id] : draft.correctOptionIds.filter(id => id !== option.id) })} />Richtige Antwort {index + 1}</label><label className="field"><span>Fehlerhinweis / Rückmeldung {index + 1}</span><Textarea maxLength={2000} value={option.feedback} onChange={e => setDraft({ ...draft, options: draft.options.map(o => o.id === option.id ? { ...o, feedback: e.target.value } : o) })} rows={2} /></label><Button type="button" size="sm" variant="ghost" disabled={draft.options.length <= 2} onClick={() => setDraft({ ...draft, options: draft.options.filter(o => o.id !== option.id), correctOptionIds: draft.correctOptionIds.filter(id => id !== option.id) })}>Antwort {index + 1} entfernen</Button></div>)}<Button type="button" variant="outline" disabled={draft.options.length >= 6} onClick={() => setDraft({ ...draft, options: [...draft.options, { id: crypto.randomUUID(), text: "", feedback: "" }] })}>Antwort hinzufügen</Button></fieldset><label className="field"><span>Erklärung und Lerntipp</span><Textarea required maxLength={4000} value={draft.explanation} onChange={e => setDraft({ ...draft, explanation: e.target.value })} /></label><label className="field"><span>Quelle (optional)</span><Input type="url" maxLength={1000} value={draft.source} onChange={e => setDraft({ ...draft, source: e.target.value })} /></label>{error && <p role="alert">{error}</p>}<div className="dialog-actions"><Button type="button" variant="outline" onClick={close}>Abbrechen</Button><Button type="submit">Aufgabe speichern</Button></div></form></DialogContent></Dialog>;
 }
 
-function Feedback({ question, answer, run, save, saving }: { question: QuizQuestion; answer?: QuizRun["answers"][number]; run: QuizRun; save: SaveWorkspace; saving: boolean }) {
+type QuizAnswer = QuizRun["answers"][number];
+const optionTags = { hit: "Deine Wahl · richtig", missed: "Richtige Antwort · nicht gewählt", wrong: "Deine Wahl · falsch" } as const;
+
+function OptionReview({ question, selected }: { question: QuizQuestion; selected: string[] }) {
+  return <ul className="quiz-option-review" aria-label="Antwortmöglichkeiten mit Lösung">{question.options.map(option => {
+    const chosen = selected.includes(option.id), right = question.correctOptionIds.includes(option.id);
+    const state = right ? (chosen ? "hit" : "missed") : chosen ? "wrong" : "neutral";
+    return <li key={option.id} className={"quiz-option is-" + state}><span className="quiz-mark" aria-hidden="true">{right ? <Check size={14} strokeWidth={3} /> : chosen ? <X size={14} strokeWidth={3} /> : null}</span><div><span>{option.text}</span>{state !== "neutral" && <small className="quiz-tag">{optionTags[state]}</small>}{state === "wrong" && <p className="quiz-option-feedback">{option.feedback || "Diese Antwort passt nicht zur Fragestellung. Vergleiche sie mit der Erklärung."}</p>}</div></li>;
+  })}</ul>;
+}
+
+function Feedback({ question, answer, run, save, saving, actions }: { question: QuizQuestion; answer?: QuizAnswer; run: QuizRun; save: SaveWorkspace; saving: boolean; actions?: ReactNode }) {
   const [reflection, setReflection] = useState(answer?.reflection ?? "");
-  const correct = isCorrect(question, answer?.selectedOptionIds ?? []);
-  return <section className={"quiz-feedback " + (correct ? "correct" : "incorrect")} aria-label="Auswertung"><h3>{correct ? "Richtig beantwortet" : answer ? "Hier kannst du ansetzen" : "Nicht beantwortet"}</h3><p><strong>Richtige Antwort{question.correctOptionIds.length > 1 ? "en" : ""}: </strong>{question.options.filter(o => question.correctOptionIds.includes(o.id)).map(o => o.text).join(" · ")}</p>{answer && <p><strong>Deine Auswahl: </strong>{question.options.filter(o => answer.selectedOptionIds.includes(o.id)).map(o => o.text).join(" · ")}</p>}{!correct && answer && <ul>{question.options.filter(o => answer.selectedOptionIds.includes(o.id) && !question.correctOptionIds.includes(o.id)).map(o => <li key={o.id}>{o.feedback || "Diese Antwort passt nicht zur Fragestellung. Vergleiche sie mit der Erklärung."}</li>)}{question.correctOptionIds.some(id => !answer.selectedOptionIds.includes(id)) && <li>Dir fehlt mindestens eine richtige Antwort. Prüfe jede Möglichkeit einzeln.</li>}</ul>}<p>{question.explanation}</p>{question.source && <a href={question.source} target="_blank" rel="noopener noreferrer">Fachliche Quelle öffnen</a>}{answer && !correct && <div className="quiz-reflection"><label className="field"><span>Mein Denkfehler / Merksatz</span><Textarea value={reflection} maxLength={1500} rows={2} onChange={e => setReflection(e.target.value)} placeholder="Was habe ich verwechselt? Woran erkenne ich es beim nächsten Mal?" /></label><Button variant="outline" size="sm" disabled={saving || reflection === answer.reflection} onClick={() => void save(w => ({ ...w, quizRuns: w.quizRuns.map(r => r.id === run.id ? { ...r, answers: r.answers.map(a => a.questionId === question.id ? { ...a, reflection } : a) } : r) }), "Denkfehler gespeichert")}>Merksatz speichern</Button></div>}</section>;
+  const selected = answer?.selectedOptionIds ?? [];
+  const correct = isCorrect(question, selected);
+  const hits = question.correctOptionIds.filter(id => selected.includes(id)).length;
+  return <section className={"quiz-feedback " + (correct ? "correct" : "incorrect")} aria-label="Auswertung"><h3 className="quiz-verdict">{correct ? <Check size={18} /> : <X size={18} />}{correct ? "Richtig beantwortet" : answer ? "Nicht ganz richtig" : "Nicht beantwortet"}</h3>{answer && !correct && <p className="quiz-verdict-note">{hits} von {question.correctOptionIds.length} richtigen Antworten gewählt{selected.length > hits ? ` · ${selected.length - hits} falsch gewählt` : ""}. Ohne Teilpunkte zählt die Aufgabe als falsch.</p>}<OptionReview question={question} selected={selected} />{actions}<div className="quiz-explanation"><p>{question.explanation}</p>{question.source && <a href={question.source} target="_blank" rel="noopener noreferrer">Fachliche Quelle öffnen</a>}</div>{answer && !correct && <div className="quiz-reflection"><label className="field"><span>Mein Denkfehler / Merksatz</span><Textarea value={reflection} maxLength={1500} rows={2} onChange={e => setReflection(e.target.value)} placeholder="Was habe ich verwechselt? Woran erkenne ich es beim nächsten Mal?" /></label><Button variant="outline" size="sm" disabled={saving || reflection === answer.reflection} onClick={() => void save(w => ({ ...w, quizRuns: w.quizRuns.map(r => r.id === run.id ? { ...r, answers: r.answers.map(a => a.questionId === question.id ? { ...a, reflection } : a) } : r) }), "Denkfehler gespeichert")}>Merksatz speichern</Button></div>}</section>;
 }
 
 function QuizSession({ run, save, saving }: { run: QuizRun; save: SaveWorkspace; saving: boolean }) {
@@ -70,13 +83,23 @@ function QuizSession({ run, save, saving }: { run: QuizRun; save: SaveWorkspace;
   const [index, setIndex] = useState(initialIndex);
   const [selected, setSelected] = useState<string[]>(() => run.answers.find(a => a.questionId === run.questions[initialIndex].id)?.selectedOptionIds ?? []);
   const [reviewId, setReviewId] = useState<string | null>(() => run.mode === "practice" ? run.answers.at(-1)?.questionId ?? null : null);
+  // Practice answers are evaluated locally and shown at once; the save runs in the background.
+  const [pending, setPending] = useState<QuizAnswer | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const autoAttempt = useRef(0);
+  const heading = useRef<HTMLHeadingElement>(null);
+  const nextButton = useRef<HTMLButtonElement>(null);
+  const focusHeading = useRef(false);
   const question = run.questions[index];
   const expired = !!run.deadlineAt && Date.parse(run.deadlineAt) <= now;
   const answered = run.answers.find(a => a.questionId === question.id);
-  const review = run.questions.find(q => q.id === reviewId);
+  const review = run.mode === "practice" ? run.questions.find(q => q.id === (pending?.questionId ?? reviewId)) : undefined;
+  const reviewAnswer = review && (pending?.questionId === review.id ? pending : run.answers.find(a => a.questionId === review.id));
+  const answeredCount = run.answers.length + (pending && !run.answers.some(a => a.questionId === pending.questionId) ? 1 : 0);
+  const reviewKey = review?.id;
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, []);
+  useEffect(() => { if (reviewKey && !saving) nextButton.current?.focus({ preventScroll: true }); }, [reviewKey, saving]);
+  useEffect(() => { if (focusHeading.current && !reviewKey) { focusHeading.current = false; heading.current?.focus(); } });
   async function finish() {
     return save(w => ({ ...w, quizRuns: w.quizRuns.map(r => r.id === run.id && !r.finishedAt ? { ...r, finishedAt: new Date().toISOString() } : r) }), "Test beendet und Auswertung gespeichert");
   }
@@ -85,17 +108,38 @@ function QuizSession({ run, save, saving }: { run: QuizRun; save: SaveWorkspace;
     autoAttempt.current = now;
     void save(w => ({ ...w, quizRuns: w.quizRuns.map(r => r.id === run.id && !r.finishedAt ? { ...r, finishedAt: new Date().toISOString() } : r) }), "Zeit abgelaufen. Auswertung gespeichert.");
   }, [expired, now, saving, run.id, run.finishedAt, save]);
-  function move(next: number) { setIndex(next); setSelected(run.answers.find(a => a.questionId === run.questions[next].id)?.selectedOptionIds ?? []); }
-  return <section className="quiz-session"><div className="quiz-session-top"><strong>{run.mode === "exam" ? "Prüfungssimulation" : "Adaptiv üben"} · {run.subject}</strong><span>{run.answers.length} von {run.questions.length} beantwortet{run.deadlineAt && " · " + (expired ? "Zeit abgelaufen" : Math.ceil((Date.parse(run.deadlineAt) - now) / 60000) + " Min. übrig")}</span></div><Progress value={run.answers.length / run.questions.length * 100} aria-label="Testfortschritt" />{run.mode === "exam" && <nav className="quiz-question-nav" aria-label="Aufgaben im Test">{run.questions.map((q, i) => <Button key={q.id} variant={i === index ? "default" : "outline"} size="sm" onClick={() => move(i)} disabled={saving || expired} aria-label={"Aufgabe " + (i + 1) + (run.answers.some(a => a.questionId === q.id) ? ", beantwortet" : "")}>{i + 1}{run.answers.some(a => a.questionId === q.id) ? " ✓" : ""}</Button>)}</nav>}{review && run.mode === "practice" ? <article className="quiz-panel"><h2>{review.prompt}</h2><Feedback key={review.id} question={review} answer={run.answers.find(a => a.questionId === review.id)} run={run} save={save} saving={saving} /><Button disabled={saving} onClick={() => { const next = run.questions.findIndex(q => !run.answers.some(a => a.questionId === q.id)); if (next < 0) void finish(); else { move(next); setReviewId(null); } }}>{run.answers.length === run.questions.length ? "Runde abschließen" : "Nächste Aufgabe"}</Button></article> : <form className="quiz-panel quiz-question" onSubmit={async event => {
-    event.preventDefault(); if (expired || !selected.length || saving) return;
+  function move(next: number) { focusHeading.current = true; setIndex(next); setSelected(run.answers.find(a => a.questionId === run.questions[next].id)?.selectedOptionIds ?? []); }
+  function next() { const open = run.questions.findIndex(q => !run.answers.some(a => a.questionId === q.id)); if (open < 0) void finish(); else { move(open); setReviewId(null); } }
+  function toggle(id: string, checked: boolean) { setSelected(current => checked ? [...current.filter(x => x !== id), id] : current.filter(x => x !== id)); }
+  async function submit() {
+    if (expired || !selected.length || saving || review) return;
     const answer = { questionId: question.id, selectedOptionIds: selected, answeredAt: new Date().toISOString(), reflection: answered?.reflection ?? "" };
+    if (run.mode === "practice") setPending(answer);
     const ok = await save(w => ({ ...w, quizRuns: w.quizRuns.map(r => {
       if (r.id !== run.id) return r;
       if (r.finishedAt || (r.deadlineAt && Date.parse(r.deadlineAt) <= Date.now())) throw new Error("Die Testrunde ist bereits beendet.");
       return { ...r, answers: [...r.answers.filter(a => a.questionId !== question.id), answer] };
-    }) }), "Antwort gespeichert");
+    }) }), "");
+    setPending(null);
     if (ok) { if (run.mode === "practice") setReviewId(question.id); else if (index < run.questions.length - 1) move(index + 1); }
-  }}><div className="eyebrow">{question.concept} · {difficultyLabels[question.difficulty]}</div><h2 tabIndex={-1}>Aufgabe {index + 1}: {question.prompt}</h2><p>Wähle alle passenden Antworten. Die Auswahl muss vollständig stimmen; es gibt keine Teilpunkte.</p><fieldset disabled={saving || expired}><legend className="sr-only">Antwortmöglichkeiten</legend>{question.options.map(option => <label className="quiz-option" key={option.id}><Checkbox checked={selected.includes(option.id)} onCheckedChange={checked => setSelected(current => checked ? [...current, option.id] : current.filter(id => id !== option.id))} /><span>{option.text}</span></label>)}</fieldset><div className="quiz-actions"><Button type="submit" disabled={saving || expired || !selected.length}>Antwort speichern</Button>{answered && run.mode === "exam" && <span>Gespeicherte Auswahl: {question.options.filter(o => answered.selectedOptionIds.includes(o.id)).map(o => o.text).join(" · ")}</span>}</div></form>}<div className="quiz-session-end"><p>{run.mode === "exam" ? "Lösungen und Fehlerhinweise erscheinen nach der Abgabe. Unbeantwortete Aufgaben zählen als falsch." : "Deine Antworten sind gespeichert. Du kannst die Runde später fortsetzen oder jetzt auswerten."}</p><Button variant="outline" disabled={saving} onClick={() => { if (run.answers.length === run.questions.length || window.confirm("Runde jetzt beenden? Unbeantwortete Aufgaben bleiben offen und zählen im Ergebnis als falsch.")) void finish(); }}>{run.mode === "exam" ? "Test abgeben" : "Runde vorzeitig beenden"}</Button></div></section>;
+  }
+  // Keyboard: digits toggle answers, Enter confirms or moves on. Typing in fields and open dialogs stay untouched.
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.altKey || event.ctrlKey || event.metaKey || event.isComposing || saving || expired) return;
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      if (target?.closest("input, textarea, select, [contenteditable='true'], [role='dialog']")) return;
+      const onButton = !!target?.closest("button:not([role='checkbox']), a");
+      if (review) { if (event.key === "Enter" && !onButton) { event.preventDefault(); next(); } return; }
+      const option = /^[1-9]$/.test(event.key) ? question.options[Number(event.key) - 1] : undefined;
+      if (option) { event.preventDefault(); toggle(option.id, !selected.includes(option.id)); }
+      else if (event.key === "Enter" && !onButton) { event.preventDefault(); void submit(); }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+  const reviewNumber = review ? run.questions.findIndex(q => q.id === review.id) + 1 : 0;
+  return <section className="quiz-session"><div className="quiz-session-top"><strong>{run.mode === "exam" ? "Prüfungssimulation" : "Adaptiv üben"} · {run.subject}</strong><span>{answeredCount} von {run.questions.length} beantwortet{run.deadlineAt && " · " + (expired ? "Zeit abgelaufen" : Math.ceil((Date.parse(run.deadlineAt) - now) / 60000) + " Min. übrig")}</span></div><Progress value={answeredCount / run.questions.length * 100} aria-label="Testfortschritt" />{run.mode === "exam" && <nav className="quiz-question-nav" aria-label="Aufgaben im Test">{run.questions.map((q, i) => <Button key={q.id} variant={i === index ? "default" : "outline"} size="sm" onClick={() => move(i)} disabled={saving || expired} aria-label={"Aufgabe " + (i + 1) + (run.answers.some(a => a.questionId === q.id) ? ", beantwortet" : "")}>{i + 1}{run.answers.some(a => a.questionId === q.id) ? " ✓" : ""}</Button>)}</nav>}{review ? <article className="quiz-panel quiz-question"><div className="eyebrow">{review.concept} · {difficultyLabels[review.difficulty]}</div><h2 tabIndex={-1}>Aufgabe {reviewNumber}: {review.prompt}</h2><Feedback key={review.id} question={review} answer={reviewAnswer} run={run} save={save} saving={saving} actions={<div className="quiz-actions"><Button ref={nextButton} disabled={saving} onClick={next}>{answeredCount === run.questions.length ? "Runde abschließen" : "Nächste Aufgabe"}<ArrowRight size={16} /></Button><small className="quiz-keys">Enter: weiter</small></div>} /></article> : <form className="quiz-panel quiz-question" onSubmit={event => { event.preventDefault(); void submit(); }}><div className="eyebrow">{question.concept} · {difficultyLabels[question.difficulty]}</div><h2 ref={heading} tabIndex={-1}>Aufgabe {index + 1}: {question.prompt}</h2><p>Wähle alle passenden Antworten. Die Auswahl muss vollständig stimmen; es gibt keine Teilpunkte.</p><fieldset disabled={saving || expired}><legend className="sr-only">Antwortmöglichkeiten</legend>{question.options.map((option, i) => <label className="quiz-option" key={option.id}><Checkbox checked={selected.includes(option.id)} onCheckedChange={checked => toggle(option.id, checked === true)} /><span>{option.text}</span>{i < 9 && <kbd className="quiz-key" aria-hidden="true">{i + 1}</kbd>}</label>)}</fieldset><div className="quiz-actions"><Button type="submit" disabled={saving || expired || !selected.length}>{run.mode === "practice" ? "Bestätigen" : "Antwort speichern"}</Button>{answered && run.mode === "exam" && <span>Gespeicherte Auswahl: {question.options.filter(o => answered.selectedOptionIds.includes(o.id)).map(o => o.text).join(" · ")}</span>}<small className="quiz-keys">Tasten 1–{Math.min(question.options.length, 9)} wählen · Enter {run.mode === "practice" ? "bestätigt" : "speichert"}</small></div></form>}<div className="quiz-session-end"><p>{run.mode === "exam" ? "Lösungen und Fehlerhinweise erscheinen nach der Abgabe. Unbeantwortete Aufgaben zählen als falsch." : "Deine Antworten sind gespeichert. Du kannst die Runde später fortsetzen oder jetzt auswerten."}</p><Button variant="outline" disabled={saving} onClick={() => { if (run.answers.length === run.questions.length || window.confirm("Runde jetzt beenden? Unbeantwortete Aufgaben bleiben offen und zählen im Ergebnis als falsch.")) void finish(); }}>{run.mode === "exam" ? "Test abgeben" : "Runde vorzeitig beenden"}</Button></div></section>;
 }
 
 export function Quizzes({ workspace, save, saving }: Props) {
