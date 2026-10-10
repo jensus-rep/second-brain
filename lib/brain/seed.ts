@@ -19,7 +19,7 @@ const illustrations: Record<string, string> = {
 export const seedWorkspace: Workspace = {
   schemaVersion: 1,
   cards: [],
-  quizQuestions: [], quizRuns: [], learningReminders: [],
+  quizQuestions: [], quizRuns: [], learningReminders: [], learningCollections: [],
   topics: [
     { id: "wissen", title: "Wissensarbeit", description: "Gedanken sammeln, ordnen und wiederfinden.", color: "blue" },
     { id: "denken", title: "Denken & Verstehen", description: "Verbindungen entdecken. Eigene Ideen entwickeln.", color: "purple" },

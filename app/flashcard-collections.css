@@ -1,0 +1,80 @@
+.flashcards-home { display: grid; gap: 22px; }
+.flashcard-filter-panel { min-width: 0; padding: 26px; border: 1px solid #dfe6f0; border-radius: 14px; background: #fff; }
+.flashcard-filter-heading .eyebrow { color: #7484a1; font-size: 10px; letter-spacing: .1em; }
+.flashcard-filter-heading h2 { font-size: 22px; font-weight: 600; line-height: 1.45; color: #304b71; margin: 7px 0; }
+.flashcard-filter-heading p, .flashcard-collection-description { color: #65758d; font-size: 13px; line-height: 1.75; margin: 0; overflow-wrap: anywhere; }
+.flashcard-scope-counts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 20px 0; }
+.flashcard-scope-counts > div { min-width: 0; padding: 13px 15px; border-radius: 9px; background: #f4f7fc; }
+.flashcard-scope-counts dt { color: #6d7d97; font-size: 11px; line-height: 1.5; }
+.flashcard-scope-counts dd { color: #3d5d8e; font-size: 25px; font-weight: 600; line-height: 1.3; margin: 5px 0 0; font-variant-numeric: tabular-nums; }
+.flashcard-filters { display: grid; grid-template-columns: minmax(0, 1.35fr) repeat(2, minmax(0, 1fr)) minmax(0, 1.35fr); gap: 13px; }
+.flashcard-filters .field { min-width: 0; }
+.flashcard-filters .field > span { font-size: 12px; color: #536783; }
+.flashcard-filters select, .flashcard-priority-select { min-width: 0; width: 100%; min-height: 38px; padding: 8px 10px; border: 1px solid #d6deeb; border-radius: 7px; background: #fff; color: #3a5070; font-size: 13px; }
+.flashcard-filters .card-search { width: 100%; min-width: 0; }
+.flashcard-collection-description { margin-top: 13px; }
+.flashcard-priority-overview { margin-top: 23px; padding-top: 20px; border-top: 1px solid #e5ebf3; }
+.flashcard-priority-overview h3 { color: #435d82; font-size: 14px; line-height: 1.5; font-weight: 600; margin: 0 0 5px; }
+.flashcard-priority-overview > p { color: #728198; font-size: 12px; line-height: 1.75; margin: 0 0 14px; }
+.flashcard-priority-layers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.flashcard-priority-layers .flashcard-priority-layer { display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 6px; min-width: 0; width: 100%; height: auto; min-height: 120px; padding: 16px; border: 1px solid #dfe7f3; border-radius: 9px; text-align: left; white-space: normal; background: #f8fbff; }
+.flashcard-priority-layers .flashcard-priority-layer[aria-pressed="true"] { border-color: #7194cf; box-shadow: inset 0 0 0 1px #7194cf; }
+.flashcard-priority-layer-title { color: #456ca5; font-size: 13px; line-height: 1.5; font-weight: 600; }
+.flashcard-priority-layer-description { color: #728198; font-size: 11px; line-height: 1.6; font-weight: 400; overflow-wrap: anywhere; }
+.flashcard-priority-layer > strong { margin-top: auto; padding-top: 5px; color: #46699d; font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.flashcard-priority-layer > strong small { color: #7d8ba1; font-size: 11px; font-weight: 400; }
+.flashcard-priority-layers .is-priority-2 { background: #faf9fe; border-color: #e6e1f1; }
+.flashcard-priority-layers .is-priority-2 .flashcard-priority-layer-title, .flashcard-priority-layers .is-priority-2 > strong { color: #7d689c; }
+.flashcard-priority-layers .is-priority-3 { background: #fafbfd; border-color: #e4e8ef; }
+.flashcard-priority-layers .is-priority-3 .flashcard-priority-layer-title, .flashcard-priority-layers .is-priority-3 > strong { color: #687890; }
+.flashcard-unclassified { margin-top: 8px; color: #77859c; font-size: 12px; }
+.flashcard-unclassified[aria-pressed="true"] { background: #edf2f9; color: #4d668d; }
+.flashcard-unclassified strong { margin-left: 3px; font-weight: 600; }
+.flashcards-home .flashcards-intro { margin: 0; }
+.flashcards-home .section-heading { margin: 0; }
+.flashcard-visible-count { font-size: 12px; color: #73839b; }
+.flashcard-list .flashcard-list-body { min-width: 0; flex: 1; }
+.flashcard-context { display: grid; gap: 5px; min-width: 0; }
+.flashcard-context-tags { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.flashcard-priority-badge { display: inline-block; max-width: 100%; padding: 3px 7px; border-radius: 5px; background: #edf3fe; color: #567ab3; font-size: 10px; font-weight: 500; line-height: 1.5; overflow-wrap: anywhere; }
+.flashcard-priority-suggestion { font-weight: 400; }
+.flashcard-priority-badge.is-priority-2 { background: #f2eef9; color: #82719d; }
+.flashcard-priority-badge.is-priority-3 { background: #f0f3f7; color: #6e7e97; }
+.flashcard-priority-badge.is-priority-none { background: #f4f5f7; color: #8a93a4; }
+.flashcard-topic-label { color: #72829b; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.flashcard-context .flashcard-collection-label { color: #7b89a0; font-size: 11px; line-height: 1.6; margin: 0; overflow-wrap: anywhere; }
+.flashcard-source { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
+.flashcard-source > span { min-width: 0; color: #71829c; font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
+.flashcard-source > button { font-size: 11px; color: #5274a5; min-height: 32px; height: auto; white-space: normal; }
+.study-session > .flashcard-context { margin: 15px 0 0; padding: 13px 15px; border: 1px solid #e1e8f3; border-radius: 9px; background: #fff; }
+.flashcard-empty-selection { color: #73819a; font-size: 13px; line-height: 1.8; padding: 14px 0; }
+
+@media (max-width: 1000px) {
+  .flashcard-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 600px) {
+  .flashcard-filter-panel { padding: 18px; }
+  .flashcard-filter-heading h2 { font-size: 19px; }
+  .flashcard-scope-counts { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .flashcard-scope-counts > div { padding: 11px 12px; }
+  .flashcard-scope-counts dd { font-size: 23px; }
+  .flashcard-filters { grid-template-columns: minmax(0, 1fr); }
+  .flashcard-filters select, .flashcard-priority-select { min-height: 42px; }
+  .flashcard-priority-layers { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .flashcard-priority-layers .flashcard-priority-layer { min-height: 0; padding: 13px; display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 15px; row-gap: 4px; }
+  .flashcard-priority-layer-title, .flashcard-priority-layer-description { grid-column: 1; }
+  .flashcard-priority-layer > strong { grid-column: 2; grid-row: 1 / span 2; padding: 0; margin: 0; align-self: center; font-size: 23px; white-space: nowrap; }
+  .flashcard-priority-layer > strong small { display: block; font-size: 10px; }
+  .flashcard-source { align-items: flex-start; }
+  .flashcard-source > button { min-height: 38px; }
+  .flashcards-home .flashcards-intro > button { max-width: 100%; min-height: 40px; height: auto; white-space: normal; }
+  .flashcard-list > article { align-items: flex-start; padding: 16px 12px; gap: 10px; }
+  .flashcard-list-icon { display: none; }
+  .flashcard-list > article > button { flex-shrink: 0; }
+  .study-session > .flashcard-context { padding: 11px 12px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flashcard-filter-panel button, .flashcard-filter-panel input, .flashcard-filter-panel select { transition: none; }
+}

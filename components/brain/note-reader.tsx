@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { Note, Workspace } from "@/lib/brain/model";
 import { Markdown } from "./markdown";
 
@@ -23,6 +24,8 @@ export function NoteReader({ note, workspace, saving, onClose, onOpen, onEdit, o
   const articleRef = useRef<HTMLElement>(null);
   const [headings, setHeadings] = useState<Heading[]>([]);
   const [outlineOpen, setOutlineOpen] = useState(false);
+  const [mobileOutlineOpen, setMobileOutlineOpen] = useState(false);
+  const outlineJumpRef = useRef(false);
   const [activeHeading, setActiveHeading] = useState("");
   const [entrance] = useState(() => mountedReaders > 0 ? "is-switch" : "is-enter");
   const [open, setOpen] = useState(true);
@@ -34,6 +37,13 @@ export function NoteReader({ note, workspace, saving, onClose, onOpen, onEdit, o
   useEffect(() => {
     mountedReaders++;
     return () => { mountedReaders--; window.clearTimeout(closeTimer.current); };
+  }, []);
+
+  useEffect(() => {
+    const desktop = window.matchMedia("(min-width: 768px)");
+    const closeMobileOutline = () => { if (desktop.matches) setMobileOutlineOpen(false); };
+    desktop.addEventListener("change", closeMobileOutline);
+    return () => desktop.removeEventListener("change", closeMobileOutline);
   }, []);
 
   function requestClose() {
@@ -66,15 +76,22 @@ export function NoteReader({ note, workspace, saving, onClose, onOpen, onEdit, o
   }, [headings]);
 
   function jump(id: string) {
+    outlineJumpRef.current = mobileOutlineOpen;
     const element = articleRef.current?.querySelector<HTMLElement>(`[id="${id}"]`);
     element?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" });
     element?.setAttribute("tabindex", "-1");
     element?.focus({ preventScroll: true });
     setActiveHeading(id);
     setOutlineOpen(false);
+    setMobileOutlineOpen(false);
   }
 
   const outline = <nav aria-label="In diesem Eintrag">{headings.map(heading => <button key={heading.id} className={heading.level > 2 ? "outline-subheading" : ""} aria-current={activeHeading === heading.id ? "location" : undefined} onClick={() => jump(heading.id)}>{heading.title}</button>)}</nav>;
+  const noteActions = <>
+    <DropdownMenuItem disabled={saving} onSelect={onFavorite}><Star size={16} />{note.favorite ? "Favorit entfernen" : "Als Favorit merken"}</DropdownMenuItem>
+    <DropdownMenuItem onSelect={onFlashcard}><Layers3 size={16} />Lernkarte erstellen</DropdownMenuItem>
+    <DropdownMenuItem disabled={saving} onSelect={onArchive}><Archive size={16} />{note.archived ? "Wiederherstellen" : "Archivieren"}</DropdownMenuItem>
+  </>;
 
   return <Dialog open={open} onOpenChange={value => { if (!value) requestClose(); }}>
     <DialogContent className={"entry-reader " + entrance} overlayClassName={"reader-backdrop " + entrance} showCloseButton={false} onOpenAutoFocus={event => { event.preventDefault(); articleRef.current?.focus(); }} onEscapeKeyDown={event => { if (document.querySelector(".lightbox")) event.preventDefault(); }} onInteractOutside={event => { if (document.querySelector(".lightbox")) event.preventDefault(); }}>
@@ -84,9 +101,7 @@ export function NoteReader({ note, workspace, saving, onClose, onOpen, onEdit, o
         <div className="entry-toolbar-actions">
           <Button variant="outline" size="sm" onClick={onEdit}><Pencil size={15} />Bearbeiten</Button>
           <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label="Weitere Notizaktionen"><MoreHorizontal size={20} /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">
-            <DropdownMenuItem disabled={saving} onSelect={onFavorite}><Star size={16} />{note.favorite ? "Favorit entfernen" : "Als Favorit merken"}</DropdownMenuItem>
-            <DropdownMenuItem onSelect={onFlashcard}><Layers3 size={16} />Lernkarte erstellen</DropdownMenuItem>
-            <DropdownMenuItem disabled={saving} onSelect={onArchive}><Archive size={16} />{note.archived ? "Wiederherstellen" : "Archivieren"}</DropdownMenuItem>
+            {noteActions}
           </DropdownMenuContent></DropdownMenu>
         </div>
       </header>
@@ -112,6 +127,21 @@ export function NoteReader({ note, workspace, saving, onClose, onOpen, onEdit, o
           {headings.length > 2 && <aside className="entry-outline"><span className="outline-label">IN DIESEM EINTRAG</span>{outline}</aside>}
         </div>
       </div>
+      <nav className={"reader-mobile-actions" + (headings.length ? " has-outline" : "")} aria-label="Eintragsaktionen">
+        <DialogClose asChild><Button variant="ghost"><X size={20} /><span>Schließen</span></Button></DialogClose>
+        {headings.length > 0 && <Popover open={mobileOutlineOpen} onOpenChange={setMobileOutlineOpen}>
+          <PopoverTrigger asChild><Button variant="ghost" aria-label="Inhaltsübersicht öffnen"><List size={20} /><span>Inhalt</span></Button></PopoverTrigger>
+          <PopoverContent className="reader-mobile-outline" side="top" sideOffset={12} align="center" collisionPadding={12} aria-label="Inhaltsübersicht" onCloseAutoFocus={event => {
+            if (outlineJumpRef.current) { event.preventDefault(); outlineJumpRef.current = false; }
+            else if (window.matchMedia("(min-width: 768px)").matches) { event.preventDefault(); articleRef.current?.focus({ preventScroll: true }); }
+          }}>
+            <p className="reader-mobile-outline-title">In diesem Eintrag</p>
+            {outline}
+          </PopoverContent>
+        </Popover>}
+        <Button variant="ghost" onClick={onEdit}><Pencil size={20} /><span>Bearbeiten</span></Button>
+        <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" aria-label="Weitere Notizaktionen"><MoreHorizontal size={20} /><span>Mehr</span></Button></DropdownMenuTrigger><DropdownMenuContent className="reader-mobile-menu" side="top" sideOffset={12} align="end" collisionPadding={12}>{noteActions}</DropdownMenuContent></DropdownMenu>
+      </nav>
     </DialogContent>
   </Dialog>;
 }

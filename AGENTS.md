@@ -15,3 +15,8 @@
 - Schemaänderungen nur additiv in den Schema-Skripten von store-mssql.ts und store-sqlite.ts (`IF ... IS NULL` / `IF NOT EXISTS`). Bestehende Tabellen und Spalten nicht umbenennen oder löschen.
 - Nach Änderungen: Typecheck, passende Modelltests, bei Verhaltensänderungen lokale Browsertests gegen `npm run dev`. Browsertests dürfen ausschließlich localhost verändern; lokal wird nie die Azure-Datenbank verwendet.
 - Keine Zugangsdaten im Quelltext. Geheimnisse liegen in den App-Einstellungen der Web App bzw. in GitHub-Secrets.
+
+## Visuelle Wissenspflege
+
+- Visuelle und grafische Darstellungen sind ausdrücklich gewollt. Neue und überarbeitete Wissenseinträge zu komplexen Inhalten erhalten passende Grafiken, die Zusammenhänge erklären, Orientierung geben und das Erinnern unterstützen.
+- Der Agent für visuelle Wissenspflege arbeitet nach [agents/grafik-agent.md](agents/grafik-agent.md). Er prüft die Sammlung systematisch, ergänzt fehlende Visualisierungen und verbessert vorhandene Grafiken hinsichtlich Aussage, Gestaltung und Lesbarkeit.

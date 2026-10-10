@@ -17,7 +17,10 @@ Eine private, deutschsprachige Second-Brain-Web-App. Wissen wird als Markdown mi
 - Sichere Mermaid-Ablaufdiagramme, Sequenzdiagramme und Mindmaps direkt im Markdown.
 - Markdown-Tabellen erscheinen als responsive SVG-Karten mit umbrechender Schrift. Eine aufklappbare Textansicht erhält Formatierungen und bedienbare Links; Notizen und Lernkarten nutzen dieselbe Darstellung.
 - Lernkarten mit Frage, aufdeckbarer Antwort und geplanten Wiederholungen; Bilder und Diagramme auf beiden Seiten.
+- Lernsammlungen mit vollständigem Umfang, zugehörigen Notizen, Lernkarten, Tests und Lernpfaden; drei Prioritätsstufen für die Karten.
 - Multiple-Choice-Prüfungssimulationen mit optionalem Zeitlimit und adaptiver Übung, Fehlerjournal und eigenen Testaufgaben.
+- Vorbereitung nach Lernbereichen mit passenden Wissensnotizen, kurzen oder vollständigen Übungsrunden und gespeichertem Arbeitsfortschritt.
+- Animierte Ergebnisauswertung sowie passende Abbildungen, Diagramme und Vergleiche direkt bei der Antworterklärung.
 - Gespeicherte Lernerinnerungen im Überblick mit Kalenderexport und Alarm.
 - Vollständige ZIP-Sicherungen inklusive Bilder und Lernkarten; JSON bleibt zum Bearbeiten der Wissensdaten verfügbar.
 - Sechs editierbare Einstiegsnotizen und ein unbegonnener Beispiel-Lernpfad.
@@ -40,6 +43,7 @@ Eine private, deutschsprachige Second-Brain-Web-App. Wissen wird als Markdown mi
 | Leseansicht und kompakte Wissensfilter | components/brain/note-reader.tsx, knowledge-filters.tsx |
 | Abbildungen, Diagramme, Uploads | components/brain/visual.tsx, media-toolbar.tsx, app/api/media/ |
 | Lernkarten und Lernansicht | components/brain/flashcards.tsx |
+| Lernsammlungen, Zuordnung und Kartenprioritäten | components/brain/learning-collections.tsx, lib/brain/learning-collections.ts |
 | Tests, Fehlerjournal und Erinnerungen | components/brain/quizzes.tsx, lib/brain/quiz.ts, quiz-examples.ts |
 | Bildsicherungen und Import | lib/brain/backup.ts, components/brain/transfer-dialog.tsx |
 | Design-Tokens, Layout, responsive Gestaltung | app/globals.css |
@@ -72,6 +76,8 @@ npm run test:browser
 npm run test:visual
 npm run test:reading
 npm run test:quizzes
+npm run test:preparation
+npm run test:collections
 npm run test:comparisons
 npm run test:mobile
 npm run test:zoom
@@ -85,11 +91,27 @@ Die Leseprüfung ergänzt Themenwechsel, nicht zugeordnete Einträge, Tags im Ar
 
 Die Testprüfung ergänzt gespeicherte Multiple-Choice-Runden, Antwortkombinationen, Fehlerhinweise und Merksätze, verborgene Lösungen während einer Simulation, Konfliktbehandlung, Zeitablauf, eigene Aufgaben, Erinnerungen und Kalenderexport sowie die mobile Breite.
 
+Die Vorbereitungsprüfung ergänzt Themenabdeckung, kurze und vollständige Übungsrunden, dauerhaft gespeicherten Fortschritt, passende Lernvisualisierungen und Notiznavigation. Sie prüft außerdem Ergebnisanimationen, reduzierte Bewegung und die Breite bei 320 und 390 Pixeln. Alle datenändernden Tests laufen nacheinander ausschließlich auf localhost.
+
+Die Sammlungsprüfung testet Umfang und Quellenzuordnung, gemeinsame Auswahl in Lernkarten und Tests, drei Prioritätsstufen, exakt gefilterte fällige Karten, Speichern und Neuladen, eigene Sammlungen und konsistente Verweise beim Kartenlöschen. `BRAIN_TEST_URL` muss auf localhost zeigen; `BRAIN_TEST_SQLITE_PATH` benennt die tatsächliche lokale SQLite-Datei. Vor jeder Testdatenänderung wird geprüft, dass API und diese Datei denselben Ausgangsbestand enthalten. Screenshots prüfen auch 320 und 390 Pixel Breite; anschließend wird der Ausgangsbestand wiederhergestellt.
+
+## Lernsammlungen und Umfang
+
+Auf der Startseite und unter „Themen“ zeigen Lernsammlungen den gesamten zugehörigen Bestand. In der Detailansicht stehen alle enthaltenen Notizen, Fachthemen, Karten, Testaufgaben und Lernpfade. Dieselbe Auswahl gilt beim Wechsel zu Lernkarten oder Tests. Eigene Sammlungen lassen sich aus vorhandenen Inhalten zusammenstellen und mit ihrem Lernziel speichern. Karten zu ausgewählten Notizen gehören automatisch dazu; zusätzliche Karten, Testaufgaben und Lernpfade werden ausdrücklich ausgewählt. Neue Karten und Testaufgaben aus einer ausgewählten Sammlung werden ihr beim Speichern direkt zugeordnet. Ein Inhalt kann mehreren Sammlungen angehören und behält dabei einen gemeinsamen Lernfortschritt.
+
+Für den vorhandenen Bestand sind Projektmanagement, Forschungsmethoden, Künstliche Intelligenz und Softwareentwicklung vorbereitet. Zuordnungen enthalten ausschließlich tatsächlich vorhandene IDs; gespeicherte Änderungen haben Vorrang. Andere Bestände werden anhand ihrer Fachthemen und der ausdrücklich verknüpften Aufgaben vollständig angezeigt. „Sammlung speichern“ übernimmt die vorbereitete Auswahl in den versionierten Arbeitsraum und damit in Sicherungen. Die Anzeige unterscheidet den gesamten Bestand einer Sammlung vom aktuell gefilterten Ausschnitt.
+
 ## Lernen mit Tests
 
 Unter „Tests & Übungen“ lassen sich eigene Aufgaben für allgemeine Fachthemen anlegen. „Beispiele hinzufügen“ ergänzt einmalig zwölf editierbare Aufgaben zu Projektmanagement (Scrum) und Produktmanagement (Discovery-Risiken) mit Quellen, drei Schwierigkeitsstufen und Rückmeldungen zu typischen Verwechslungen. Bestehende Inhalte werden dabei erhalten; die Beispiele werden nicht automatisch in bestehende Sammlungen eingespielt.
 
+Die Vorbereitung ordnet vorhandene Aufgaben nach Lernbereichen und verknüpft passende Wissensnotizen. Für die bestehende Sammlung zum agilen Projektmanagement sind 16 Einheiten mit 191 Aufgaben und 56 Notizen zugeordnet. Eine Kurzrunde wählt möglichst eine Frage pro Schwierigkeitsstufe und bevorzugt seltener beantwortete Aufgaben. Für Einheiten mit vier bis 30 Aufgaben lässt sich auch der gesamte Fragenbestand üben. Eine vollständig beantwortete und abgeschlossene Vorbereitungsrunde markiert die Einheit als bearbeitet; diese Markierung beschreibt den Arbeitsfortschritt. Ergebnisse und Fortschritt bleiben über die gespeicherten Runden beim Neuladen und in Sicherungen erhalten.
+
+Aufgaben können bis zu vier Lernnotizen über `noteIds` verknüpfen. Die Antworterklärung zeigt bis zu zwei sichere Visualisierungen und öffnet bei Bedarf die vollständigen Notizen. Die vorhandenen Projektmanagement-Aufgaben verwenden geprüfte Zuordnungen zu genau passenden Bild-, Diagramm- oder Vergleichsausschnitten; geänderter Fragenwortlaut oder fehlende Abbildungen lösen keine automatische Zuordnung zu anderen Fachvarianten aus. Im Prüfungsmodus erscheinen Lernmaterial und Lösungen erst nach der Abgabe. Die Ergebnisübersicht animiert den Bewertungsring und zeigt richtige, falsche sowie unbeantwortete Aufgaben. Bei reduzierter Bewegung erscheinen die Werte ohne Animation.
+
 „Adaptiv üben“ gibt nach jeder gespeicherten Antwort eine Erklärung. Die nächste Runde priorisiert zuletzt falsch beantwortete Lernbereiche und wählt Aufgaben auf der passenden Stufe. Zwei richtige Antworten auf mindestens der aktuellen Stufe erhöhen sie um eins; ein Fehler senkt sie um eins. Gibt es zu wenige passende Aufgaben, bleibt die Runde kürzer als die gewünschte Aufgabenanzahl. Das Verfahren verwendet feste Regeln und hinterlegte Hinweise. Es erzeugt keine neuen Aufgaben oder Diagnosen durch KI.
+
+Der Lernstand eines Lernbereichs gilt sammlungsübergreifend; die angezeigte nächste Stufe und die adaptive Aufgabenwahl verwenden denselben gemeinsamen Stand. Historie und Fehlerjournal zeigen die Runden der gewählten Sammlung. Runden aus älteren Sicherungen ohne Sammlungsangabe erscheinen dort, wenn sämtliche damaligen Aufgaben zu dieser Auswahl gehören.
 
 Die Prüfungssimulation mischt die Aufgaben des Fachthemas, lässt gespeicherte Antworten vor der Abgabe ändern und zeigt Lösungen erst am Ende. Alle richtigen Antworten müssen ausgewählt sein, ohne zusätzliche falsche Antworten; es gibt keine Teilpunkte. Unbeantwortete Aufgaben zählen im Ergebnis als falsch, beeinflussen aber nicht das Lernprofil. Das optionale Zeitlimit bleibt beim Neuladen erhalten; bei Ablauf wird die Runde ausgewertet, sobald die Testansicht geöffnet ist. Ergebnisse sind Lernhilfen und keine offizielle Prüfungsbewertung.
 
@@ -122,6 +144,10 @@ Abbildungen und Diagramme öffnen in Originalgröße. Auf dem Handy nutzt die An
 ## Lernen mit Karten
 
 Unter „Lernkarten“ eigene Fragen und Antworten erstellen, oder im Notizleser „Lernkarte erstellen“ wählen. Eine Lernrunde zeigt fällige Karten. Erst nach dem Aufdecken erscheinen die Bewertungen. „Noch üben“ plant zehn Minuten später; „Gewusst“ steigert den Abstand auf 1, 3, 7, 14 und höchstens 30 Tage. Bewertungen werden vor dem Weiterblättern atomar gespeichert. Ältere Sammlungen ohne Lernkarten bleiben kompatibel. Termine werden in UTC gespeichert und für Europe/Berlin angezeigt.
+
+Karten lassen sich nach Lernsammlung, Fachthema, Suche und Priorität filtern. Die drei Stufen heißen „Kernwissen“ (muss sicher sitzen), „Vertiefung“ (Zusammenhänge und Anwendung) und „Ergänzung“ (weitere Details). Nicht eingestufte Karten bleiben separat sichtbar. Jede Karte zeigt ihre Quellnotiz und die zugehörigen Sammlungen; die Quelle lässt sich auch während einer Lernrunde öffnen. Die Runde verwendet ausschließlich fällige Karten des gewählten Ausschnitts.
+
+Für unveränderte Karten des bestehenden Projektmanagement-Bestands sind fachlich geprüfte Stufen als Vorschlag hinterlegt. Sie lassen sich in der Sammlungsansicht gesammelt oder im Karteneditor einzeln übernehmen. Reine Textänderungen übernehmen einen Vorschlag nicht automatisch. Die Priorität beschreibt die Bedeutung des Inhalts unabhängig von Wiederholungsterminen und Lernfortschritt; diese bleiben beim Umgruppieren und Einstufen erhalten. Gespeicherte Sammlungen und Prioritäten werden serverseitig mit Revision geführt und in JSON-/ZIP-Sicherungen mitgenommen. Ältere Sicherungen erhalten beim Einlesen eine leere Sammlungsliste; fehlende Prioritäten bleiben unterstützt.
 
 ## Abbildungen sichern
 

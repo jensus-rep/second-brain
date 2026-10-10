@@ -2,6 +2,11 @@
 @import "tw-animate-css";
 @import "../vendor/shadcn-tailwind-4.13.0.css";
 @import "./quiz-workspace.css";
+@import "./quiz-result.css";
+@import "./quiz-preparation.css";
+@import "./quiz-learning-material.css";
+@import "./learning-collections.css";
+@import "./flashcard-collections.css";
 
 :root {
   color-scheme: light;
@@ -160,7 +165,7 @@
 @media(max-width:960px) { .overview-grid { grid-template-columns: 1fr; }.collection-stats { display: none; }.topics-grid { grid-template-columns: 1fr; }.topic-card > svg:last-child { display: block; }.topic-card { padding: 14px 18px; }.topic-card p { display: none; }.topic-icon { width: 30px; height: 30px; }.topic-card h3 { font-size: 14px; }.page-heading { align-items: flex-start; }.continue-inner { grid-template-columns: 1fr 130px; }.progress-ring { width: 115px; }.continue-card p { max-width: 100%; }.page-heading p { font-size: 13px; }.page-heading { gap: 12px; }.heading-actions { margin-top: 22px; }.primary-action { padding: 17px 12px; font-size: 12px; }.path-cards { grid-template-columns: 1fr; } }
 @media(max-width:767px) { .mobile-toggle { display: inline-flex; }.workspace-content { padding: 23px 20px; }.topbar { padding: 13px 16px; min-height: 62px; }.breadcrumb { gap: 7px; }.breadcrumb > span { display: none; }.topbar-right { gap: 10px; }.page-heading h1 { font-size: 32px; }.page-heading p { max-width: 390px; }.page-heading { display: block; margin-bottom: 20px; }.heading-actions { margin-top: 15px; }.card-grid { gap: 12px; }.note-card { padding: 15px 15px 0; }.note-open h3 { font-size: 16px; }.note-open p { font-size: 13px; }.eyebrow { font-size: 10px; }.topics-grid { grid-template-columns: 1fr; gap: 9px; }.section-heading h2 { font-size: 15px; }.section-heading > button { font-size: 11px; }.editor-dialog, .reader-dialog { padding: 25px 20px; max-width: calc(100% - 20px) !important; max-height: 94dvh; }.reader-title { font-size: 26px; }.form-columns { grid-template-columns: 1fr; }.page-footer > span { display: none; }.page-footer { justify-content: flex-end; }.error-banner { flex-direction: column; align-items: flex-start; }.path-detail { padding: 18px; }.path-detail .section-heading { align-items: start; }.learning-step { padding: 13px; gap: 12px; }.continue-card h2 { font-size: 23px; } }
 @media(max-width:480px) { .card-grid { grid-template-columns: 1fr; }.continue-inner { grid-template-columns: 1fr 80px; }.progress-ring { width: 80px; }.progress-ring small { display: none; }.continue-card { padding: 18px 18px 0; }.continue-card p { font-size: 13px; }.continue-card .eyebrow { font-size: 9px; }.continue-footer { font-size: 10px; }.continue-footer > span:last-child { display: none; }.note-card { padding: 19px 20px 0; }.note-open h3 { font-size: 18px; }.note-open p { font-size: 14px; }.note-card footer { font-size: 11px; }.note-tags span { font-size: 11px; }.search-bar { padding: 7px 12px; }.search-bar kbd { display: none; }.dialog-actions { flex-wrap: wrap; }.learning-step h3 { font-size: 15px; }.reader-actions { gap: 3px; } }
-@media(prefers-reduced-motion:reduce) { *,*::before,*::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; } }
+@media(prefers-reduced-motion:reduce) { *,*::before,*::after { animation-duration: .01ms !important; transition-duration: 0s !important; scroll-behavior: auto !important; } }
 
 /* Readable type at the desktop's default zoom, including secondary labels. */
 .eyebrow,.brand-sub,[data-slot="sidebar-group-label"],.continue-card .eyebrow,.collection-stats .eyebrow,.note-type { font-size: 12px; letter-spacing: .8px; }

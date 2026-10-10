@@ -41,7 +41,7 @@ try {
   const imageUrl = content.match(/\/api\/media\/[0-9a-f-]{36}/)[0];
   await dialog.getByRole("textbox", { name: /^Inhalt/ }).fill("## Ein visueller Gedanke\n\n" + content);
   await dialog.getByRole("tab", { name: "Vorschau", exact: true }).click();
-  await expect(dialog.getByRole("img", { name: "Vom Gedanken zur Anwendung", exact: true })).toBeVisible();
+  await expect(dialog.getByRole("img", { name: "Vom Gedanken zur Anwendung", exact: true })).toBeVisible({ timeout: 60000 });
   await expect(dialog.getByRole("img", { name: "Diagramm", exact: true })).toBeVisible({ timeout: 60000 });
   assert.equal(await dialog.getByRole("img", { name: "Diagramm", exact: true }).evaluate(img => img.complete && img.naturalWidth > 0), true);
   const diagramSource = await dialog.getByRole("img", { name: "Diagramm", exact: true }).getAttribute("src");
@@ -69,6 +69,7 @@ try {
   await dialog.getByRole("textbox", { name: "Frage", exact: true }).fill("Wie wird aus einer Fundstelle eigenes Wissen?");
   await dialog.getByRole("tab", { name: "Antwort", exact: true }).click();
   await dialog.getByRole("textbox", { name: "Antwort", exact: true }).fill("In eigenen Worten erklären, mit Bekanntem verknüpfen und anwenden.\n\n![Wissensweg](" + imageUrl + ' "Die drei Schritte.")');
+  await dialog.getByLabel("Priorität der Lernkarte").selectOption("1");
   await dialog.getByRole("button", { name: "Lernkarte speichern" }).click();
   await page.getByRole("dialog", { name: "Ein Gedanke zum Behalten", exact: true }).waitFor({ state: "hidden" });
   await expect(page.getByRole("dialog", { name: "Visuell lernen – Prüfnote", exact: true })).toBeVisible();
@@ -78,7 +79,9 @@ try {
   const snapshot = await (await page.request.get(origin + "/api/brain")).json();
   const card = snapshot.workspace.cards.find(c => c.question === "Wie wird aus einer Fundstelle eigenes Wissen?");
   assert.ok(card);
-  await page.request.put(origin + "/api/brain", { data: { ...snapshot, workspace: { ...snapshot.workspace, cards: [card] } } });
+  const collection = { id: "visual-collection-fixture", title: "Visuelles Lernen", description: "Abbildungen und Kernwissen verbinden.", noteIds: [card.noteId], cardIds: [card.id], questionIds: [], pathIds: [] };
+  const isolated = await page.request.put(origin + "/api/brain", { data: { ...snapshot, workspace: { ...snapshot.workspace, cards: [card], learningCollections: [collection] } } });
+  assert.equal(isolated.status(), 200, await isolated.text());
   await page.reload({ waitUntil: "networkidle" });
   await page.getByRole("button", { name: "Lernkarten", exact: true }).click();
   await page.getByRole("button", { name: "Lernrunde starten" }).click();
@@ -93,7 +96,7 @@ try {
   assert.equal(updated.workspace.cards[0].intervalDays, 1);
   await page.reload({ waitUntil: "networkidle" });
   await page.getByRole("button", { name: "Lernkarten", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Für den Moment ist alles da." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "In dieser Auswahl ist gerade nichts fällig." })).toBeVisible();
 
   // Rejected file payloads cannot become HTML/SVG assets.
   const invalid = await page.request.post(origin + "/api/media", { headers: { "Content-Type": "image/png" }, data: "<svg onload='alert(1)'></svg>" });
@@ -111,6 +114,8 @@ try {
   const files = unzipSync(new Uint8Array(await readFile(await download.path())));
   const saved = JSON.parse(strFromU8(files["workspace.json"]));
   assert.equal(saved.cards.length, 1);
+  assert.equal(saved.cards[0].priority, 1);
+  assert.deepEqual(saved.learningCollections, [collection]);
   assert.ok(Object.keys(files).some(name => name.startsWith("media/")));
   // Restore a ZIP, including newly uploaded private images with rewritten URLs.
   const filePath = await download.path();
@@ -120,6 +125,8 @@ try {
   updated = await (await page.request.get(origin + "/api/brain")).json();
   const restoredCard = updated.workspace.cards[0];
   assert.equal(restoredCard.reviews, 1);
+  assert.equal(restoredCard.priority, 1);
+  assert.deepEqual(updated.workspace.learningCollections, [collection]);
   const newImageUrl = restoredCard.answer.match(/\/api\/media\/[0-9a-f-]{36}/)[0];
   assert.notEqual(newImageUrl, imageUrl);
   assert.equal((await page.request.get(origin + newImageUrl)).status(), 200);

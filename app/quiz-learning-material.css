@@ -1,0 +1,15 @@
+.quiz-learning-material { margin-top: 22px; padding: 20px; border: 1px solid #dce5f3; border-radius: 12px; background: #f8faff; min-width: 0; }
+.quiz-learning-material-heading { display: flex; align-items: center; gap: 9px; color: #45658f; margin-bottom: 18px; }
+.quiz-learning-material h4 { font-size: 16px; font-weight: 600; line-height: 1.5; }
+.quiz-learning-note { min-width: 0; }
+.quiz-learning-note + .quiz-learning-note { margin-top: 18px; padding-top: 18px; border-top: 1px solid #e1e8f3; }
+.quiz-learning-note h5 { color: #45607f; font-size: 14px; font-weight: 600; line-height: 1.6; margin-bottom: 12px; overflow-wrap: anywhere; }
+.quiz-learning-note > button { margin-top: 12px; }
+.quiz-learning-note .prose-brain { font-size: 14px; min-width: 0; }
+.quiz-learning-note .prose-brain h2, .quiz-learning-note .prose-brain h3, .quiz-learning-note .prose-brain h4 { font-size: 15px; line-height: 1.6; }
+.quiz-learning-note .diagram-figure, .quiz-learning-note .image-figure { margin: 12px 0; }
+.quiz-learning-notes-select { min-height: 160px; }
+@media (max-width: 767px) {
+  .quiz-learning-material { padding: 15px; }
+  .quiz-learning-material h4 { font-size: 15px; }
+}

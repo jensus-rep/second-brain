@@ -1,0 +1,72 @@
+/* Thumb-friendly navigation, with room for the device's home indicator. */
+.mobile-navigation { display: none; }
+
+@media (max-width: 767px) {
+  :root { --mobile-navigation-height: calc(4.25rem + env(safe-area-inset-bottom, 0px)); }
+  html { scroll-padding-bottom: calc(var(--mobile-navigation-height) + 16px); }
+  .brain-main { padding-bottom: var(--mobile-navigation-height); }
+  .brain-main.is-studying { padding-bottom: 0; }
+  .topbar { padding-top: max(8px, env(safe-area-inset-top, 0px)); }
+  .topbar-right > button, .search-bar > button { min-width: 44px; min-height: 44px; }
+  .mobile-navigation {
+    position: fixed;
+    inset: auto 0 0;
+    z-index: 40;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    height: var(--mobile-navigation-height);
+    padding: 5px max(8px, env(safe-area-inset-right, 0px)) calc(5px + env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-left, 0px));
+    background: #fff;
+    border-top: 1px solid #e3e8f0;
+    box-shadow: 0 -5px 24px #24314908;
+    gap: 4px;
+  }
+  .mobile-navigation-item {
+    flex-direction: column;
+    gap: 4px;
+    width: 100%;
+    height: 3.5625rem;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 6px 0;
+    border-radius: 10px;
+    color: #5b6b82;
+    font-size: .6875rem;
+    line-height: 1.2;
+  }
+  .mobile-navigation-item > svg { width: 22px; height: 22px; }
+  .mobile-navigation-item > span { white-space: normal; overflow-wrap: anywhere; text-align: center; }
+  .mobile-navigation-item[aria-current="page"] { color: #2857cf; background: #edf2ff; font-weight: 650; }
+  .mobile-navigation-item:focus-visible { outline-offset: -3px; }
+  .mobile-menu {
+    gap: 0;
+    max-height: calc(100dvh - max(16px, env(safe-area-inset-top, 0px)));
+    padding: 0 max(16px, env(safe-area-inset-right, 0px)) max(12px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+    border-radius: 20px 20px 0 0;
+    overflow: hidden;
+  }
+  .mobile-menu-heading { flex-shrink: 0; padding: 22px 0 16px; }
+  .mobile-menu-heading [data-slot="sheet-description"] { color: #617087; line-height: 1.5; }
+  .mobile-menu-scroll { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 4px; margin: 0 -4px; }
+  .mobile-menu-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  .mobile-menu-grid > button { justify-content: flex-start; min-width: 0; min-height: 52px; padding: 12px; color: #405570; background: #f6f8fc; }
+  .mobile-menu-grid > button[aria-current="page"] { color: #2857cf; background: #edf2ff; }
+  .mobile-menu-grid > button > span { white-space: normal; text-align: left; overflow-wrap: anywhere; }
+  .mobile-menu-tools { display: grid; gap: 6px; margin-top: 16px; padding-top: 16px; border-top: 1px solid #e3e8f0; }
+  .mobile-menu-tools > button { justify-content: flex-start; min-height: 44px; }
+  .mobile-menu-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-shrink: 0; padding: 12px 0; }
+  .mobile-menu-footer > span { display: flex; align-items: center; gap: 6px; font-size: .6875rem; color: #617087; }
+  .mobile-menu-footer > button, .mobile-menu-close { min-height: 44px; }
+  .mobile-menu-close { flex-shrink: 0; width: 100%; }
+  [data-slot="sidebar"][data-mobile="true"] { padding: max(12px, env(safe-area-inset-top, 0px)) 12px max(12px, env(safe-area-inset-bottom, 0px)); }
+  [data-mobile="true"] [data-slot="sidebar-menu-button"] { min-height: 44px; }
+  [data-mobile="true"] .sign-out { min-height: 44px; }
+  [data-sonner-toaster][data-y-position="bottom"] { bottom: calc(var(--mobile-navigation-height) + 12px) !important; }
+  body:has(.brain-main.is-studying) [data-sonner-toaster][data-y-position="bottom"] { bottom: calc(160px + env(safe-area-inset-bottom, 0px)) !important; }
+}
+
+@media (max-width: 767px) and (max-height: 500px) {
+  .mobile-menu-heading { padding: 12px 0 8px; }
+  .mobile-menu-heading [data-slot="sheet-description"], .mobile-menu-footer > span { display: none; }
+  .mobile-menu-footer { padding: 4px 0; justify-content: flex-end; }
+}

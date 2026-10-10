@@ -6,7 +6,7 @@ import { seedWorkspace } from "../lib/brain/seed.ts";
 const origin = process.env.BRAIN_TEST_URL ?? "http://127.0.0.1:5173";
 if (!["127.0.0.1", "localhost"].includes(new URL(origin).hostname)) throw new Error("Local test data only.");
 const browser = await chromium.launch({ channel: "chrome", headless: true });
-const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, reducedMotion: "reduce" });
 const errors = [];
 page.on("pageerror", error => errors.push(error.message));
 let initial;
@@ -39,6 +39,21 @@ try {
   await expect(reader.locator("table")).toHaveCount(0);
   await expect(reader.getByRole("img", { name: "Diagramm", exact: true })).toHaveCount(3, { timeout: 60000 });
   await expect(reader.locator(".diagram-error")).toHaveCount(0);
+  assert.deepEqual(await reader.locator('.diagram-figure img').evaluateAll(images => images.flatMap(image => {
+    const source = decodeURIComponent(image.src.slice(image.src.indexOf(",") + 1));
+    const parsed = new DOMParser().parseFromString(source, "image/svg+xml");
+    const svg = document.importNode(parsed.documentElement, true);
+    svg.style.cssText = "position:fixed;left:-10000px;top:0;opacity:0;pointer-events:none";
+    document.body.appendChild(svg);
+    try {
+      const view = svg.viewBox.baseVal;
+      const content = svg.getBBox();
+      const clipped = content.x < view.x - 1 || content.y < view.y - 1
+        || content.x + content.width > view.x + view.width + 1
+        || content.y + content.height > view.y + view.height + 1;
+      return clipped ? [svg.id] : [];
+    } finally { svg.remove(); }
+  })), [], "Reduced motion preserves all diagram nodes inside the SVG viewBox");
   assert.match(await reader.locator(".comparison-card svg").first().getAttribute("aria-label"), /Ansatz: Sammeln.*Quelle: Quelle.*Leer: Keine Angabe/);
   await reader.locator(".comparison-text summary").first().click();
   await expect(reader.getByRole("link", { name: "Quelle", exact: true })).toHaveAttribute("href", "https://example.org/wissen");
