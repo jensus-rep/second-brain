@@ -116,6 +116,12 @@ body, .brain-main { background: #f6f7f9; }
 .flashcard-list h3 { color: #24354f; }
 .study-label, .study-topline, .study-rating > p, .study-pause > span, .study-answer > .eyebrow { color: #65758d; }
 .study-question .prose-brain { font-size: 1.688rem; letter-spacing: -.45px; line-height: 1.5; }
+.study-question .prose-brain > ul, .study-question .prose-brain > ol { display: grid; gap: 8px; margin: 20px 0 0; padding: 0 0 0 1.3em; text-align: left; font-size: 1rem; font-weight: 400; line-height: 1.65; letter-spacing: normal; }
+.study-question .prose-brain > ul { padding-left: 0; }
+.study-question .prose-brain > ul > li::marker { content: ""; }
+.study-question .prose-brain > ul > li, .study-question .prose-brain > ol > li { padding: 9px 12px; border: 1px solid #e3e9f2; border-radius: 8px; background: #f8faff; }
+.study-question .prose-brain li > p:last-child { margin-bottom: 0; }
+.study-save-status { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-size: 12px; color: #536783; }
 .editor-dialog { border-radius: 16px; }
 .editor-form .field > span { font-size: 0.875rem; color: #40516c; }
 .field input, .field textarea, .field [data-slot="select-trigger"] { background: #fff; }

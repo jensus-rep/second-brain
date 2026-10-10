@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, BookOpen, Check, Clock3, Layers3, Pencil, Plus, RotateCcw, Trash2 } from "lucide-react";
+import { ArrowLeft, BookOpen, Check, Clock3, Layers3, LoaderCircle, Pencil, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -80,6 +80,8 @@ export function Flashcards({ workspace, save, saving, onEdit, onStudyChange, col
   const [queue, setQueue] = useState<{ id: string; reviews: number; dueAt: string }[] | null>(null);
   const [index, setIndex] = useState(0);
   const [revealed, setRevealed] = useState(false);
+  const [pendingReview, setPendingReview] = useState(false);
+  const ratingRef = useRef(false);
   const [clock, setClock] = useState(() => Date.now());
   const [filter, setFilter] = useState("");
   const [localCollectionId, setLocalCollectionId] = useState("");
@@ -123,33 +125,46 @@ export function Flashcards({ workspace, save, saving, onEdit, onStudyChange, col
   const card = entry ? workspace.cards.find(c => c.id === entry.id) : null;
   const changed = !!(card && entry && (card.reviews !== entry.reviews || card.dueAt !== entry.dueAt));
   const next = [...visibleCards].sort((a, b) => a.dueAt.localeCompare(b.dueAt))[0];
-  const studying = queue !== null && !!card;
+  const studying = queue !== null && (!!card || pendingReview);
   useEffect(() => { onStudyChange(studying); return () => onStudyChange(false); }, [studying, onStudyChange]);
   useEffect(() => { const timer = setInterval(() => setClock(Date.now()), 30000); return () => clearInterval(timer); }, []);
   useEffect(() => {
     if (queue && !revealed) {
-      const mobile = window.matchMedia("(max-width: 767px)").matches;
-      if (mobile) sessionRef.current?.scrollIntoView({ block: "start" });
-      revealRef.current?.focus({ preventScroll: mobile });
+      sessionRef.current?.scrollIntoView({ block: "start", behavior: "instant" });
+      revealRef.current?.focus({ preventScroll: true });
     }
   }, [index, revealed, queue]);
+  useEffect(() => {
+    if (!pendingReview) return;
+    const guard = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener("beforeunload", guard);
+    return () => window.removeEventListener("beforeunload", guard);
+  }, [pendingReview]);
   async function rate(known: boolean) {
-    if (!card || saving || changed) return;
-    const ok = await save(w => ({ ...w, cards: w.cards.map(c => c.id === card.id ? reviewCard(c, known) : c) }), known ? "Gespeichert. Nächste Wiederholung geplant." : "Gespeichert. In zehn Minuten noch einmal.");
-    if (ok) { setRevealed(false); setIndex(i => i + 1); setClock(Date.now()); }
+    if (!card || saving || changed || ratingRef.current) return;
+    const ratedIndex = index;
+    ratingRef.current = true;
+    setPendingReview(true);
+    setRevealed(false);
+    setIndex(ratedIndex + 1);
+    const ok = await save(w => ({ ...w, cards: w.cards.map(c => c.id === card.id ? reviewCard(c, known) : c) }), "");
+    if (!ok) { setIndex(ratedIndex); setRevealed(true); }
+    setClock(Date.now());
+    setPendingReview(false);
+    ratingRef.current = false;
   }
   function start(cards: Flashcard[]) { setQueue(cards.map(c => ({ id: c.id, reviews: c.reviews, dueAt: c.dueAt }))); setIndex(0); setRevealed(false); }
   if (queue) {
     if (changed) return <section className="study-finished"><Clock3 size={30} /><h2>Dieser Gedanke wurde schon wiederholt.</h2><p>Der gespeicherte Lernstand ist neuer als diese Lernrunde. Er bleibt erhalten.</p><Button onClick={() => { setIndex(i => i + 1); setRevealed(false); }}>Mit nächster Karte fortfahren</Button></section>;
-    if (!card) return <section className="study-finished"><span className="study-complete-icon"><Check size={32} /></span><h2>Ein Stück Wissen bleibt.</h2><p>{index} {index === 1 ? "Karte" : "Karten"} wiederholt. Dein Fortschritt ist gespeichert.</p><Button onClick={() => setQueue(null)}>Zur Kartenübersicht</Button></section>;
+    if (!card) return <section className="study-finished" aria-busy={pendingReview}><span className="study-complete-icon">{pendingReview ? <LoaderCircle size={32} className="animate-spin" /> : <Check size={32} />}</span><h2>{pendingReview ? "Dein Fortschritt wird gespeichert …" : "Ein Stück Wissen bleibt."}</h2><p>{index} {index === 1 ? "Karte" : "Karten"} wiederholt. {pendingReview ? "Einen Moment, die letzte Bewertung wird noch gespeichert." : "Dein Fortschritt ist gespeichert."}</p><Button disabled={pendingReview} onClick={() => setQueue(null)}>Zur Kartenübersicht</Button></section>;
     const linked = card.noteId ? notesById.get(card.noteId) : undefined;
-    const mobileEnd = <Button className="study-mobile-end" variant="ghost" disabled={saving} onClick={() => setQueue(null)}><ArrowLeft size={16} />Beenden</Button>;
-    return <section ref={sessionRef} className={"study-session" + (revealed ? " is-revealed" : "")}><div className="study-topline"><Button variant="ghost" size="sm" disabled={saving} onClick={() => setQueue(null)}><ArrowLeft size={16} />Beenden</Button><span>{index + 1} von {queue.length}</span><span className="study-note">{linked?.title ?? "Deine Lernkarte"}</span></div><Progress value={index / queue.length * 100} aria-label="Fortschritt dieser Lernrunde" />
+    const mobileEnd = <Button className="study-mobile-end" variant="ghost" disabled={saving || pendingReview} onClick={() => setQueue(null)}><ArrowLeft size={16} />Beenden</Button>;
+    return <section ref={sessionRef} className={"study-session" + (revealed ? " is-revealed" : "")}><div className="study-topline"><Button variant="ghost" size="sm" disabled={saving || pendingReview} onClick={() => setQueue(null)}><ArrowLeft size={16} />Beenden</Button><span>{index + 1} von {queue.length}</span>{pendingReview ? <span className="study-save-status" role="status"><LoaderCircle size={14} className="animate-spin" />Speichert …</span> : <span className="study-note">{linked?.title ?? "Deine Lernkarte"}</span>}</div><Progress value={index / queue.length * 100} aria-label="Fortschritt dieser Lernrunde" />
       <CardContext note={linked} topicTitle={linked?.topicId ? topicsById.get(linked.topicId)?.title ?? "Ohne Thema" : "Ohne Thema"} collectionTitles={memberships.get(card.id) ?? []} priority={priorities.get(card.id) ?? null} suggested={card.priority === undefined && priorities.get(card.id) != null} onOpenNote={onOpenNote} />
       <article className={"study-card " + (revealed ? "revealed" : "")}><div className="study-label"><Layers3 size={17} />ERINNERN STATT NACHLESEN</div><div className="study-question"><Markdown content={card.question} /></div>
         {revealed ? <div ref={answerRef} tabIndex={-1} className="study-answer" aria-label="Antwort"><span className="eyebrow">DIE ANTWORT</span><Markdown content={card.answer} /></div> : <div className="study-pause"><span>Ein kurzer Moment zum Nachdenken.</span><div className="study-session-controls study-reveal-controls" role="group" aria-label="Aktionen für die Lernkarte"><Button ref={revealRef} className="reveal-button" onClick={() => { setRevealed(true); requestAnimationFrame(() => answerRef.current?.focus()); }}>Antwort aufdecken</Button>{mobileEnd}</div></div>}
       </article>
-      {revealed && <div className="study-rating study-session-controls" role="group" aria-label="Bewertung der Lernkarte"><div className="study-controls-heading"><p>Wie gut konntest du dich erinnern?</p>{mobileEnd}</div><div className="study-rating-buttons"><Button className="rate-again" variant="outline" disabled={saving} onClick={() => void rate(false)}><RotateCcw size={17} /><span>Noch üben<small>in 10 Minuten</small></span></Button><Button className="rate-known" disabled={saving} onClick={() => void rate(true)}><Check size={17} /><span>Gewusst<small>{reviewCard(card, true).intervalDays === 1 ? "morgen" : "in " + reviewCard(card, true).intervalDays + " Tagen"}</small></span></Button></div></div>}
+      {revealed && <div className="study-rating study-session-controls" role="group" aria-label="Bewertung der Lernkarte"><div className="study-controls-heading"><p>Wie gut konntest du dich erinnern?</p>{mobileEnd}</div><div className="study-rating-buttons"><Button className="rate-again" variant="outline" disabled={saving || pendingReview} onClick={() => void rate(false)}><RotateCcw size={17} /><span>Noch üben<small>in 10 Minuten</small></span></Button><Button className="rate-known" disabled={saving || pendingReview} onClick={() => void rate(true)}><Check size={17} /><span>Gewusst<small>{reviewCard(card, true).intervalDays === 1 ? "morgen" : "in " + reviewCard(card, true).intervalDays + " Tagen"}</small></span></Button></div></div>}
     </section>;
   }
   return <section className="flashcards-home">
