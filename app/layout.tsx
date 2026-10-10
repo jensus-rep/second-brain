@@ -8,6 +8,7 @@ import "./mobile-learning.css";
 import "./topic-hierarchy.css";
 import "./workspace-redesign.css";
 import "./learning-overview.css";
+import "./learning-tutor.css";
 
 export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover" };
 

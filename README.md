@@ -22,6 +22,7 @@ Eine private, deutschsprachige Second-Brain-Web-App. Wissen wird als Markdown mi
 - Multiple-Choice-Prüfungssimulationen mit optionalem Zeitlimit und adaptiver Übung, Fehlerjournal und eigenen Testaufgaben.
 - Vorbereitung nach Lernbereichen mit passenden Wissensnotizen, kurzen oder vollständigen Übungsrunden und gespeichertem Arbeitsfortschritt.
 - Lernüberblick mit dauerhaftem Lernfokus, unterbrochenen Einheiten, fälligen Karten, offenen Lernbereichen und direktem Start; letzte Auswertung und Vergleich tatsächlich vergleichbarer Runden.
+- Tutor mit direktem Lernstart, Wochenaktivität, persönlichem Lernplan, strukturiertem Antwortstand und Lernkurve aus gespeicherten Testergebnissen.
 - Animierte Ergebnisauswertung sowie passende Abbildungen, Diagramme und Vergleiche direkt bei der Antworterklärung.
 - Gespeicherte Lernerinnerungen im Überblick mit Kalenderexport und Alarm.
 - Vollständige ZIP-Sicherungen inklusive Bilder und Lernkarten; JSON bleibt zum Bearbeiten der Wissensdaten verfügbar.
@@ -120,6 +121,18 @@ Unter „Themen“ steht die fachliche Struktur unabhängig von den Lernsammlung
 `npm run test:structure` prüft Sammlungsöffnung und direkten Lernstart, freies Üben zukünftiger Karten, Rücknavigation, Themenfilter inklusive Nachfahren, Themenverschiebung, neue Unterthemen und Notizzuordnung nach Neuladen. Es kontrolliert außerdem 44-Pixel-Bedienelemente und Layouts bei 320, 390, 768 und 1440 Pixeln sowie lange Themenpfade. Wie die Sammlungsprüfung verwendet es `BRAIN_TEST_URL` und `BRAIN_TEST_SQLITE_PATH` für einen isolierten lokalen Bestand und stellt diesen anschließend wieder her.
 
 Für den vorhandenen Bestand sind Projektmanagement, Forschungsmethoden, Künstliche Intelligenz und Softwareentwicklung vorbereitet. Zuordnungen enthalten ausschließlich tatsächlich vorhandene IDs; gespeicherte Änderungen haben Vorrang. Andere Bestände werden anhand ihrer Fachthemen und der ausdrücklich verknüpften Aufgaben vollständig angezeigt. „Sammlung speichern“ übernimmt die vorbereitete Auswahl in den versionierten Arbeitsraum und damit in Sicherungen. Die Anzeige unterscheidet den gesamten Bestand einer Sammlung vom aktuell gefilterten Ausschnitt.
+
+## Lernen mit dem Tutor
+
+„Tutor“ ist über die Seitenleiste, die mobile Hauptnavigation und „Zum Tutor“ auf der Startseite erreichbar. „Heute“ bietet einen nächsten Lernschritt sowie direkte Einstiege in einen Kurztest oder eine Kartenrunde. Unterbrochene Runden haben Vorrang und werden mit ihrem gespeicherten Stand fortgesetzt. Auch noch nicht fällige Karten können ausdrücklich geübt werden. Nach einer über den Tutor gestarteten Einheit führt die Rücknavigation wieder dorthin.
+
+Der persönliche Lernplan speichert ein Lernziel, ein optionales Zieldatum und ein Wochenziel von einem bis sieben Lerntagen. Die Wochenaktivität gilt für den gesamten Lernbestand, unabhängig vom aktuell gewählten Fokus. Gespeicherte Übungsantworten, Antworten abgegebener Tests und Kartenbewertungen zählen als Aktivität; das Öffnen der App oder Starten einer leeren Runde zählt nicht. Kalenderwochen, Zieltermine und Lernserien verwenden Europe/Berlin einschließlich Zeitumstellungen.
+
+„Vorbereitung“ zeigt Lernbereiche, bearbeitete Vorbereitungseinheiten und den aktuellen Antwortstand getrennt. Ein Bereich mit ausschließlich zuletzt richtigen Antworten beschreibt die vorhandenen Aufgaben, keine umfassende Beherrschung des Fachthemas. „Auswertung“ zeigt abgeschlossene Runden des ausgewählten Lernfokus und ihre tatsächlichen Ergebnisse. Die Lernkurve verbindet nur Runden mit identischen Aufgaben, Lösungen, Schwierigkeitsstufen und Bedingungen; unterschiedliche Aufgaben erhalten keinen behaupteten Verbesserungswert. Kartenbewertungen erscheinen separat als Selbsteinschätzung.
+
+Lernplan (`tutorPlan`) und Tageszähler der Kartenbewertungen (`cardReviewDays`, höchstens 3.000 Einträge aus Datum und Sammlung) werden im versionierten Workspace auf dem Server und in Sicherungen gespeichert. Kartenbewertung, Wiederholungstermin und Tageszähler werden atomar gespeichert. Bestehende Sicherungen bleiben ohne diese optionalen Felder gültig. Frühere Kartenwiederholungszähler enthalten keine Bewertungsdaten oder Zeitpunkte und werden deshalb nicht als vergangene Tagesaktivität ausgegeben; die Testaktivität verwendet die vorhandenen gespeicherten Antworten.
+
+`npm run test:tutor` prüft gegen einen lokalen Entwicklungsserver die Planung einschließlich Speicherfehlern, direkte Lernstarts, Wiedereinstieg, Auswertungen, Sammlungsumfang und Darstellung bei 320, 390 und 1.440 Pixeln. Vor Schreibzugriffen bestätigt es den Bestand in der über `BRAIN_TEST_SQLITE_PATH` gewählten SQLite-Datei; `BRAIN_TEST_URL` muss localhost sein. Anschließend wird der Ausgangsbestand wiederhergestellt.
 
 ## Lernen mit Tests
 

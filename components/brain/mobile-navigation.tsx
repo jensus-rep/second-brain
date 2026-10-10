@@ -5,10 +5,11 @@ import { Archive, BookOpen, Check, Compass, Download, FolderOpen, GraduationCap,
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 
-export type BrainView = "home" | "library" | "topics" | "collections" | "paths" | "connections" | "favorites" | "archive" | "flashcards" | "quizzes";
+export type BrainView = "home" | "tutor" | "library" | "topics" | "collections" | "paths" | "connections" | "favorites" | "archive" | "flashcards" | "quizzes";
 
 const shortcuts = [
-  { id: "home", label: "Überblick", name: "Mein Überblick", icon: Compass },
+  { id: "home", label: "Start", name: "Mein Überblick", icon: Compass },
+  { id: "tutor", label: "Tutor", name: "Tutor", icon: GraduationCap },
   { id: "library", label: "Wissen", name: "Wissensbibliothek", icon: BookOpen },
   { id: "flashcards", label: "Karten", name: "Lernkarten", icon: Layers3 },
   { id: "quizzes", label: "Tests", name: "Tests & Übungen", icon: Check },

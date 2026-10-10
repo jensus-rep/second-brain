@@ -32,6 +32,7 @@ const dateLabel = (date: string) => new Intl.DateTimeFormat("de-DE", { day: "num
 export function LearningOverview({ workspace, save, saving, now, onAction, onOpenNote, onOpenCollection, onViewResult }: Props) {
   const recommendation = recommendLearning(workspace, now);
   const { primaryAction, recentResult, weaknesses, cards, preparation, areas } = recommendation;
+  const primaryLabel = primaryAction?.kind === "review-cards" && primaryAction.mode === "all" ? "Alle Karten üben" : primaryAction ? actionLabels[primaryAction.kind] : "Deine Vorbereitung beginnt hier";
   const collections = learningCollections(workspace);
   const selectedCollection = collections.find(collection => collection.id === recommendation.collectionId);
   const resumable = primaryAction?.kind === "resume-quiz" || primaryAction?.kind === "resume-cards";
@@ -43,7 +44,7 @@ export function LearningOverview({ workspace, save, saving, now, onAction, onOpe
     : primaryAction.kind === "resume-quiz" ? "Deine beantworteten Aufgaben sind gespeichert. Steige direkt in die offene Einheit ein."
     : primaryAction.kind === "resume-cards" ? `Deine Kartenrunde ist unterbrochen. ${primaryAction.remaining} ${primaryAction.remaining === 1 ? "Karte wartet" : "Karten warten"} noch auf dich.`
     : primaryAction.kind === "review-concept" ? `Bei „${primaryAction.concept}“ sind noch Antworten falsch. Schau den Zusammenhang nach und prüfe diese Aufgaben erneut.`
-    : primaryAction.kind === "review-cards" ? `${cards.due} ${cards.due === 1 ? "Karte ist" : "Karten sind"} jetzt fällig. Wiederhole diese Auswahl, bevor du neuen Stoff dazunimmst.`
+    : primaryAction.kind === "review-cards" ? primaryAction.mode === "all" ? "Aktuell sind keine Karten fällig. Starte eine Übungsrunde mit den Karten deines Lernfokus." : `${cards.due} ${cards.due === 1 ? "Karte ist" : "Karten sind"} jetzt fällig. Wiederhole diese Auswahl, bevor du neuen Stoff dazunimmst.`
     : primaryAction.kind === "preparation" ? areas.some(area => area.subject === primaryAction.subject && area.concept === primaryAction.concept && area.completed)
       ? `Du hast „${primaryAction.concept}“ bereits bearbeitet. Weitere Aufgaben festigen den Bereich und prüfen die Anwendung.`
       : `„${primaryAction.concept}“ ist noch offen. Die nächste kurze Einheit knüpft an deine Vorbereitung an.`
@@ -54,7 +55,7 @@ export function LearningOverview({ workspace, save, saving, now, onAction, onOpe
 
   return <section className="learning-overview" aria-label="Dein Lernüberblick">
     <div className="learning-focus-heading"><span className="learning-focus-mark"><Target size={24} aria-hidden="true" /></span><div><span className="eyebrow">DEIN LERNFOKUS</span><h2>{recommendation.title}</h2><p>Hier geht deine Vorbereitung weiter.</p></div>{selectedCollection && <Button variant="ghost" size="sm" onClick={() => onOpenCollection(selectedCollection.id)}>Sammlung ansehen<ArrowRight size={15} /></Button>}</div>
-    <div className="learning-next-step"><div><span className="eyebrow">{resumable ? "WO DU AUFGEHÖRT HAST" : "DEIN NÄCHSTER SCHRITT"}</span><h3>{primaryAction ? actionLabels[primaryAction.kind] : "Deine Vorbereitung beginnt hier"}</h3><p>{actionDescription}</p></div>{primaryAction && <Button disabled={saving} onClick={() => onAction(primaryAction)}><Play size={17} />{actionLabels[primaryAction.kind]}</Button>}</div>
+    <div className="learning-next-step"><div><span className="eyebrow">{resumable ? "WO DU AUFGEHÖRT HAST" : "DEIN NÄCHSTER SCHRITT"}</span><h3>{primaryLabel}</h3><p>{actionDescription}</p></div>{primaryAction && <Button disabled={saving} onClick={() => onAction(primaryAction)}><Play size={17} />{primaryLabel}</Button>}</div>
     <div className="learning-focus-controls">
       <label className="field"><span>Deine Vorbereitung</span><select aria-label="Lernfokus auswählen" disabled={saving || resumable} value={collectionValue} onChange={event => {
         const chosen = collections.find(collection => collection.id === event.target.value);

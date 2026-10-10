@@ -2,7 +2,7 @@ import type { Flashcard, FlashcardSession, LearningCollection, QuizQuestion, Qui
 import { collectionItems, learningCollections } from "./learning-collections.ts";
 import { latestQuestionResults, preparationAreas, selectAdaptivePreparationQuestions, type PreparationArea } from "./quiz-preparation.ts";
 import { withLearningNotes } from "./quiz-content.ts";
-import { isCorrect } from "./quiz.ts";
+import { ARCHIVED_TEXT, isCorrect, restoreQuestion } from "./quiz.ts";
 
 export type LearningWeakness = {
   subject: string; concept: string; noteIds: string[]; questionId: string; answeredAt: string;
@@ -16,7 +16,7 @@ export type LearningAction = ActionScope & (
   | { kind: "resume-quiz"; runId: string }
   | { kind: "resume-cards"; sessionId: string; remaining: number }
   | { kind: "review-concept"; subject: string; concept: string; noteIds: string[] }
-  | { kind: "review-cards"; mode: "due" }
+  | { kind: "review-cards"; mode: "due" | "all" }
   | { kind: "preparation"; subject: string; concept: string }
   | { kind: "checkpoint"; subject: string; questionCount: number }
   | { kind: "open-collection" }
@@ -71,7 +71,27 @@ export function resumableFlashcardSession(workspace: Workspace): { session: Flas
   return remaining.length ? { session, remaining } : null;
 }
 
-function recentLearningResult(runs: QuizRun[]): LearningResult | null {
+// Percentages measure a change only when the same tasks were answered under
+// the same conditions. A fully compacted snapshot lacks its original wording;
+// a later import may have changed the bank, so it cannot prove equivalence.
+export function comparableLearningRuns(a: QuizRun, b: QuizRun, bank: QuizQuestion[] = []): boolean {
+  const timeLimit = (run: QuizRun) => run.deadlineAt ? Date.parse(run.deadlineAt) - Date.parse(run.startedAt) : null;
+  return a.subject === b.subject && a.mode === b.mode && a.preparationConcept === b.preparationConcept &&
+    timeLimit(a) === timeLimit(b) &&
+    a.questions.length === b.questions.length && a.questions.every(saved => {
+      const previous = b.questions.find(question => question.id === saved.id);
+      if (!previous) return false;
+      if (saved.prompt === ARCHIVED_TEXT || previous.prompt === ARCHIVED_TEXT) return false;
+      const current = restoreQuestion(saved, bank), old = restoreQuestion(previous, bank);
+      return current.prompt !== ARCHIVED_TEXT && old.prompt !== ARCHIVED_TEXT &&
+        current.prompt !== "Wortlaut nicht mehr verfügbar" && old.prompt !== "Wortlaut nicht mehr verfügbar" &&
+        old.subject === current.subject && old.concept === current.concept && old.difficulty === current.difficulty && old.prompt === current.prompt &&
+        old.options.length === current.options.length && old.options.every(option => current.options.some(item => item.id === option.id && item.text === option.text)) &&
+        old.correctOptionIds.length === current.correctOptionIds.length && old.correctOptionIds.every(id => current.correctOptionIds.includes(id));
+    });
+}
+
+function recentLearningResult(runs: QuizRun[], bank: QuizQuestion[]): LearningResult | null {
   const finished = newestRuns(runs.filter(run => !!run.finishedAt));
   const latest = finished[0];
   if (!latest?.finishedAt) return null;
@@ -80,14 +100,7 @@ function recentLearningResult(runs: QuizRun[]): LearningResult | null {
   // Matching counts alone would compare different tasks and difficulty levels.
   // Even stable IDs may have been edited. Require the same saved tasks and
   // grading so wording or solution changes cannot masquerade as improvement.
-  const previous = finished.slice(1).find(run =>
-    run.subject === latest.subject && run.mode === latest.mode && run.preparationConcept === latest.preparationConcept &&
-    run.questions.length === latest.questions.length && latest.questions.every(question => {
-      const old = run.questions.find(item => item.id === question.id);
-      return old && old.subject === question.subject && old.concept === question.concept && old.difficulty === question.difficulty && old.prompt === question.prompt &&
-        old.options.length === question.options.length && old.options.every(option => question.options.some(item => item.id === option.id && item.text === option.text)) &&
-        old.correctOptionIds.length === question.correctOptionIds.length && old.correctOptionIds.every(id => question.correctOptionIds.includes(id));
-    }));
+  const previous = finished.slice(1).find(run => comparableLearningRuns(latest, run, bank));
   const currentPercent = percent(latest), previousPercent = previous ? percent(previous) : null;
   return { runId: latest.id, correct: correct(latest), total: latest.questions.length, percent: currentPercent, finishedAt: latest.finishedAt, previousPercent, change: previousPercent === null ? null : currentPercent - previousPercent };
 }
@@ -236,9 +249,11 @@ export function recommendLearning(workspace: Workspace, now = Date.now()): Learn
   }
 
   const missingSessionCollection = !active && paused && paused.session.collectionId && !collection;
+  const missingRunCollection = active?.collectionId && !collection;
+  const unavailableCollection = missingSessionCollection || missingRunCollection;
   const contents = collection ? collectionItems(workspace, collection) : workspace;
-  const scopedQuestions = missingSessionCollection ? [] : ("questions" in contents ? contents.questions : contents.quizQuestions);
-  const cards = missingSessionCollection ? workspace.cards.filter(card => paused.session.queue.some(item => item.id === card.id)) : contents.cards;
+  const scopedQuestions = unavailableCollection ? [] : ("questions" in contents ? contents.questions : contents.quizQuestions);
+  const cards = missingSessionCollection ? workspace.cards.filter(card => paused.session.queue.some(item => item.id === card.id)) : missingRunCollection ? [] : contents.cards;
   const subjects = [...new Set(scopedQuestions.map(question => question.subject))];
   // Keep a historical active run launchable even if its bank was edited. For an
   // ordinary focus, use only subject values that remain in the current bank.
@@ -247,7 +262,7 @@ export function recommendLearning(workspace: Workspace, now = Date.now()): Learn
     subject = history.find(run => (!collection || runMatchesLearningCollection(run, collection)) && subjects.includes(run.subject))?.subject ?? subjects[0];
   }
   const questions = subject ? scopedQuestions.filter(question => question.subject === subject) : scopedQuestions;
-  const runs = missingSessionCollection ? [] : workspace.quizRuns.filter(run =>
+  const runs = unavailableCollection ? [] : workspace.quizRuns.filter(run =>
     (!collection || runMatchesLearningCollection(run, collection)) && (!subject || run.subject === subject));
   const areaSubjects = subject ? [subject] : subjects;
   const areas = areaSubjects.flatMap(areaSubject => preparationAreas({ ...workspace, quizQuestions: questions, quizRuns: runs }, areaSubject).map(area => ({
@@ -274,11 +289,12 @@ export function recommendLearning(workspace: Workspace, now = Date.now()): Learn
       ? { ...scope, kind: "preparation", subject: remaining.subject, concept: remaining.concept }
       : { ...scope, kind: "checkpoint", subject, questionCount: selectCheckpointQuestions(questions, runs, subject).length };
   }
+  else if (cards.length) primaryAction = { ...scope, kind: "review-cards", mode: "all" };
   else if (collection) primaryAction = { ...scope, kind: "open-collection" };
   return {
-    ...scope, title: missingSessionCollection ? "Gespeicherte Lernrunde" : collection?.title ?? subject ?? "Dein Lernen", subject, subjects,
+    ...scope, title: unavailableCollection ? "Gespeicherte Lernrunde" : collection?.title ?? subject ?? "Dein Lernen", subject, subjects,
     areas, preparation: { completed: areas.filter(area => area.completed).length, total: areas.length },
     cards: { reviewed: cards.filter(card => card.reviews > 0).length, total: cards.length, due },
-    recentResult: recentLearningResult(runs), weaknesses, primaryAction,
+    recentResult: recentLearningResult(runs, workspace.quizQuestions), weaknesses, primaryAction,
   };
 }

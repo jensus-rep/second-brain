@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, BookOpen, Check, ChevronDown, Clock3, Layers3, LoaderCircle, Pencil, Play, Plus, RotateCcw, SlidersHorizontal, Trash2, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, BookOpen, Check, ChevronDown, Clock3, Layers3, LoaderCircle, Pencil, Play, Plus, RotateCcw, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -10,6 +10,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
 import { reviewCard, type Flashcard, type FlashcardSession, type Note, type Workspace } from "@/lib/brain/model";
+import { recordCardReview } from "@/lib/brain/learning-tutor";
 import type { SaveWorkspace } from "@/lib/brain/use-brain";
 import { addToLearningCollection, collectionItems, flashcardPriority, learningCollections, priorityDescriptions, priorityLabels, removeFlashcard } from "@/lib/brain/learning-collections";
 import { flattenTopics, getTopicDescendantIds, getTopicPathLabel } from "@/lib/brain/topics";
@@ -97,9 +98,9 @@ export function FlashcardEditor({ card, workspace, save, saving, onClose, collec
   </>;
 }
 
-export function Flashcards({ workspace, save, saving, onEdit, onStudyChange, collectionId, onCollectionChange, onOpenNote, onBackToCollection, startRequest, resumeRequest, onResumeRequestConsumed }: {
+export function Flashcards({ workspace, save, saving, onEdit, onStudyChange, collectionId, onCollectionChange, onOpenNote, onBackToCollection, onBackToTutor, startRequest, startMode = "due", resumeRequest, onResumeRequestConsumed }: {
   workspace: Workspace; save: SaveWorkspace; saving: boolean; onEdit: (card: Flashcard) => void; onStudyChange: (studying: boolean) => void;
-  collectionId?: string; onCollectionChange?: (id: string) => void; onOpenNote?: (id: string) => void; onBackToCollection?: () => void; startRequest?: number; resumeRequest?: number; onResumeRequestConsumed?: () => void;
+  collectionId?: string; onCollectionChange?: (id: string) => void; onOpenNote?: (id: string) => void; onBackToCollection?: () => void; onBackToTutor?: () => void; startRequest?: number; startMode?: "due" | "all"; resumeRequest?: number; onResumeRequestConsumed?: () => void;
 }) {
   const [queue, setQueue] = useState<{ id: string; reviews: number; dueAt: string }[] | null>(null);
   const [index, setIndex] = useState(0);
@@ -229,8 +230,8 @@ export function Flashcards({ workspace, save, saving, onEdit, onStudyChange, col
     setPriorityFilter("all");
     setFilter("");
     const collectionDue = collectionCards.filter(card => Date.parse(card.dueAt) <= clock).sort((a, b) => a.dueAt.localeCompare(b.dueAt) || a.id.localeCompare(b.id));
-    void start(collectionDue.length ? collectionDue : collectionCards, collectionDue.length ? "due" : "all");
-  }, [startRequest, activeCollectionId, collectionCards, clock, start, saving]);
+    void start(startMode === "all" ? collectionCards : collectionDue.length ? collectionDue : collectionCards, startMode === "all" ? "all" : collectionDue.length ? "due" : "all");
+  }, [startRequest, startMode, activeCollectionId, collectionCards, clock, start, saving]);
   useEffect(() => {
     if (!resumeRequest || consumedResumeRequest.current === resumeRequest || saving || startingRef.current) return;
     consumedResumeRequest.current = resumeRequest;
@@ -276,7 +277,8 @@ export function Flashcards({ workspace, save, saving, onEdit, onStudyChange, col
     if (!card || !entry || !session || saving || changed || ratingRef.current) return;
     const ratedIndex = index;
     const nextIndex = nextSessionIndex(session, sessionCards(workspace, session), ratedIndex + 1);
-    const updatedAt = new Date().toISOString();
+    const reviewTime = new Date();
+    const updatedAt = reviewTime.toISOString();
     const advanced = nextIndex < session.queue.length ? { ...session, index: nextIndex, updatedAt } : null;
     ratingRef.current = true;
     setPendingReview(true);
@@ -287,7 +289,7 @@ export function Flashcards({ workspace, save, saving, onEdit, onStudyChange, col
       const currentCard = sessionCards(w, session).find(c => c.id === entry.id);
       if (!currentCard || currentCard.reviews !== entry.reviews || currentCard.dueAt !== entry.dueAt) throw new Error("Diese Karte wurde inzwischen geändert. Bitte lade den aktuellen Lernstand neu.");
       const focusCollectionId = collections.some(item => item.collection.id === session.collectionId) ? session.collectionId : null;
-      return { ...w, cards: w.cards.map(c => c.id === card.id ? reviewCard(c, known) : c), flashcardSession: advanced, learningFocus: { collectionId: focusCollectionId, subject: w.learningFocus?.collectionId === focusCollectionId ? w.learningFocus.subject : null, updatedAt } };
+      return recordCardReview({ ...w, cards: w.cards.map(c => c.id === card.id ? reviewCard(c, known, reviewTime) : c), flashcardSession: advanced, learningFocus: { collectionId: focusCollectionId, subject: w.learningFocus?.collectionId === focusCollectionId ? w.learningFocus.subject : null, updatedAt } }, { collectionId: session.collectionId, known }, reviewTime);
     }, "");
     if (ok) setCurrentSession(advanced);
     if (!ok) { setIndex(ratedIndex); setRevealed(true); }
@@ -298,7 +300,7 @@ export function Flashcards({ workspace, save, saving, onEdit, onStudyChange, col
   if (queue) {
     if (!pendingReview && currentSession && !sameSession(workspace.flashcardSession, currentSession)) return <section className="study-finished"><Clock3 size={30} /><h2>Deine Lernrunde hat sich geändert.</h2><p>Der aktuelle Lernstand wurde in einem anderen Fenster gespeichert. Öffne die gespeicherte Runde erneut.</p><Button onClick={pause}>Zur Kartenübersicht</Button></section>;
     if (changed || entry && !card) return <section className="study-finished"><Clock3 size={30} /><h2>{changed ? "Dieser Gedanke wurde schon wiederholt." : "Diese Karte ist nicht mehr verfügbar."}</h2><p>Geänderte oder entfernte Karten werden übersprungen. Der gespeicherte Lernstand bleibt erhalten.</p><div className="study-finished-actions"><Button disabled={saving || pendingReview} onClick={() => void skipUnavailable()}>Mit nächster Karte fortfahren</Button><Button variant="outline" disabled={saving || pendingReview} onClick={pause}>Beenden</Button></div></section>;
-    if (!card) return <section className="study-finished" aria-busy={pendingReview}><span className="study-complete-icon">{pendingReview ? <LoaderCircle size={32} className="animate-spin" /> : <Check size={32} />}</span><h2>{pendingReview ? "Dein Fortschritt wird gespeichert …" : "Ein Stück Wissen bleibt."}</h2><p>Lernrunde mit {queue.length} {queue.length === 1 ? "Karte" : "Karten"} in „{scopeTitle}“ abgeschlossen. {pendingReview ? "Einen Moment, die letzte Bewertung wird noch gespeichert." : "Dein Fortschritt ist gespeichert."}</p><div className="study-finished-actions"><Button disabled={pendingReview} onClick={pause}>Zur Kartenübersicht</Button>{selectedCollection && onBackToCollection && <Button variant="outline" disabled={saving || pendingReview} onClick={onBackToCollection}><ArrowLeft size={16} />Zur Lernsammlung</Button>}</div></section>;
+    if (!card) return <section className="study-finished" aria-busy={pendingReview}><span className="study-complete-icon">{pendingReview ? <LoaderCircle size={32} className="animate-spin" /> : <Check size={32} />}</span><h2>{pendingReview ? "Dein Fortschritt wird gespeichert …" : "Ein Stück Wissen bleibt."}</h2><p>Lernrunde mit {queue.length} {queue.length === 1 ? "Karte" : "Karten"} in „{scopeTitle}“ abgeschlossen. {pendingReview ? "Einen Moment, die letzte Bewertung wird noch gespeichert." : "Dein Fortschritt ist gespeichert."}</p><div className="study-finished-actions"><Button disabled={pendingReview} onClick={pause}>Zur Kartenübersicht</Button>{onBackToTutor && <Button variant="outline" disabled={saving || pendingReview} onClick={onBackToTutor}>Zum Tutor<ArrowRight size={16} /></Button>}{selectedCollection && onBackToCollection && <Button variant="outline" disabled={saving || pendingReview} onClick={onBackToCollection}><ArrowLeft size={16} />Zur Lernsammlung</Button>}</div></section>;
     const linked = card.noteId ? notesById.get(card.noteId) : undefined;
     const mobileEnd = <Button className="study-mobile-end" variant="ghost" disabled={saving || pendingReview} onClick={pause} title="Lernrunde pausieren; dein Stand bleibt gespeichert"><ArrowLeft size={16} />Beenden</Button>;
     return <section ref={sessionRef} className={"study-session" + (revealed ? " is-revealed" : "")}><div className="study-topline"><Button variant="ghost" size="sm" disabled={saving || pendingReview} onClick={pause} title="Lernrunde pausieren; dein Stand bleibt gespeichert"><ArrowLeft size={16} />Beenden</Button><span>{index + 1} von {queue.length}</span>{pendingReview ? <span className="study-save-status" role="status"><LoaderCircle size={14} className="animate-spin" />Speichert …</span> : <span className="study-note">{linked?.title ?? "Deine Lernkarte"}</span>}</div><Progress value={index / queue.length * 100} aria-label="Fortschritt dieser Lernrunde" />

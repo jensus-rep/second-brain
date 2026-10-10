@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { emptyWorkspace, workspaceSchema, flashcardSessionSchema } from "../lib/brain/model.ts";
-import { recommendLearning, recommendLearningAfterRun, resumableFlashcardSession, selectCheckpointQuestions } from "../lib/brain/learning-resume.ts";
+import { comparableLearningRuns, recommendLearning, recommendLearningAfterRun, resumableFlashcardSession, selectCheckpointQuestions } from "../lib/brain/learning-resume.ts";
 
 const subject = "Agiles Projektmanagement";
 const timestamp = "2026-10-10T10:00:00.000Z";
@@ -159,6 +159,21 @@ test("work completed and cards already reviewed are counted without claiming mas
 test("due cards take priority over the next new preparation unit", () => {
   const data = workspace([question()], { cards: [card()], learningCollections: [collection([question()], { cardIds: ["c1"] })] });
   assert.deepEqual(recommendLearning(data, now).primaryAction, { kind: "review-cards", mode: "due", collectionId: "agile" });
+});
+
+test("a cards-only collection offers immediate practice even when no cards are due", () => {
+  const data = workspace([], { cards: [card("future", { dueAt: "2026-10-15T10:00:00.000Z" })], learningCollections: [collection([], { cardIds: ["future"] })] });
+  const recommendation = recommendLearning(data, now);
+  assert.deepEqual(recommendation.primaryAction, { kind: "review-cards", mode: "all", collectionId: "agile" });
+  assert.deepEqual(recommendation.cards, { reviewed: 0, total: 1, due: 0 });
+});
+
+test("exam comparisons require the same configured time limit", () => {
+  const before = run("before", [question()], { mode: "exam", deadlineAt: "2026-10-10T10:10:00.000Z" });
+  const after = run("after", [question()], { mode: "exam", startedAt: later, finishedAt: later, deadlineAt: "2026-10-10T11:10:00.000Z" });
+  assert.equal(comparableLearningRuns(before, after), true);
+  assert.equal(comparableLearningRuns(before, { ...after, deadlineAt: "2026-10-10T11:30:00.000Z" }), false);
+  assert.equal(comparableLearningRuns(before, { ...after, deadlineAt: null }), false);
 });
 
 test("only equivalent finished rounds produce a percentage-point comparison", () => {

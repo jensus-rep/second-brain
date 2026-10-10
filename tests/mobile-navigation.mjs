@@ -166,7 +166,7 @@ async function learningLayouts(workspace, note) {
     if (width === 390) await page.screenshot({ path: `.sites-runtime/qa/mobile-navigation-${engine.name()}-learning-card.png`, animations: "disabled" });
     await rating.getByRole("button", { name: "Beenden", exact: true }).click();
     await expect(navigation).toBeVisible();
-    await page.getByRole("button", { name: "Lernrunde starten", exact: true }).click();
+    await page.getByRole("button", { name: "Lernrunde fortsetzen", exact: true }).click();
     await page.getByRole("group", { name: "Aktionen für die Lernkarte", exact: true }).getByRole("button", { name: "Antwort aufdecken", exact: true }).click();
     await page.getByRole("group", { name: "Bewertung der Lernkarte", exact: true }).getByRole("button", { name: /^Gewusst/ }).click();
     await expect(page.getByRole("heading", { name: "Ein Stück Wissen bleibt.", exact: true })).toBeVisible();

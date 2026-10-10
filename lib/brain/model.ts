@@ -59,6 +59,20 @@ export const learningReminderSchema = z.object({ id, subject: title, dueAt: z.st
 export const learningFocusSchema = z.object({
   collectionId: id.nullable(), subject: title.nullable(), updatedAt: z.string().datetime(),
 });
+const calendarDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => {
+  const timestamp = Date.parse(value + "T00:00:00.000Z");
+  return value.slice(0, 4) !== "0000" && Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) === value;
+}, "Bitte ein gültiges Kalenderdatum angeben.");
+export const tutorPlanSchema = z.object({
+  goal: z.string().trim().max(300), targetDate: calendarDate.nullable(),
+  weeklyDays: z.number().int().min(1).max(7), updatedAt: z.string().datetime(),
+});
+export const cardReviewDaySchema = z.object({
+  date: calendarDate, collectionId: id.nullable(),
+  reviewed: z.number().int().min(0), known: z.number().int().min(0),
+}).superRefine((day, ctx) => {
+  if (day.known > day.reviewed) ctx.addIssue({ code: "custom", path: ["known"], message: "Die sicheren Selbsteinschätzungen dürfen die Wiederholungen nicht übersteigen." });
+});
 export const flashcardSessionSchema = z.object({
   id, collectionId: id.nullable(), mode: z.enum(["due", "all"]),
   queue: z.array(z.object({ id, reviews: z.number().int().min(0), dueAt: z.string().datetime() })).max(3000),
@@ -93,12 +107,16 @@ export const workspaceSchema = z.object({
   learningCollections: z.array(learningCollectionSchema).max(100).default([]),
   learningFocus: learningFocusSchema.nullable().optional(),
   flashcardSession: flashcardSessionSchema.nullable().optional(),
+  tutorPlan: tutorPlanSchema.optional(),
+  cardReviewDays: z.array(cardReviewDaySchema).max(3000).optional(),
 }).superRefine((data, ctx) => {
   const issue = (message: string) => ctx.addIssue({ code: "custom", message });
   for (const list of [data.notes, data.topics, data.paths, data.cards, data.quizQuestions, data.quizRuns, data.learningReminders, data.learningCollections]) {
     if (new Set(list.map(item => item.id)).size !== list.length) issue("IDs müssen eindeutig sein.");
   }
   if (data.quizRuns.filter(run => !run.finishedAt).length > 1) issue("Bitte die laufende Testrunde zuerst beenden.");
+  const reviewKeys = (data.cardReviewDays ?? []).map(day => JSON.stringify([day.date, day.collectionId]));
+  if (new Set(reviewKeys).size !== reviewKeys.length) issue("Kartenwiederholungen pro Tag und Lernsammlung müssen eindeutig sein.");
   const notes = new Set(data.notes.map(n => n.id));
   const topics = new Set(data.topics.map(t => t.id));
   const topicsById = new Map(data.topics.map(topic => [topic.id, topic]));
@@ -153,6 +171,8 @@ export type FlashcardPriority = NonNullable<Flashcard["priority"]>;
 export type LearningCollection = z.infer<typeof learningCollectionSchema>;
 export type LearningFocus = z.infer<typeof learningFocusSchema>;
 export type FlashcardSession = z.infer<typeof flashcardSessionSchema>;
+export type TutorPlan = z.infer<typeof tutorPlanSchema>;
+export type CardReviewDay = z.infer<typeof cardReviewDaySchema>;
 export type Workspace = z.infer<typeof workspaceSchema>;
 export type QuizQuestion = z.infer<typeof quizQuestionSchema>;
 export type QuizRun = z.infer<typeof quizRunSchema>;
