@@ -12,6 +12,7 @@ import { Markdown } from "./markdown";
 import { MediaToolbar } from "./media-toolbar";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { normalizeTags, type Note, type Topic, type LearningPath, type Workspace } from "@/lib/brain/model";
+import { flattenTopics, getTopicDescendantIds, getTopicOptionLabel, getTopicPathLabel } from "@/lib/brain/topics";
 import type { SaveWorkspace } from "@/lib/brain/use-brain";
 
 export function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) {
@@ -51,7 +52,7 @@ export function NoteEditor({ note, workspace, save, saving, onClose }: {
       <DialogHeader><DialogTitle>{workspace.notes.some(n => n.id === note.id) ? "Notiz bearbeiten" : "Ein neuer Gedanke"}</DialogTitle><DialogDescription>Halte fest, was du verstehen und behalten möchtest.</DialogDescription></DialogHeader>
       <form onSubmit={submit} className="editor-form" inert={busy} aria-busy={busy}>
         <Field label="Titel"><Input value={draft.title} onChange={e => change("title", e.target.value)} placeholder="Was möchtest du festhalten?" required maxLength={160} autoFocus /></Field>
-        <Field label="Thema"><Select value={draft.topicId ?? "none"} onValueChange={v => change("topicId", v === "none" ? null : v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Ohne Thema</SelectItem>{workspace.topics.map(t => <SelectItem key={t.id} value={t.id}>{t.title}</SelectItem>)}</SelectContent></Select></Field>
+        <Field label="Thema" hint="Wähle das passende Fachthema oder Unterthema. Die Notiz erscheint auch bei seinen übergeordneten Themen."><Select value={draft.topicId ?? "::unassigned"} onValueChange={v => change("topicId", v === "::unassigned" ? null : v)}><SelectTrigger className="topic-path-select" aria-label="Thema der Notiz" title={draft.topicId ? getTopicPathLabel(workspace.topics, draft.topicId) : "Ohne Thema"}><SelectValue>{workspace.topics.find(topic => topic.id === draft.topicId)?.title ?? "Ohne Thema"}</SelectValue></SelectTrigger><SelectContent className="topic-path-options" position="popper"><SelectItem value="::unassigned">Ohne Thema</SelectItem>{flattenTopics(workspace.topics).map(({ topic }) => <SelectItem key={topic.id} value={topic.id} title={getTopicPathLabel(workspace.topics, topic.id)}>{getTopicOptionLabel(workspace.topics, topic.id)}</SelectItem>)}</SelectContent></Select></Field>
         <Tabs value={mode} onValueChange={setMode}><TabsList aria-label="Inhaltsansicht"><TabsTrigger value="edit">Schreiben</TabsTrigger><TabsTrigger value="preview">Vorschau</TabsTrigger></TabsList>
           <TabsContent value="edit"><Field label="Inhalt" hint="Markdown: ## Überschrift · **fett** · - Aufzählung · [Quelle](https://…)"><Textarea className="markdown-input" value={draft.content} onChange={e => change("content", e.target.value)} placeholder="Deine Gedanken, Beispiele und Quellen …" maxLength={80000} rows={10} /></Field></TabsContent>
           <TabsContent value="preview"><div className="markdown-preview"><Markdown content={draft.content || "Deine Vorschau erscheint hier."} /></div></TabsContent>
@@ -72,13 +73,19 @@ export function NoteEditor({ note, workspace, save, saving, onClose }: {
   </Dialog>;
 }
 
-export function TopicEditor({ topic, save, saving, onClose }: { topic: Topic; save: SaveWorkspace; saving: boolean; onClose: () => void }) {
+export function TopicEditor({ topic, workspace, save, saving, onClose }: { topic: Topic; workspace: Workspace; save: SaveWorkspace; saving: boolean; onClose: () => void }) {
   const [draft, setDraft] = useState(topic);
+  const excludedParents = getTopicDescendantIds(workspace.topics, topic.id);
+  const parentChoices = flattenTopics(workspace.topics).filter(({ topic: candidate }) => candidate.id !== topic.id && !excludedParents.has(candidate.id));
+  const isExisting = workspace.topics.some(item => item.id === topic.id);
+  const location = draft.parentId ? getTopicPathLabel(workspace.topics, draft.parentId) + " › " + (draft.title.trim() || "Neues Thema") : draft.title.trim() || "Neues Thema";
   const dirty = JSON.stringify(topic) !== JSON.stringify(draft);
   useUnsaved(dirty);
-  return <Dialog open onOpenChange={open => { if (!open && !saving) closeIfSafe(dirty, onClose); }}><DialogContent><DialogHeader><DialogTitle>Dein Themenraum</DialogTitle><DialogDescription>Gib zusammengehörenden Gedanken einen Ort.</DialogDescription></DialogHeader>
+  return <Dialog open onOpenChange={open => { if (!open && !saving) closeIfSafe(dirty, onClose); }}><DialogContent className="topic-editor-dialog"><DialogHeader><DialogTitle>{isExisting ? "Thema bearbeiten" : draft.parentId ? "Unterthema anlegen" : "Thema anlegen"}</DialogTitle><DialogDescription>Ordne Wissen vom Fachgebiet bis zum konkreten Teilthema.</DialogDescription></DialogHeader>
     <form className="editor-form" inert={saving} aria-busy={saving} onSubmit={async e => { e.preventDefault(); if (await save(w => ({ ...w, topics: w.topics.some(t => t.id === draft.id) ? w.topics.map(t => t.id === draft.id ? draft : t) : [...w.topics, draft] }), "Thema gespeichert")) onClose(); }}>
       <Field label="Name"><Input required autoFocus maxLength={160} value={draft.title} onChange={e => setDraft({ ...draft, title: e.target.value })} /></Field>
+      <Field label="Übergeordnetes Thema" hint="Ohne übergeordnetes Thema steht dieser Bereich auf der obersten Ebene."><Select value={draft.parentId ?? "::root"} onValueChange={parentId => setDraft({ ...draft, parentId: parentId === "::root" ? null : parentId })}><SelectTrigger className="topic-path-select" aria-label="Übergeordnetes Thema" title={draft.parentId ? getTopicPathLabel(workspace.topics, draft.parentId) : "Oberste Ebene"}><SelectValue>{workspace.topics.find(parent => parent.id === draft.parentId)?.title ?? "Oberste Ebene"}</SelectValue></SelectTrigger><SelectContent className="topic-path-options" position="popper"><SelectItem value="::root">Oberste Ebene</SelectItem>{parentChoices.map(({ topic: parent }) => <SelectItem key={parent.id} value={parent.id} title={getTopicPathLabel(workspace.topics, parent.id)}>{getTopicOptionLabel(workspace.topics, parent.id)}</SelectItem>)}</SelectContent></Select></Field>
+      <div className="topic-location-preview"><span>Position in der Themenstruktur</span><strong title={location}>{draft.parentId ? getTopicOptionLabel(workspace.topics, draft.parentId) + " › " : ""}{draft.title.trim() || "Neues Thema"}</strong>{isExisting && <small>Vorhandene Notizen, Unterthemen und Lernfortschritte bleiben erhalten.</small>}</div>
       <Field label="Beschreibung"><Textarea maxLength={600} value={draft.description} onChange={e => setDraft({ ...draft, description: e.target.value })} /></Field>
       <Field label="Farbe"><Select value={draft.color} onValueChange={color => setDraft({ ...draft, color: color as Topic["color"] })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{[["blue", "Blau"], ["purple", "Violett"], ["orange", "Orange"], ["green", "Grün"]].map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}</SelectContent></Select></Field>
       <div className="dialog-actions"><Button variant="outline" type="button" disabled={saving} onClick={() => closeIfSafe(dirty, onClose)}>Abbrechen</Button><Button disabled={saving || !draft.title.trim()} type="submit">Thema speichern</Button></div>

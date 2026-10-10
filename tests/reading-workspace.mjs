@@ -26,7 +26,7 @@ try {
 
   await page.getByRole("button", { name: "Themen", exact: true }).click();
   await page.screenshot({ path: ".sites-runtime/qa/redesign-topics.png", fullPage: true });
-  await page.getByRole("heading", { name: topic.title, exact: true }).click();
+  await page.locator(".topic-browser .topic-tree-open").filter({ hasText: topic.title }).click();
   await expect(page.locator(".note-card")).toHaveCount(1);
   await expect(page.getByRole("button", { name: "Themenfilter entfernen" })).toBeVisible();
   await page.getByRole("heading", { name: note.title, exact: true }).click();
@@ -39,7 +39,7 @@ try {
   assert.equal(await page.evaluate(() => document.activeElement?.id), ids.at(-1));
   await reader.getByRole("button", { name: "Bearbeiten", exact: true }).click();
   const editor = page.getByRole("dialog", { name: "Notiz bearbeiten", exact: true });
-  await expect(editor.getByRole("combobox", { name: "Thema", exact: true })).toBeVisible();
+  await expect(editor.getByRole("combobox", { name: "Thema der Notiz", exact: true })).toBeVisible();
   await expect(editor.getByLabel("Kurzbeschreibung")).not.toBeVisible();
   await editor.getByRole("textbox", { name: "Inhalt", exact: false }).fill(note.content + "\n\nGespeicherte Ergänzung.");
   await editor.getByRole("button", { name: "Notiz speichern", exact: true }).click();

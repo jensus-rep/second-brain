@@ -5,6 +5,9 @@ import "./reading-workspace.css";
 import "./mobile-navigation.css";
 import "./mobile-reader.css";
 import "./mobile-learning.css";
+import "./topic-hierarchy.css";
+import "./workspace-redesign.css";
+import "./learning-overview.css";
 
 export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover" };
 

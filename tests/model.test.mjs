@@ -7,6 +7,7 @@ import { emptyWorkspace } from "../lib/brain/model.ts";
 import { isCorrect, learningProfile, selectQuestions, reminderCalendar, compactQuizRuns, restoreQuestion, ARCHIVED_EXPLANATION, ARCHIVED_TEXT, FULL_RUNS_PER_SUBJECT } from "../lib/brain/quiz.ts";
 import { quizExamples } from "../lib/brain/quiz-examples.ts";
 import { ACCESS_KEY_PATTERN, accessKeyHash, accessKeyName, bearerKey, newAccessKey } from "../lib/server/access-keys.ts";
+import { flattenTopics, getTopicAncestors, getTopicDescendantIds, getTopicOptionLabel, getTopicPathLabel } from "../lib/brain/topics.ts";
 test("seed is a valid portable workspace with no fake learning progress", () => {
   assert.equal(workspaceSchema.parse(seedWorkspace).notes.length, 6);
   assert.deepEqual(seedWorkspace.completedStepIds, []);
@@ -21,6 +22,71 @@ test("imports reject duplicate IDs and broken references", () => {
   const progress = structuredClone(seedWorkspace);
   progress.completedStepIds = ["not-a-step"];
   assert.equal(workspaceSchema.safeParse(progress).success, false);
+});
+
+const hierarchicalTopics = [
+  { id: "supervised", title: "Supervised Learning", description: "", color: "blue", parentId: "ml" },
+  { id: "ai", title: "Künstliche Intelligenz", description: "", color: "purple" },
+  { id: "ml", title: "Machine Learning", description: "", color: "blue", parentId: "ai" },
+  { id: "unsupervised", title: "Unsupervised Learning", description: "", color: "green", parentId: "ml" },
+  { id: "writing", title: "Schreiben", description: "", color: "orange", parentId: null },
+];
+
+test("topic hierarchy round-trips through workspace validation while legacy root topics stay unchanged", () => {
+  const old = workspaceSchema.parse(seedWorkspace);
+  assert.deepEqual(old.topics, seedWorkspace.topics);
+  const workspace = { ...emptyWorkspace, topics: hierarchicalTopics };
+  assert.deepEqual(workspaceSchema.parse(JSON.parse(JSON.stringify(workspace))).topics, hierarchicalTopics);
+});
+
+test("topic imports reject missing parents, self-links and cycles at every depth", () => {
+  const validate = topics => workspaceSchema.safeParse({ ...emptyWorkspace, topics });
+  assert.equal(validate(hierarchicalTopics).success, true);
+  const missing = validate(hierarchicalTopics.map(topic => topic.id === "ml" ? { ...topic, parentId: "missing" } : topic));
+  assert.equal(missing.success, false);
+  assert.deepEqual(missing.error.issues[0].path, ["topics", 2, "parentId"]);
+  assert.equal(validate(hierarchicalTopics.map(topic => topic.id === "ml" ? { ...topic, parentId: "ml" } : topic)).success, false);
+  assert.equal(validate(hierarchicalTopics.map(topic => topic.id === "ai" ? { ...topic, parentId: "supervised" } : topic)).success, false);
+});
+
+test("topic navigation follows parents and includes all nested knowledge without crossing siblings", () => {
+  assert.deepEqual(flattenTopics(hierarchicalTopics).map(({ topic, depth }) => [topic.id, depth]), [["ai", 0], ["ml", 1], ["supervised", 2], ["unsupervised", 2], ["writing", 0]]);
+  assert.deepEqual(getTopicAncestors(hierarchicalTopics, "supervised").map(topic => topic.id), ["ai", "ml"]);
+  assert.deepEqual(getTopicAncestors(hierarchicalTopics, "ai"), []);
+  assert.deepEqual([...getTopicDescendantIds(hierarchicalTopics, "ml")].sort(), ["ml", "supervised", "unsupervised"]);
+  assert.deepEqual([...getTopicDescendantIds(hierarchicalTopics, "supervised")], ["supervised"]);
+  assert.deepEqual([...getTopicDescendantIds(hierarchicalTopics, "missing")], []);
+  assert.equal(getTopicPathLabel(hierarchicalTopics, "unsupervised"), "Künstliche Intelligenz › Machine Learning › Unsupervised Learning");
+});
+
+test("moving a topic preserves linked notes and progress and search includes the new ancestors", () => {
+  const before = structuredClone(seedWorkspace);
+  const originalTopic = before.topics[0];
+  const root = { id: "new-root", title: "Übergreifendes Wissen", description: "", color: "purple" };
+  const moved = workspaceSchema.parse({ ...before, topics: [root, ...before.topics.map(topic => topic.id === originalTopic.id ? { ...topic, parentId: root.id } : topic)] });
+  assert.deepEqual(moved.notes, before.notes);
+  assert.deepEqual(moved.paths, before.paths);
+  assert.deepEqual(moved.completedStepIds, before.completedStepIds);
+  assert.deepEqual(moved.cards, before.cards);
+  assert.deepEqual(searchNotes(moved.notes, "übergreifendes", moved.topics).map(note => note.id).sort(), before.notes.filter(note => note.topicId === originalTopic.id).map(note => note.id).sort());
+});
+
+test("hierarchy helpers safely render invalid drafts until import validation rejects them", () => {
+  const cycle = hierarchicalTopics.map(topic => topic.id === "ai" ? { ...topic, parentId: "supervised" } : topic);
+  assert.equal(flattenTopics(cycle).length, cycle.length);
+  assert.equal(new Set(flattenTopics(cycle).map(({ topic }) => topic.id)).size, cycle.length);
+  assert.ok(getTopicAncestors(cycle, "ai").length < cycle.length);
+  assert.deepEqual([...getTopicDescendantIds(cycle, "ai")].sort(), ["ai", "ml", "supervised", "unsupervised"]);
+});
+
+test("the maximum supported topic depth stays traversable and option labels retain the root and nearest parents", () => {
+  const topics = Array.from({ length: 100 }, (_, index) => ({ id: `topic-${index}`, title: `Thema ${index}`, description: "", color: "blue", parentId: index ? `topic-${index - 1}` : null }));
+  assert.equal(workspaceSchema.safeParse({ ...emptyWorkspace, topics }).success, true);
+  assert.equal(flattenTopics(topics).at(-1).depth, 99);
+  assert.equal(getTopicAncestors(topics, "topic-99").length, 99);
+  assert.equal(getTopicDescendantIds(topics, "topic-0").size, 100);
+  assert.equal(getTopicOptionLabel(topics, "topic-99"), "Thema 0 › … › Thema 98 › Thema 99");
+  assert.equal(getTopicPathLabel(topics, "topic-99").split(" › ").length, 100);
 });
 test("tags are normalized and full-text search combines words and topic names", () => {
   assert.deepEqual(normalizeTags(" Lernen, lernen, , Wissen "), ["lernen", "wissen"]);

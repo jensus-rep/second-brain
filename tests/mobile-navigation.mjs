@@ -25,7 +25,7 @@ const navigation = page.getByRole("navigation", { name: "Hauptnavigation", exact
 const menu = page.getByRole("dialog", { name: "Alle Bereiche", exact: true });
 const directNames = ["Mein Überblick", "Wissensbibliothek", "Lernkarten", "Tests & Übungen"];
 const more = navigation.getByRole("button", { name: "Weitere Bereiche öffnen", exact: true });
-const destinations = ["Themen", "Lernpfade", "Verbindungen", "Favoriten", "Archiv"];
+const destinations = ["Themen", "Lernsammlungen", "Lernpfade", "Verbindungen", "Favoriten", "Archiv"];
 const current = name => navigation.getByRole("button", { name, exact: true });
 
 async function noOverflow(label) {

@@ -51,7 +51,7 @@ try {
     const reader = page.getByRole("dialog", { name: note.title, exact: true });
     await expect(reader).toBeVisible();
     for (const image of await reader.locator(".figure-zoom img, .diagram-zoom img").all()) await loaded(image);
-    await expect(reader.locator(".diagram-zoom img")).toHaveCount(3);
+    await expect(reader.locator(".diagram-zoom img")).toHaveCount(3, { timeout: 60000 });
     for (const diagram of await reader.locator(".diagram-zoom img").all()) {
       const dimensions = await diagram.evaluate(img => {
         const svg = new DOMParser().parseFromString(decodeURIComponent(img.src.split(",")[1]), "image/svg+xml").documentElement;

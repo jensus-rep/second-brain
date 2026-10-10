@@ -65,10 +65,17 @@ const button = (name, scope = page) => scope.getByRole("button", { name, exact: 
 async function click(name, scope = page) {
   await expect(button(name, scope)).toBeEnabled();
   await button(name, scope).click();
+  if (["Lernkarten öffnen", "Zur Kartenübersicht"].includes(name)) await openCardFilters();
+}
+async function openCardFilters() {
+  const filters = page.locator(".flashcard-filters-disclosure");
+  await expect(filters).toBeVisible();
+  if (!await filters.evaluate(element => element.open)) await filters.locator("summary").click();
 }
 async function navigate(name) {
   if (!await button(name).isVisible()) await click("Navigation öffnen");
   await click(name);
+  if (name === "Lernkarten") await openCardFilters();
 }
 async function reload() {
   const response = await page.goto(origin, { waitUntil: "networkidle" });
@@ -266,7 +273,7 @@ try {
 
   if (process.env.BRAIN_TEST_PHASE !== "creation") {
   console.log("Checking collection creation, update, revision persistence and card-link cleanup");
-  await navigate("Themen");
+  await navigate("Lernsammlungen");
   await click("Neue Lernsammlung");
   const editor = page.getByRole("dialog", { name: "Lernsammlung zusammenstellen", exact: true });
   await editor.getByLabel("Name der Lernsammlung", { exact: true }).fill("Eigene Lernsammlung für Produktfragen");
@@ -286,7 +293,7 @@ try {
   assert.deepEqual(custom.cardIds, [cards[7].id]);
   await expect(editor).toHaveCount(0);
   await reload();
-  await navigate("Themen");
+  await navigate("Lernsammlungen");
   await page.locator(".collection-card").filter({ has: page.getByRole("heading", { name: custom.title, exact: true }) }).click();
   let customDetail = page.getByRole("article", { name: `Lernsammlung ${custom.title}`, exact: true });
   await expect(customDetail).toBeVisible();
@@ -302,7 +309,7 @@ try {
   assert.equal(updated.workspace.learningCollections.length, 3, "Updating retains the stable collection ID.");
   assert.deepEqual(updated.workspace.learningCollections.find(item => item.id === custom.id).questionIds.slice().sort(), questions.map(item => item.id).sort());
   await reload();
-  await navigate("Themen");
+  await navigate("Lernsammlungen");
   await page.locator(".collection-card").filter({ has: page.getByRole("heading", { name: "Produktfragen mit gemeinsamen Grundlagen", exact: true }) }).click();
   customDetail = page.getByRole("article", { name: "Lernsammlung Produktfragen mit gemeinsamen Grundlagen", exact: true });
   await expect(customDetail.locator(".collection-inventory > div").filter({ has: page.getByText("Lernkarten", { exact: true }) }).locator("dd")).toHaveText("8");
@@ -407,7 +414,7 @@ try {
   assert.deepEqual(adoptedSubject.questionIds.slice().sort(), allAfterCreation.quizQuestions.filter(item => item.subject === subject).map(item => item.id).sort(), "The adopted fallback keeps the entire subject pool and the new member.");
 
   console.log("Checking that editing a collection resets an invalid topic filter");
-  await navigate("Themen");
+  await navigate("Lernsammlungen");
   await page.locator(".collection-card").filter({ has: page.getByRole("heading", { name: primary.title, exact: true }) }).click();
   const detail = page.getByRole("article", { name: `Lernsammlung ${primary.title}`, exact: true });
   await detail.getByLabel("Inhalte der Lernsammlung nach Thema", { exact: true }).selectOption(topics[0].id);

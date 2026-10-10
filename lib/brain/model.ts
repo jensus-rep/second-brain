@@ -1,8 +1,9 @@
 import { z } from "zod";
+import { getTopicAncestors } from "./topics.ts";
 
 const id = z.string().min(1).max(100).regex(/^[a-zA-Z0-9_-]+$/);
 const title = z.string().trim().min(1, "Bitte einen Titel eingeben.").max(160);
-export const topicSchema = z.object({ id, title, description: z.string().max(600), color: z.enum(["blue", "purple", "orange", "green"]) });
+export const topicSchema = z.object({ id, title, description: z.string().max(600), color: z.enum(["blue", "purple", "orange", "green"]), parentId: id.nullable().optional() });
 export const noteSchema = z.object({
   id, title, summary: z.string().max(600), content: z.string().max(80000),
   topicId: id.nullable(), tags: z.array(z.string().trim().min(1).max(40)).max(20),
@@ -55,6 +56,21 @@ export const quizRunSchema = z.object({
   }
 });
 export const learningReminderSchema = z.object({ id, subject: title, dueAt: z.string().datetime(), completed: z.boolean() });
+export const learningFocusSchema = z.object({
+  collectionId: id.nullable(), subject: title.nullable(), updatedAt: z.string().datetime(),
+});
+export const flashcardSessionSchema = z.object({
+  id, collectionId: id.nullable(), mode: z.enum(["due", "all"]),
+  queue: z.array(z.object({ id, reviews: z.number().int().min(0), dueAt: z.string().datetime() })).max(3000),
+  index: z.number().int().min(0), startedAt: z.string().datetime(), updatedAt: z.string().datetime(),
+}).superRefine((session, ctx) => {
+  if (new Set(session.queue.map(card => card.id)).size !== session.queue.length) {
+    ctx.addIssue({ code: "custom", path: ["queue"], message: "Die Karten einer Lernrunde müssen eindeutig sein." });
+  }
+  if (session.index > session.queue.length) {
+    ctx.addIssue({ code: "custom", path: ["index"], message: "Die Position muss innerhalb der Lernrunde liegen." });
+  }
+});
 export const learningCollectionSchema = z.object({
   id, title, description: z.string().max(600),
   noteIds: z.array(id).max(1000), questionIds: z.array(id).max(1000),
@@ -75,6 +91,8 @@ export const workspaceSchema = z.object({
   quizRuns: z.array(quizRunSchema).max(200).default([]),
   learningReminders: z.array(learningReminderSchema).max(100).default([]),
   learningCollections: z.array(learningCollectionSchema).max(100).default([]),
+  learningFocus: learningFocusSchema.nullable().optional(),
+  flashcardSession: flashcardSessionSchema.nullable().optional(),
 }).superRefine((data, ctx) => {
   const issue = (message: string) => ctx.addIssue({ code: "custom", message });
   for (const list of [data.notes, data.topics, data.paths, data.cards, data.quizQuestions, data.quizRuns, data.learningReminders, data.learningCollections]) {
@@ -83,6 +101,29 @@ export const workspaceSchema = z.object({
   if (data.quizRuns.filter(run => !run.finishedAt).length > 1) issue("Bitte die laufende Testrunde zuerst beenden.");
   const notes = new Set(data.notes.map(n => n.id));
   const topics = new Set(data.topics.map(t => t.id));
+  const topicsById = new Map(data.topics.map(topic => [topic.id, topic]));
+  for (const [index, topic] of data.topics.entries()) {
+    const topicIssue = (message: string) => ctx.addIssue({ code: "custom", path: ["topics", index, "parentId"], message });
+    if (!topic.parentId) continue;
+    if (!topics.has(topic.parentId)) {
+      topicIssue("Das übergeordnete Thema fehlt.");
+      continue;
+    }
+    if (topic.parentId === topic.id) {
+      topicIssue("Ein Thema kann nicht sich selbst untergeordnet sein.");
+      continue;
+    }
+    const visited = new Set([topic.id]);
+    let parentId: string | null | undefined = topic.parentId;
+    while (parentId) {
+      if (visited.has(parentId)) {
+        topicIssue("Die Themenhierarchie darf keine Kreisverknüpfungen enthalten.");
+        break;
+      }
+      visited.add(parentId);
+      parentId = topicsById.get(parentId)?.parentId;
+    }
+  }
   const questions = new Set(data.quizQuestions.map(question => question.id));
   const cards = new Set(data.cards.map(card => card.id));
   const paths = new Set(data.paths.map(path => path.id));
@@ -110,6 +151,8 @@ export type LearningPath = z.infer<typeof pathSchema>;
 export type Flashcard = z.infer<typeof flashcardSchema>;
 export type FlashcardPriority = NonNullable<Flashcard["priority"]>;
 export type LearningCollection = z.infer<typeof learningCollectionSchema>;
+export type LearningFocus = z.infer<typeof learningFocusSchema>;
+export type FlashcardSession = z.infer<typeof flashcardSessionSchema>;
 export type Workspace = z.infer<typeof workspaceSchema>;
 export type QuizQuestion = z.infer<typeof quizQuestionSchema>;
 export type QuizRun = z.infer<typeof quizRunSchema>;
@@ -129,7 +172,8 @@ export const MAX_WORKSPACE_BYTES = 4_000_000;
 export function searchNotes(notes: Note[], query: string, topics: Topic[] = []): Note[] {
   const terms = query.toLocaleLowerCase("de").trim().split(/\s+/).filter(Boolean);
   return notes.filter(n => {
-    const text = [n.title, n.summary, n.content, ...n.tags, topics.find(t => t.id === n.topicId)?.title ?? ""].join(" ").toLocaleLowerCase("de");
+    const topicNames = n.topicId ? [...getTopicAncestors(topics, n.topicId).map(topic => topic.title), topics.find(t => t.id === n.topicId)?.title ?? ""] : [];
+    const text = [n.title, n.summary, n.content, ...n.tags, ...topicNames].join(" ").toLocaleLowerCase("de");
     return terms.every(term => text.includes(term));
   }).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }

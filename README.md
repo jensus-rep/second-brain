@@ -5,10 +5,10 @@ Eine private, deutschsprachige Second-Brain-Web-App. Wissen wird als Markdown mi
 ## Funktionen
 
 - Notizen erstellen, bearbeiten, favorisieren, archivieren und wiederherstellen.
-- Eigene Themenräume, Tags sowie Verbindungen und automatisch sichtbare Rückverweise.
+- Eigene Fachthemen und verschachtelte Unterthemen, Tags sowie Verbindungen und automatisch sichtbare Rückverweise.
 - Volltextsuche über Titel, Zusammenfassung, Inhalt, Tags und Themennamen; kombinierbare Filter.
 - Karten- und Listenansicht sowie responsive Navigation.
-- Eigene Themenübersicht mit Eintragszahlen und einer Ansicht für noch nicht zugeordnete Einträge; Themen- und Tagfilter öffnen bei Bedarf.
+- Aufklappbare Themenstruktur mit Eintragszahlen und klickbaren Themenpfaden; Elternansichten und Themenfilter schließen das Wissen ihrer Unterthemen ein.
 - Großzügige Eintragsansicht mit moderner Lesetypografie, Gliederung aus den tatsächlichen Markdown-Überschriften und einklappbaren Metadaten.
 - Verwandte Einträge mit Browsernavigation; nach dem Bearbeiten oder Erstellen einer Lernkarte zurück zum gelesenen Eintrag.
 - Lernpfade mit sortierbaren Schritten, eigenen Aufgaben und dauerhaftem Fortschritt.
@@ -17,9 +17,11 @@ Eine private, deutschsprachige Second-Brain-Web-App. Wissen wird als Markdown mi
 - Sichere Mermaid-Ablaufdiagramme, Sequenzdiagramme und Mindmaps direkt im Markdown.
 - Markdown-Tabellen erscheinen als responsive SVG-Karten mit umbrechender Schrift. Eine aufklappbare Textansicht erhält Formatierungen und bedienbare Links; Notizen und Lernkarten nutzen dieselbe Darstellung.
 - Lernkarten mit Frage, aufdeckbarer Antwort und geplanten Wiederholungen; Bilder und Diagramme auf beiden Seiten.
-- Lernsammlungen mit vollständigem Umfang, zugehörigen Notizen, Lernkarten, Tests und Lernpfaden; drei Prioritätsstufen für die Karten.
+- Eigener Bereich für Lernsammlungen mit sofortiger Detailansicht und direktem Lernstart; zugehörige Notizen, Lernkarten, Tests und Lernpfade sowie drei Prioritätsstufen für die Karten.
+- Sammlungsauswahl und Lernstart gemeinsam im Lernkartenbereich; freies Üben bleibt auch ohne fällige Karten verfügbar.
 - Multiple-Choice-Prüfungssimulationen mit optionalem Zeitlimit und adaptiver Übung, Fehlerjournal und eigenen Testaufgaben.
 - Vorbereitung nach Lernbereichen mit passenden Wissensnotizen, kurzen oder vollständigen Übungsrunden und gespeichertem Arbeitsfortschritt.
+- Lernüberblick mit dauerhaftem Lernfokus, unterbrochenen Einheiten, fälligen Karten, offenen Lernbereichen und direktem Start; letzte Auswertung und Vergleich tatsächlich vergleichbarer Runden.
 - Animierte Ergebnisauswertung sowie passende Abbildungen, Diagramme und Vergleiche direkt bei der Antworterklärung.
 - Gespeicherte Lernerinnerungen im Überblick mit Kalenderexport und Alarm.
 - Vollständige ZIP-Sicherungen inklusive Bilder und Lernkarten; JSON bleibt zum Bearbeiten der Wissensdaten verfügbar.
@@ -32,6 +34,7 @@ Eine private, deutschsprachige Second-Brain-Web-App. Wissen wird als Markdown mi
 | Bereich | Ort |
 | --- | --- |
 | Typen, Datenvalidierung, Suche, Fortschritt | lib/brain/model.ts |
+| Themenhierarchie, Themenpfade und aufklappbare Struktur | lib/brain/topics.ts, components/brain/topic-tree.tsx |
 | Editierbare Startinhalte für neue Sammlungen | lib/brain/seed.ts |
 | Datenbankzugriff | lib/brain/storage.ts, lib/server/store*.ts |
 | Anmeldung und Sessions | lib/server/auth.ts, app/login/, app/api/auth/ |
@@ -48,6 +51,7 @@ Eine private, deutschsprachige Second-Brain-Web-App. Wissen wird als Markdown mi
 | Bildsicherungen und Import | lib/brain/backup.ts, components/brain/transfer-dialog.tsx |
 | Design-Tokens, Layout, responsive Gestaltung | app/globals.css |
 | Bibliotheks- und Lesegestaltung | app/reading-workspace.css |
+| Themenstruktur und gemeinsame Orientierung | app/topic-hierarchy.css, app/workspace-redesign.css |
 | Wiederverwendbare UI-Primitiven | components/ui/ |
 
 React 19, TypeScript, Next.js 16 (eigenständiger Node-Server) und Tailwind. Die App hat ein eigenes Konto mit E-Mail und Passwort (scrypt-Hash, signiertes HttpOnly-Cookie, Sperre nach wiederholten Fehlversuchen). Anfragen ohne gültige Session werden von der API abgelehnt. Nutzer-IDs kommen ausschließlich aus der serverseitigen Session.
@@ -78,6 +82,8 @@ npm run test:reading
 npm run test:quizzes
 npm run test:preparation
 npm run test:collections
+npm run test:structure
+npm run test:reentry
 npm run test:comparisons
 npm run test:mobile
 npm run test:zoom
@@ -95,9 +101,23 @@ Die Vorbereitungsprüfung ergänzt Themenabdeckung, kurze und vollständige Übu
 
 Die Sammlungsprüfung testet Umfang und Quellenzuordnung, gemeinsame Auswahl in Lernkarten und Tests, drei Prioritätsstufen, exakt gefilterte fällige Karten, Speichern und Neuladen, eigene Sammlungen und konsistente Verweise beim Kartenlöschen. `BRAIN_TEST_URL` muss auf localhost zeigen; `BRAIN_TEST_SQLITE_PATH` benennt die tatsächliche lokale SQLite-Datei. Vor jeder Testdatenänderung wird geprüft, dass API und diese Datei denselben Ausgangsbestand enthalten. Screenshots prüfen auch 320 und 390 Pixel Breite; anschließend wird der Ausgangsbestand wiederhergestellt.
 
+Die Wiedereinstiegsprüfung (`test:reentry`) prüft gespeicherte Kartenpositionen nach Pause und Neuladen, direkte Vorbereitungseinheiten, Speicherfehler und gezielte Wiederholung unsicherer Lernbereiche. Sie kontrolliert Auswertungslinks, vergleichbare Ergebnisse sowie kurze Tests mit verborgenen Lösungen bis zur Abgabe. Sie nutzt dieselben lokalen Umgebungsvariablen, prüft die SQLite-Datei vor Schreibvorgängen und stellt den Ausgangsbestand wieder her.
+
+## Lernüberblick und Wiedereinstieg
+
+Im Überblick steht der zuletzt gespeicherte Lernfokus vor der Wissenssuche. Eine offene Testrunde oder eine pausierte Kartenrunde hat Vorrang. Danach empfiehlt die App den zuletzt falsch beantworteten Lernbereich, fällige Karten, eine offene Vorbereitungseinheit oder einen kurzen Abschlusstest mit höchstens sechs Aufgaben aus mehreren Lernbereichen. Die Begründung steht direkt beim Startknopf. Ein Kurztest lässt sich auch vor Abschluss aller Bereiche gezielt starten; Lösungen bleiben bis zur Abgabe verborgen.
+
+„Lernbereiche bearbeitet“ zählt vollständig beantwortete und abgeschlossene Vorbereitungseinheiten, auch wenn dabei Antworten falsch waren. „Karten bereits wiederholt“ zählt Karten mit mindestens einer gespeicherten Bewertung. Beide Werte beschreiben bearbeitete Inhalte. Die letzte Testauswertung und Hinweise zum Nachschlagen zeigen getrennt, wo noch Unsicherheit besteht. Verbesserungen werden nur bei gleichem Fachthema, Modus, Lernbereich und tatsächlich gleichen Aufgaben angezeigt; geänderte Aufgaben oder gekürzte Althistorie ergeben keinen erfundenen Vergleich.
+
+Die optionalen Workspace-Felder `learningFocus` und `flashcardSession` speichern Auswahl und Kartenposition serverseitig mit Revision und werden in Sicherungen übernommen. Beim Fortsetzen werden gelöschte, aus einer vorhandenen Sammlung entfernte oder inzwischen anders bewertete Karten übersprungen. Eine neue Kartenrunde ersetzt eine gespeicherte Runde erst nach ausdrücklicher Auswahl. Historische Referenzen dürfen bestehen bleiben; sie ändern keine vorhandenen IDs und benötigen keine Tabellenmigration.
+
 ## Lernsammlungen und Umfang
 
-Auf der Startseite und unter „Themen“ zeigen Lernsammlungen den gesamten zugehörigen Bestand. In der Detailansicht stehen alle enthaltenen Notizen, Fachthemen, Karten, Testaufgaben und Lernpfade. Dieselbe Auswahl gilt beim Wechsel zu Lernkarten oder Tests. Eigene Sammlungen lassen sich aus vorhandenen Inhalten zusammenstellen und mit ihrem Lernziel speichern. Karten zu ausgewählten Notizen gehören automatisch dazu; zusätzliche Karten, Testaufgaben und Lernpfade werden ausdrücklich ausgewählt. Neue Karten und Testaufgaben aus einer ausgewählten Sammlung werden ihr beim Speichern direkt zugeordnet. Ein Inhalt kann mehreren Sammlungen angehören und behält dabei einen gemeinsamen Lernfortschritt.
+Auf der Startseite und unter „Lernsammlungen“ stehen Sammlungen für konkrete Lernziele. Ein Klick öffnet direkt die Detailansicht mit allen enthaltenen Notizen, Fachthemen, Karten, Testaufgaben und Lernpfaden. „Jetzt lernen“ startet die fälligen Karten der Sammlung; wenn keine fällig ist, werden alle Karten geübt. „Lernkarten öffnen“ führt zur Sammlungsauswahl mit zusätzlichen Filtern. Dieselbe Auswahl gilt beim Wechsel zu Tests. Eigene Sammlungen lassen sich aus vorhandenen Inhalten zusammenstellen und mit ihrem Lernziel speichern. Karten zu ausgewählten Notizen gehören automatisch dazu; zusätzliche Karten, Testaufgaben und Lernpfade werden ausdrücklich ausgewählt. Neue Karten und Testaufgaben aus einer ausgewählten Sammlung werden ihr beim Speichern direkt zugeordnet. Ein Inhalt kann mehreren Sammlungen angehören und behält dabei einen gemeinsamen Lernfortschritt.
+
+Unter „Themen“ steht die fachliche Struktur unabhängig von den Lernsammlungen. Im Themeneditor lässt sich ein übergeordnetes Thema wählen; „Unterthema anlegen“ übernimmt die gewählte Ebene. Notizen werden ihrem konkreten Thema zugeordnet und erscheinen auch in seinen Elternansichten. Die optionale Metadatenangabe `parentId` wird im bestehenden Workspace-Dokument gespeichert. Ältere Themen ohne diese Angabe bleiben auf der obersten Ebene. Änderungen erhalten IDs und Lernfortschritte; ungültige Elternverweise und Kreisverknüpfungen werden abgelehnt.
+
+`npm run test:structure` prüft Sammlungsöffnung und direkten Lernstart, freies Üben zukünftiger Karten, Rücknavigation, Themenfilter inklusive Nachfahren, Themenverschiebung, neue Unterthemen und Notizzuordnung nach Neuladen. Es kontrolliert außerdem 44-Pixel-Bedienelemente und Layouts bei 320, 390, 768 und 1440 Pixeln sowie lange Themenpfade. Wie die Sammlungsprüfung verwendet es `BRAIN_TEST_URL` und `BRAIN_TEST_SQLITE_PATH` für einen isolierten lokalen Bestand und stellt diesen anschließend wieder her.
 
 Für den vorhandenen Bestand sind Projektmanagement, Forschungsmethoden, Künstliche Intelligenz und Softwareentwicklung vorbereitet. Zuordnungen enthalten ausschließlich tatsächlich vorhandene IDs; gespeicherte Änderungen haben Vorrang. Andere Bestände werden anhand ihrer Fachthemen und der ausdrücklich verknüpften Aufgaben vollständig angezeigt. „Sammlung speichern“ übernimmt die vorbereitete Auswahl in den versionierten Arbeitsraum und damit in Sicherungen. Die Anzeige unterscheidet den gesamten Bestand einer Sammlung vom aktuell gefilterten Ausschnitt.
 
@@ -143,7 +163,7 @@ Abbildungen und Diagramme öffnen in Originalgröße. Auf dem Handy nutzt die An
 
 ## Lernen mit Karten
 
-Unter „Lernkarten“ eigene Fragen und Antworten erstellen, oder im Notizleser „Lernkarte erstellen“ wählen. Eine Lernrunde zeigt fällige Karten. Erst nach dem Aufdecken erscheinen die Bewertungen. „Noch üben“ plant zehn Minuten später; „Gewusst“ steigert den Abstand auf 1, 3, 7, 14 und höchstens 30 Tage. Bewertungen werden vor dem Weiterblättern atomar gespeichert. Ältere Sammlungen ohne Lernkarten bleiben kompatibel. Termine werden in UTC gespeichert und für Europe/Berlin angezeigt.
+Unter „Lernkarten“ eigene Fragen und Antworten erstellen, oder im Notizleser „Lernkarte erstellen“ wählen. Eine Lernrunde zeigt fällige Karten. Erst nach dem Aufdecken erscheinen die Bewertungen. „Noch üben“ plant zehn Minuten später; „Gewusst“ steigert den Abstand auf 1, 3, 7, 14 und höchstens 30 Tage. Eine neue Runde wird vor der Anzeige gespeichert. Jede Bewertung speichert Kartenfortschritt und nächste Position atomar; die nächste Frage erscheint sofort und ein Speicherfehler führt zur vorherigen Karte zurück. „Beenden“ pausiert die Runde für den späteren Wiedereinstieg. Ältere Sammlungen ohne Lernkarten bleiben kompatibel. Termine werden in UTC gespeichert und für Europe/Berlin angezeigt.
 
 Karten lassen sich nach Lernsammlung, Fachthema, Suche und Priorität filtern. Die drei Stufen heißen „Kernwissen“ (muss sicher sitzen), „Vertiefung“ (Zusammenhänge und Anwendung) und „Ergänzung“ (weitere Details). Nicht eingestufte Karten bleiben separat sichtbar. Jede Karte zeigt ihre Quellnotiz und die zugehörigen Sammlungen; die Quelle lässt sich auch während einer Lernrunde öffnen. Die Runde verwendet ausschließlich fällige Karten des gewählten Ausschnitts.
 

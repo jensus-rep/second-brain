@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Archive, ChevronDown, Clock3, FileText, Layers3, Link2, List, MoreHorizontal, Pencil, Star, X } from "lucide-react";
+import { Archive, ChevronDown, ChevronRight, Clock3, FileText, Layers3, Link2, List, MoreHorizontal, Pencil, Star, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { Note, Workspace } from "@/lib/brain/model";
+import { getTopicAncestors } from "@/lib/brain/topics";
 import { Markdown } from "./markdown";
 
 type Heading = { id: string; title: string; level: number };
@@ -31,6 +32,7 @@ export function NoteReader({ note, workspace, saving, onClose, onOpen, onEdit, o
   const [open, setOpen] = useState(true);
   const closeTimer = useRef<number | undefined>(undefined);
   const topic = workspace.topics.find(t => t.id === note.topicId);
+  const ancestors = topic ? getTopicAncestors(workspace.topics, topic.id) : [];
   const related = workspace.notes.filter(n => note.relatedIds.includes(n.id) || n.relatedIds.includes(note.id));
   const minutes = Math.max(1, Math.ceil(note.content.split(/\s+/).filter(Boolean).length / 220));
 
@@ -109,6 +111,7 @@ export function NoteReader({ note, workspace, saving, onClose, onOpen, onEdit, o
         <div className={"entry-layout " + (headings.length > 2 ? "with-outline" : "")}>
           <article className="entry-article" ref={articleRef} tabIndex={-1}>
             <header className="entry-heading">
+              {ancestors.length > 0 && <nav className="entry-topic-path" aria-label="Themenpfad des Eintrags">{ancestors.map((ancestor, index) => <span key={ancestor.id}>{index > 0 && <ChevronRight size={13} />}<button onClick={() => onTopic(ancestor.id)}>{ancestor.title}</button></span>)}<ChevronRight size={13} /><span aria-current="page">{topic?.title}</span></nav>}
               <div className="entry-kicker"><button className="entry-topic" onClick={() => onTopic(note.topicId ?? "::unassigned")}><span className={"topic-dot " + (topic?.color ?? "gray")} />{topic?.title ?? "Ohne Thema"}</button>{note.archived && <span className="badge">Archiviert</span>}{note.favorite && <Star size={14} className="entry-favorite" fill="currentColor" />}<span className="entry-reading-time"><Clock3 size={14} />{minutes} Min. Lesezeit</span></div>
               <DialogTitle className="entry-title">{note.title}</DialogTitle>
               <DialogDescription className={note.summary ? "entry-summary" : "sr-only"}>{note.summary || "Wissenseintrag lesen"}</DialogDescription>

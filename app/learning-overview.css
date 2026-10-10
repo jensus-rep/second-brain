@@ -1,0 +1,76 @@
+.learning-overview { min-width: 0; margin: 0 0 30px; padding: 26px; background: #fff; border: 1px solid #dce5f2; border-radius: 16px; }
+.learning-overview [data-slot="button"] { transition-property: color, background-color, border-color, box-shadow; }
+.learning-focus-heading { display: flex; align-items: flex-start; gap: 14px; }
+.learning-focus-mark { flex-shrink: 0; display: grid; place-items: center; width: 46px; height: 46px; color: #315fcd; background: #edf3ff; border-radius: 12px; }
+.learning-focus-heading > div { min-width: 0; flex: 1; }
+.learning-focus-heading h2 { color: #2e466a; font-size: 24px; line-height: 1.4; font-weight: 650; margin: 6px 0; overflow-wrap: anywhere; }
+.learning-focus-heading p { font-size: 13px; color: #667891; line-height: 1.7; }
+.learning-focus-heading > button { flex-shrink: 0; color: #42659d; }
+.learning-focus-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin: 22px 0; }
+.learning-focus-controls > .field { min-width: 0; }
+.learning-focus-controls > .field:only-child { grid-column: 1 / -1; max-width: 520px; }
+.learning-focus-controls select { width: 100%; min-width: 0; min-height: 44px; padding: 10px 12px; border: 1px solid #d7e1ef; border-radius: 8px; color: #3e5779; background: #fcfdff; font-size: 13px; }
+.learning-focus-controls select:disabled { color: #6c7b91; background: #f4f6fa; opacity: 1; }
+.learning-next-step { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin: 22px 0; padding: 21px; border: 1px solid #dce7fd; border-radius: 12px; background: #f1f6ff; }
+.learning-next-step > div { min-width: 0; }
+.learning-next-step h3 { margin: 7px 0; font-size: 18px; font-weight: 600; color: #345786; }
+.learning-next-step p { color: #597292; font-size: 13px; line-height: 1.75; max-width: 620px; }
+.learning-next-step > button { flex-shrink: 0; min-height: 44px; }
+.learning-summary-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.learning-summary-stats > div { min-width: 0; background: #f6f8fc; padding: 16px; border-radius: 10px; }
+.learning-summary-stats dt { display: flex; gap: 7px; align-items: center; color: #687b95; font-size: 12px; line-height: 1.6; }
+.learning-summary-stats dt svg { flex-shrink: 0; }
+.learning-summary-stats dd { color: #35547e; font-size: 28px; margin: 9px 0; font-variant-numeric: tabular-nums; }
+.learning-summary-stats dd small { color: #6b7c94; font-size: 12px; }
+.learning-summary-stats .learning-stat-empty { font-size: 16px; }
+.learning-summary-stats > div > span { color: #667891; font-size: 11px; line-height: 1.6; display: block; }
+.learning-summary-stats [data-slot="progress"] { margin-top: 14px; height: 5px; }
+.learning-recent-result { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 0; border-bottom: 1px solid #e7edf5; }
+.learning-recent-result > div { display: grid; gap: 4px; }
+.learning-recent-result span { color: #6a7b91; font-size: 12px; }
+.learning-recent-result strong { color: #3e6188; font-size: 13px; line-height: 1.6; font-weight: 550; }
+.learning-recent-result > button { flex-shrink: 0; }
+.learning-area-list { margin-top: 24px; }
+.learning-area-list .section-heading { flex-wrap: wrap; }
+.learning-area-list h3 { font-size: 15px; font-weight: 600; color: #405c81; }
+.learning-area-list .section-heading > span { color: #76849a; font-size: 11px; line-height: 1.6; }
+.learning-area { display: flex; align-items: center; gap: 12px; padding: 14px 0; border-top: 1px solid #e9eef5; }
+.learning-area-icon { display: grid; place-items: center; width: 35px; height: 35px; flex-shrink: 0; background: #f0f4fa; color: #73849e; border-radius: 9px; }
+.learning-area.is-weak .learning-area-icon { color: #ae722f; background: #fff4e6; }
+.learning-area.is-completed .learning-area-icon { color: #377e68; background: #edf7f2; }
+.learning-area > div:first-of-type { flex: 1; min-width: 0; }
+.learning-area h4 { color: #3b5476; font-weight: 550; font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
+.learning-area p { color: #6d7e94; font-size: 12px; line-height: 1.7; margin-top: 3px; }
+.learning-area-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.learning-area-actions button { min-height: 40px; color: #4b6993; }
+.learning-checkpoint { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 20px; padding-top: 20px; border-top: 1px solid #e7edf5; }
+.learning-checkpoint h3 { color: #405c81; font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+.learning-checkpoint p { color: #6c7d94; font-size: 12px; line-height: 1.7; }
+.learning-checkpoint > button { flex-shrink: 0; }
+@media (max-width: 1050px) {
+  .learning-next-step { flex-direction: column; align-items: flex-start; gap: 15px; }
+  .learning-area { flex-wrap: wrap; }
+  .learning-area-actions { margin-left: 47px; }
+}
+@media (max-width: 767px) {
+  .learning-overview { padding: 18px 16px; }
+  .learning-focus-heading { flex-wrap: wrap; gap: 10px; }
+  .learning-focus-heading h2 { font-size: 20px; }
+  .learning-focus-heading > div { flex-basis: calc(100% - 56px); }
+  .learning-focus-heading > button { min-height: 44px; margin-left: 48px; }
+  .learning-focus-controls { grid-template-columns: minmax(0, 1fr); gap: 12px; margin-top: 16px; }
+  .learning-focus-controls select { font-size: 16px; }
+  .learning-next-step { padding: 16px; margin: 18px 0; }
+  .learning-next-step > button { width: 100%; height: auto; min-height: 44px; padding: 11px; white-space: normal; }
+  .learning-summary-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .learning-summary-stats > div { padding: 12px; }
+  .learning-summary-stats > div:last-child { grid-column: 1 / -1; }
+  .learning-summary-stats dt { align-items: flex-start; font-size: 11px; }
+  .learning-summary-stats dd { font-size: 25px; }
+  .learning-recent-result, .learning-checkpoint { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .learning-recent-result > button, .learning-checkpoint > button { min-height: 44px; width: 100%; }
+  .learning-area { align-items: flex-start; gap: 10px; }
+  .learning-area-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-left: 0; width: 100%; }
+  .learning-area-actions button { width: 100%; min-width: 0; min-height: 44px; height: auto; padding: 10px 8px; font-size: 12px; white-space: normal; }
+  .learning-area-actions button:only-child { grid-column: 1 / -1; }
+}

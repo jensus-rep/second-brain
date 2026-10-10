@@ -5,7 +5,7 @@ import { Archive, BookOpen, Check, Compass, Download, FolderOpen, GraduationCap,
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 
-export type BrainView = "home" | "library" | "topics" | "paths" | "connections" | "favorites" | "archive" | "flashcards" | "quizzes";
+export type BrainView = "home" | "library" | "topics" | "collections" | "paths" | "connections" | "favorites" | "archive" | "flashcards" | "quizzes";
 
 const shortcuts = [
   { id: "home", label: "Überblick", name: "Mein Überblick", icon: Compass },
@@ -16,6 +16,7 @@ const shortcuts = [
 
 const moreViews = [
   { id: "topics", label: "Themen", icon: FolderOpen },
+  { id: "collections", label: "Lernsammlungen", icon: Layers3 },
   { id: "paths", label: "Lernpfade", icon: GraduationCap },
   { id: "connections", label: "Verbindungen", icon: Network },
   { id: "favorites", label: "Favoriten", icon: Star },

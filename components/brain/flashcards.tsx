@@ -1,6 +1,6 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, BookOpen, Check, Clock3, Layers3, LoaderCircle, Pencil, Plus, RotateCcw, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft, BookOpen, Check, ChevronDown, Clock3, Layers3, LoaderCircle, Pencil, Play, Plus, RotateCcw, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -9,9 +9,10 @@ import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, A
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
-import { reviewCard, type Flashcard, type Note, type Workspace } from "@/lib/brain/model";
+import { reviewCard, type Flashcard, type FlashcardSession, type Note, type Workspace } from "@/lib/brain/model";
 import type { SaveWorkspace } from "@/lib/brain/use-brain";
 import { addToLearningCollection, collectionItems, flashcardPriority, learningCollections, priorityDescriptions, priorityLabels, removeFlashcard } from "@/lib/brain/learning-collections";
+import { flattenTopics, getTopicDescendantIds, getTopicPathLabel } from "@/lib/brain/topics";
 import { Markdown } from "./markdown";
 import { MediaToolbar } from "./media-toolbar";
 
@@ -22,6 +23,29 @@ const reviewDate = (date: string) => new Intl.DateTimeFormat("de-DE", { day: "nu
 const priorityLevels = [1, 2, 3] as const;
 type Priority = 1 | 2 | 3 | null;
 type PriorityFilter = "all" | "null" | "1" | "2" | "3";
+
+// A persisted round is a snapshot, so a card reviewed elsewhere is never rated twice.
+function sameSession(a: FlashcardSession | null | undefined, b: FlashcardSession | null | undefined) {
+  if (!a || !b) return !a && !b;
+  return a.id === b.id && a.index === b.index && a.updatedAt === b.updatedAt && a.startedAt === b.startedAt && a.collectionId === b.collectionId && a.mode === b.mode && a.queue.length === b.queue.length && a.queue.every((entry, index) => entry.id === b.queue[index].id && entry.reviews === b.queue[index].reviews && entry.dueAt === b.queue[index].dueAt);
+}
+
+function nextSessionIndex(session: FlashcardSession, cards: Flashcard[], from = session.index) {
+  const byId = new Map(cards.map(card => [card.id, card]));
+  let index = from;
+  while (index < session.queue.length) {
+    const entry = session.queue[index];
+    const card = byId.get(entry.id);
+    if (card && card.reviews === entry.reviews && card.dueAt === entry.dueAt) break;
+    index++;
+  }
+  return index;
+}
+
+function sessionCards(workspace: Workspace, session: FlashcardSession) {
+  const collection = session.collectionId ? learningCollections(workspace).find(collection => collection.id === session.collectionId) : undefined;
+  return collection ? collectionItems(workspace, collection).cards : workspace.cards;
+}
 
 function PriorityBadge({ priority, suggested = false }: { priority: Priority; suggested?: boolean }) {
   return <span className={`flashcard-priority-badge is-priority-${priority ?? "none"}`}>{priority === null ? "Noch nicht eingestuft" : `${priority} ${priorityLabels[priority]}`}{suggested && priority !== null && <span className="flashcard-priority-suggestion"> · Vorschlag</span>}</span>;
@@ -73,25 +97,32 @@ export function FlashcardEditor({ card, workspace, save, saving, onClose, collec
   </>;
 }
 
-export function Flashcards({ workspace, save, saving, onEdit, onStudyChange, collectionId, onCollectionChange, onOpenNote }: {
+export function Flashcards({ workspace, save, saving, onEdit, onStudyChange, collectionId, onCollectionChange, onOpenNote, onBackToCollection, startRequest, resumeRequest, onResumeRequestConsumed }: {
   workspace: Workspace; save: SaveWorkspace; saving: boolean; onEdit: (card: Flashcard) => void; onStudyChange: (studying: boolean) => void;
-  collectionId?: string; onCollectionChange?: (id: string) => void; onOpenNote?: (id: string) => void;
+  collectionId?: string; onCollectionChange?: (id: string) => void; onOpenNote?: (id: string) => void; onBackToCollection?: () => void; startRequest?: number; resumeRequest?: number; onResumeRequestConsumed?: () => void;
 }) {
   const [queue, setQueue] = useState<{ id: string; reviews: number; dueAt: string }[] | null>(null);
   const [index, setIndex] = useState(0);
   const [revealed, setRevealed] = useState(false);
   const [pendingReview, setPendingReview] = useState(false);
+  const [pendingStart, setPendingStart] = useState(false);
+  const [replacement, setReplacement] = useState<{ cards: Flashcard[]; mode: "due" | "all"; collectionId: string | null; previousSession: FlashcardSession } | null>(null);
+  const [sessionCollectionId, setSessionCollectionId] = useState<string | null>(null);
+  const [currentSession, setCurrentSession] = useState<FlashcardSession | null>(null);
   const ratingRef = useRef(false);
+  const startingRef = useRef(false);
   const [clock, setClock] = useState(() => Date.now());
   const [filter, setFilter] = useState("");
   const [localCollectionId, setLocalCollectionId] = useState("");
   const [topicSelection, setTopicSelection] = useState({ collectionId: "", value: "" });
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>("all");
+  const [studyMode, setStudyMode] = useState<"due" | "all">("due");
+  const consumedStartRequest = useRef<number | undefined>(undefined);
+  const consumedResumeRequest = useRef<number | undefined>(undefined);
   const revealRef = useRef<HTMLButtonElement>(null);
   const answerRef = useRef<HTMLDivElement>(null);
   const sessionRef = useRef<HTMLElement>(null);
   const notesById = useMemo(() => new Map(workspace.notes.map(note => [note.id, note])), [workspace.notes]);
-  const topicsById = useMemo(() => new Map(workspace.topics.map(topic => [topic.id, topic])), [workspace.topics]);
   const priorities = useMemo(() => new Map(workspace.cards.map(card => [card.id, flashcardPriority(card)])), [workspace.cards]);
   const collections = useMemo(() => learningCollections(workspace).map(collection => ({ collection, cards: collectionItems(workspace, collection).cards })), [workspace]);
   const memberships = useMemo(() => {
@@ -103,12 +134,13 @@ export function Flashcards({ workspace, save, saving, onEdit, onStudyChange, col
   const activeCollectionId = selectedCollection?.collection.id ?? "";
   const collectionCards = selectedCollection?.cards ?? workspace.cards;
   const cardTopicIds = new Set(collectionCards.map(card => card.noteId ? notesById.get(card.noteId)?.topicId ?? null : null));
-  const availableTopics = workspace.topics.filter(topic => cardTopicIds.has(topic.id));
+  const availableTopics = flattenTopics(workspace.topics).filter(({ topic }) => [...getTopicDescendantIds(workspace.topics, topic.id)].some(id => cardTopicIds.has(id)));
   const chosenTopic = topicSelection.collectionId === activeCollectionId ? topicSelection.value : "";
-  const topicFilter = chosenTopic === "::unassigned" && cardTopicIds.has(null) || availableTopics.some(topic => topic.id === chosenTopic) ? chosenTopic : "";
+  const topicFilter = chosenTopic === "::unassigned" && cardTopicIds.has(null) || availableTopics.some(({ topic }) => topic.id === chosenTopic) ? chosenTopic : "";
+  const selectedTopicIds = topicFilter && topicFilter !== "::unassigned" ? getTopicDescendantIds(workspace.topics, topicFilter) : null;
   const topicCards = collectionCards.filter(card => {
     const topicId = card.noteId ? notesById.get(card.noteId)?.topicId ?? null : null;
-    return !topicFilter || (topicFilter === "::unassigned" ? topicId === null : topicId === topicFilter);
+    return !topicFilter || (topicFilter === "::unassigned" ? topicId === null : !!topicId && selectedTopicIds?.has(topicId));
   });
   const layerCounts = priorityLevels.map(priority => ({ priority, count: topicCards.filter(card => priorities.get(card.id) === priority).length }));
   const unclassifiedCount = topicCards.filter(card => priorities.get(card.id) === null).length;
@@ -117,15 +149,93 @@ export function Flashcards({ workspace, save, saving, onEdit, onStudyChange, col
     const priority = priorities.get(card.id) ?? null;
     if (priorityFilter !== "all" && (priorityFilter === "null" ? priority !== null : priority !== Number(priorityFilter))) return false;
     const linked = card.noteId ? notesById.get(card.noteId) : undefined;
-    const text = [card.question, card.answer, linked?.title ?? "", linked?.topicId ? topicsById.get(linked.topicId)?.title ?? "" : "", ...memberships.get(card.id) ?? []].join(" ").toLocaleLowerCase("de");
+    const text = [card.question, card.answer, linked?.title ?? "", linked?.topicId ? getTopicPathLabel(workspace.topics, linked.topicId) : "", ...memberships.get(card.id) ?? []].join(" ").toLocaleLowerCase("de");
     return searchTerms.every(term => text.includes(term));
   });
   const due = visibleCards.filter(card => Date.parse(card.dueAt) <= clock).sort((a, b) => a.dueAt.localeCompare(b.dueAt) || a.id.localeCompare(b.id));
   const entry = queue?.[index];
-  const card = entry ? workspace.cards.find(c => c.id === entry.id) : null;
+  const card = entry ? (currentSession ? sessionCards(workspace, currentSession) : workspace.cards).find(c => c.id === entry.id) : null;
   const changed = !!(card && entry && (card.reviews !== entry.reviews || card.dueAt !== entry.dueAt));
   const next = [...visibleCards].sort((a, b) => a.dueAt.localeCompare(b.dueAt))[0];
   const studying = queue !== null && (!!card || pendingReview);
+  const hasFilters = !!topicFilter || priorityFilter !== "all" || !!filter.trim();
+  const activeFilterCount = Number(!!topicFilter) + Number(priorityFilter !== "all") + Number(!!filter.trim());
+  const scopeTitle = queue ? (sessionCollectionId ? collections.find(item => item.collection.id === sessionCollectionId)?.collection.title ?? "Gespeicherte Lernrunde" : "Alle Lernkarten") : selectedCollection?.collection.title ?? "Alle Lernkarten";
+  const pausedSession = workspace.flashcardSession;
+  const pausedCards = pausedSession ? sessionCards(workspace, pausedSession) : [];
+  const pausedCardsById = new Map(pausedCards.map(card => [card.id, card]));
+  const pausedRemaining = pausedSession ? pausedSession.queue.slice(pausedSession.index).filter(entry => { const card = pausedCardsById.get(entry.id); return card && card.reviews === entry.reviews && card.dueAt === entry.dueAt; }).length : 0;
+  const pausedTitle = pausedSession?.collectionId ? collections.find(item => item.collection.id === pausedSession.collectionId)?.collection.title ?? "Gespeicherte Lernrunde" : "Alle Lernkarten";
+  const start = useCallback(async (cards: Flashcard[], mode: "due" | "all" = "due", replace = false, requestedCollectionId?: string | null, expectedSession?: FlashcardSession) => {
+    if (!cards.length || saving || startingRef.current) return;
+    const requestedId = requestedCollectionId === undefined ? collectionId ?? localCollectionId : requestedCollectionId;
+    const targetCollectionId = requestedId && learningCollections(workspace).some(collection => collection.id === requestedId) ? requestedId : null;
+    const previousSession = expectedSession ?? workspace.flashcardSession;
+    if (previousSession && !replace) { setReplacement({ cards, mode, collectionId: targetCollectionId, previousSession }); return; }
+    startingRef.current = true;
+    setPendingStart(true);
+    const now = new Date().toISOString();
+    const session: FlashcardSession = { id: crypto.randomUUID(), collectionId: targetCollectionId, mode, queue: cards.map(card => ({ id: card.id, reviews: card.reviews, dueAt: card.dueAt })), index: 0, startedAt: now, updatedAt: now };
+    const ok = await save(w => {
+      if (!sameSession(w.flashcardSession, previousSession)) throw new Error("Die Lernrunde wurde inzwischen geändert. Bitte lade den aktuellen Lernstand neu.");
+      const scopedCards = sessionCards(w, session);
+      if (session.queue.some(entry => !scopedCards.some(card => card.id === entry.id && card.reviews === entry.reviews && card.dueAt === entry.dueAt))) throw new Error("Die ausgewählten Karten wurden inzwischen geändert. Bitte wähle die Lernrunde erneut aus.");
+      return { ...w, flashcardSession: session, learningFocus: { collectionId: targetCollectionId, subject: w.learningFocus?.collectionId === targetCollectionId ? w.learningFocus.subject : null, updatedAt: now } };
+    }, "");
+    if (ok) {
+      setCurrentSession(session);
+      setSessionCollectionId(session.collectionId);
+      setQueue(session.queue);
+      setIndex(0);
+      setRevealed(false);
+      setStudyMode(mode);
+      setReplacement(null);
+    }
+    startingRef.current = false;
+    setPendingStart(false);
+  }, [collectionId, localCollectionId, save, saving, workspace]);
+  const resume = useCallback(async () => {
+    if (saving || startingRef.current) return;
+    const stored = workspace.flashcardSession;
+    if (!stored) { onResumeRequestConsumed?.(); return; }
+    startingRef.current = true;
+    setPendingStart(true);
+    const nextIndex = nextSessionIndex(stored, sessionCards(workspace, stored));
+    const now = new Date().toISOString();
+    const resumed = nextIndex < stored.queue.length ? { ...stored, index: nextIndex, updatedAt: now } : null;
+    const targetCollectionId = collections.some(item => item.collection.id === stored.collectionId) ? stored.collectionId : null;
+    const ok = await save(w => {
+      if (!sameSession(w.flashcardSession, stored)) throw new Error("Die Lernrunde wurde inzwischen geändert. Bitte lade den aktuellen Lernstand neu.");
+      return { ...w, flashcardSession: resumed, learningFocus: { collectionId: targetCollectionId, subject: w.learningFocus?.collectionId === targetCollectionId ? w.learningFocus.subject : null, updatedAt: now } };
+    }, "");
+    if (ok && resumed) {
+      setCurrentSession(resumed);
+      setSessionCollectionId(stored.collectionId);
+      setLocalCollectionId(targetCollectionId ?? "");
+      onCollectionChange?.(targetCollectionId ?? "");
+      setQueue(stored.queue);
+      setIndex(nextIndex);
+      setRevealed(false);
+      setStudyMode(stored.mode);
+    }
+    onResumeRequestConsumed?.();
+    startingRef.current = false;
+    setPendingStart(false);
+  }, [saving, workspace, save, collections, onCollectionChange, onResumeRequestConsumed]);
+  useEffect(() => {
+    if (!startRequest || consumedStartRequest.current === startRequest || saving || startingRef.current) return;
+    consumedStartRequest.current = startRequest;
+    setTopicSelection({ collectionId: activeCollectionId, value: "" });
+    setPriorityFilter("all");
+    setFilter("");
+    const collectionDue = collectionCards.filter(card => Date.parse(card.dueAt) <= clock).sort((a, b) => a.dueAt.localeCompare(b.dueAt) || a.id.localeCompare(b.id));
+    void start(collectionDue.length ? collectionDue : collectionCards, collectionDue.length ? "due" : "all");
+  }, [startRequest, activeCollectionId, collectionCards, clock, start, saving]);
+  useEffect(() => {
+    if (!resumeRequest || consumedResumeRequest.current === resumeRequest || saving || startingRef.current) return;
+    consumedResumeRequest.current = resumeRequest;
+    void resume();
+  }, [resumeRequest, resume, saving]);
   useEffect(() => { onStudyChange(studying); return () => onStudyChange(false); }, [studying, onStudyChange]);
   useEffect(() => { const timer = setInterval(() => setClock(Date.now()), 30000); return () => clearInterval(timer); }, []);
   useEffect(() => {
@@ -135,32 +245,66 @@ export function Flashcards({ workspace, save, saving, onEdit, onStudyChange, col
     }
   }, [index, revealed, queue]);
   useEffect(() => {
-    if (!pendingReview) return;
+    if (!pendingReview && !pendingStart) return;
     const guard = (event: BeforeUnloadEvent) => event.preventDefault();
     window.addEventListener("beforeunload", guard);
     return () => window.removeEventListener("beforeunload", guard);
-  }, [pendingReview]);
+  }, [pendingReview, pendingStart]);
+  function pause() {
+    setQueue(null);
+    setRevealed(false);
+    setCurrentSession(null);
+  }
+  async function skipUnavailable() {
+    const session = currentSession;
+    if (!session || saving || ratingRef.current) return;
+    ratingRef.current = true;
+    setPendingReview(true);
+    const nextIndex = nextSessionIndex(session, sessionCards(workspace, session), index + 1);
+    const updatedAt = new Date().toISOString();
+    const advanced = nextIndex < session.queue.length ? { ...session, index: nextIndex, updatedAt } : null;
+    const ok = await save(w => {
+      if (!sameSession(w.flashcardSession, session)) throw new Error("Die Lernrunde wurde inzwischen geändert. Bitte lade den aktuellen Lernstand neu.");
+      return { ...w, flashcardSession: advanced };
+    }, "");
+    if (ok) { setCurrentSession(advanced); setIndex(nextIndex); setRevealed(false); }
+    setPendingReview(false);
+    ratingRef.current = false;
+  }
   async function rate(known: boolean) {
-    if (!card || saving || changed || ratingRef.current) return;
+    const session = currentSession;
+    if (!card || !entry || !session || saving || changed || ratingRef.current) return;
     const ratedIndex = index;
+    const nextIndex = nextSessionIndex(session, sessionCards(workspace, session), ratedIndex + 1);
+    const updatedAt = new Date().toISOString();
+    const advanced = nextIndex < session.queue.length ? { ...session, index: nextIndex, updatedAt } : null;
     ratingRef.current = true;
     setPendingReview(true);
     setRevealed(false);
-    setIndex(ratedIndex + 1);
-    const ok = await save(w => ({ ...w, cards: w.cards.map(c => c.id === card.id ? reviewCard(c, known) : c) }), "");
+    setIndex(nextIndex);
+    const ok = await save(w => {
+      if (!sameSession(w.flashcardSession, session)) throw new Error("Die Lernrunde wurde inzwischen geändert. Bitte lade den aktuellen Lernstand neu.");
+      const currentCard = sessionCards(w, session).find(c => c.id === entry.id);
+      if (!currentCard || currentCard.reviews !== entry.reviews || currentCard.dueAt !== entry.dueAt) throw new Error("Diese Karte wurde inzwischen geändert. Bitte lade den aktuellen Lernstand neu.");
+      const focusCollectionId = collections.some(item => item.collection.id === session.collectionId) ? session.collectionId : null;
+      return { ...w, cards: w.cards.map(c => c.id === card.id ? reviewCard(c, known) : c), flashcardSession: advanced, learningFocus: { collectionId: focusCollectionId, subject: w.learningFocus?.collectionId === focusCollectionId ? w.learningFocus.subject : null, updatedAt } };
+    }, "");
+    if (ok) setCurrentSession(advanced);
     if (!ok) { setIndex(ratedIndex); setRevealed(true); }
     setClock(Date.now());
     setPendingReview(false);
     ratingRef.current = false;
   }
-  function start(cards: Flashcard[]) { setQueue(cards.map(c => ({ id: c.id, reviews: c.reviews, dueAt: c.dueAt }))); setIndex(0); setRevealed(false); }
   if (queue) {
-    if (changed) return <section className="study-finished"><Clock3 size={30} /><h2>Dieser Gedanke wurde schon wiederholt.</h2><p>Der gespeicherte Lernstand ist neuer als diese Lernrunde. Er bleibt erhalten.</p><Button onClick={() => { setIndex(i => i + 1); setRevealed(false); }}>Mit nächster Karte fortfahren</Button></section>;
-    if (!card) return <section className="study-finished" aria-busy={pendingReview}><span className="study-complete-icon">{pendingReview ? <LoaderCircle size={32} className="animate-spin" /> : <Check size={32} />}</span><h2>{pendingReview ? "Dein Fortschritt wird gespeichert …" : "Ein Stück Wissen bleibt."}</h2><p>{index} {index === 1 ? "Karte" : "Karten"} wiederholt. {pendingReview ? "Einen Moment, die letzte Bewertung wird noch gespeichert." : "Dein Fortschritt ist gespeichert."}</p><Button disabled={pendingReview} onClick={() => setQueue(null)}>Zur Kartenübersicht</Button></section>;
+    if (!pendingReview && currentSession && !sameSession(workspace.flashcardSession, currentSession)) return <section className="study-finished"><Clock3 size={30} /><h2>Deine Lernrunde hat sich geändert.</h2><p>Der aktuelle Lernstand wurde in einem anderen Fenster gespeichert. Öffne die gespeicherte Runde erneut.</p><Button onClick={pause}>Zur Kartenübersicht</Button></section>;
+    if (changed || entry && !card) return <section className="study-finished"><Clock3 size={30} /><h2>{changed ? "Dieser Gedanke wurde schon wiederholt." : "Diese Karte ist nicht mehr verfügbar."}</h2><p>Geänderte oder entfernte Karten werden übersprungen. Der gespeicherte Lernstand bleibt erhalten.</p><div className="study-finished-actions"><Button disabled={saving || pendingReview} onClick={() => void skipUnavailable()}>Mit nächster Karte fortfahren</Button><Button variant="outline" disabled={saving || pendingReview} onClick={pause}>Beenden</Button></div></section>;
+    if (!card) return <section className="study-finished" aria-busy={pendingReview}><span className="study-complete-icon">{pendingReview ? <LoaderCircle size={32} className="animate-spin" /> : <Check size={32} />}</span><h2>{pendingReview ? "Dein Fortschritt wird gespeichert …" : "Ein Stück Wissen bleibt."}</h2><p>Lernrunde mit {queue.length} {queue.length === 1 ? "Karte" : "Karten"} in „{scopeTitle}“ abgeschlossen. {pendingReview ? "Einen Moment, die letzte Bewertung wird noch gespeichert." : "Dein Fortschritt ist gespeichert."}</p><div className="study-finished-actions"><Button disabled={pendingReview} onClick={pause}>Zur Kartenübersicht</Button>{selectedCollection && onBackToCollection && <Button variant="outline" disabled={saving || pendingReview} onClick={onBackToCollection}><ArrowLeft size={16} />Zur Lernsammlung</Button>}</div></section>;
     const linked = card.noteId ? notesById.get(card.noteId) : undefined;
-    const mobileEnd = <Button className="study-mobile-end" variant="ghost" disabled={saving || pendingReview} onClick={() => setQueue(null)}><ArrowLeft size={16} />Beenden</Button>;
-    return <section ref={sessionRef} className={"study-session" + (revealed ? " is-revealed" : "")}><div className="study-topline"><Button variant="ghost" size="sm" disabled={saving || pendingReview} onClick={() => setQueue(null)}><ArrowLeft size={16} />Beenden</Button><span>{index + 1} von {queue.length}</span>{pendingReview ? <span className="study-save-status" role="status"><LoaderCircle size={14} className="animate-spin" />Speichert …</span> : <span className="study-note">{linked?.title ?? "Deine Lernkarte"}</span>}</div><Progress value={index / queue.length * 100} aria-label="Fortschritt dieser Lernrunde" />
-      <CardContext note={linked} topicTitle={linked?.topicId ? topicsById.get(linked.topicId)?.title ?? "Ohne Thema" : "Ohne Thema"} collectionTitles={memberships.get(card.id) ?? []} priority={priorities.get(card.id) ?? null} suggested={card.priority === undefined && priorities.get(card.id) != null} onOpenNote={onOpenNote} />
+    const mobileEnd = <Button className="study-mobile-end" variant="ghost" disabled={saving || pendingReview} onClick={pause} title="Lernrunde pausieren; dein Stand bleibt gespeichert"><ArrowLeft size={16} />Beenden</Button>;
+    return <section ref={sessionRef} className={"study-session" + (revealed ? " is-revealed" : "")}><div className="study-topline"><Button variant="ghost" size="sm" disabled={saving || pendingReview} onClick={pause} title="Lernrunde pausieren; dein Stand bleibt gespeichert"><ArrowLeft size={16} />Beenden</Button><span>{index + 1} von {queue.length}</span>{pendingReview ? <span className="study-save-status" role="status"><LoaderCircle size={14} className="animate-spin" />Speichert …</span> : <span className="study-note">{linked?.title ?? "Deine Lernkarte"}</span>}</div><Progress value={index / queue.length * 100} aria-label="Fortschritt dieser Lernrunde" />
+      <p className="study-scope-line"><strong>{scopeTitle}</strong><span>{studyMode === "all" ? "Alle ausgewählten Karten üben" : "Fällige Karten wiederholen"}</span></p>
+      <p className="study-resume-hint">Du kannst die Runde jederzeit beenden und später an dieser Stelle fortsetzen.</p>
+      <CardContext note={linked} topicTitle={linked?.topicId ? getTopicPathLabel(workspace.topics, linked.topicId) : "Ohne Thema"} collectionTitles={memberships.get(card.id) ?? []} priority={priorities.get(card.id) ?? null} suggested={card.priority === undefined && priorities.get(card.id) != null} onOpenNote={onOpenNote} />
       <article className={"study-card " + (revealed ? "revealed" : "")}><div className="study-label"><Layers3 size={17} />ERINNERN STATT NACHLESEN</div><div className="study-question"><Markdown content={card.question} /></div>
         {revealed ? <div ref={answerRef} tabIndex={-1} className="study-answer" aria-label="Antwort"><span className="eyebrow">DIE ANTWORT</span><Markdown content={card.answer} /></div> : <div className="study-pause"><span>Ein kurzer Moment zum Nachdenken.</span><div className="study-session-controls study-reveal-controls" role="group" aria-label="Aktionen für die Lernkarte"><Button ref={revealRef} className="reveal-button" onClick={() => { setRevealed(true); requestAnimationFrame(() => answerRef.current?.focus()); }}>Antwort aufdecken</Button>{mobileEnd}</div></div>}
       </article>
@@ -168,27 +312,38 @@ export function Flashcards({ workspace, save, saving, onEdit, onStudyChange, col
     </section>;
   }
   return <section className="flashcards-home">
-    <section className="flashcard-filter-panel" aria-label="Lernkarten auswählen">
-      <div className="flashcard-filter-heading"><div><span className="eyebrow">DEIN KARTENBESTAND</span><h2>Lernkarten nach Lernstoff ordnen</h2><p>Wähle eine Sammlung und beginne mit ihrem Kernwissen. Thema und Suche helfen dir, gezielt nachzuschlagen.</p></div></div>
-      <dl className="flashcard-scope-counts" aria-label="Gesamter Bestand und aktuelle Auswahl">
-        <div><dt>Gesamter Bestand</dt><dd>{workspace.cards.length}</dd></div>
-        <div><dt>Gewählte Sammlung</dt><dd>{collectionCards.length}</dd></div>
-        <div><dt>Sichtbare Auswahl</dt><dd>{visibleCards.length}</dd></div>
-        <div><dt>Davon fällig</dt><dd>{due.length}</dd></div>
-      </dl>
-      <div className="flashcard-filters">
-        <label className="field"><span>Lernsammlung</span><select aria-label="Lernsammlung für Lernkarten" value={activeCollectionId} onChange={event => { setLocalCollectionId(event.target.value); onCollectionChange?.(event.target.value); setTopicSelection({ collectionId: event.target.value, value: "" }); }}><option value="">Alle Lernkarten ({workspace.cards.length})</option>{collections.map(({ collection, cards }) => <option key={collection.id} value={collection.id}>{collection.title} ({cards.length})</option>)}</select></label>
-        <label className="field"><span>Thema</span><select aria-label="Thema der Lernkarten" value={topicFilter} onChange={event => setTopicSelection({ collectionId: activeCollectionId, value: event.target.value })}><option value="">Alle Themen</option>{availableTopics.map(topic => <option key={topic.id} value={topic.id}>{topic.title}</option>)}{cardTopicIds.has(null) && <option value="::unassigned">Ohne Thema</option>}</select></label>
-        <label className="field"><span>Prioritätsstufe</span><select aria-label="Prioritätsstufe" value={priorityFilter} onChange={event => setPriorityFilter(event.target.value as PriorityFilter)}><option value="all">Alle Prioritäten</option>{priorityLevels.map(priority => <option key={priority} value={priority}>{priority} {priorityLabels[priority]}</option>)}<option value="null">Noch nicht eingestuft</option></select></label>
-        <label className="field"><span>Suche</span><Input className="card-search" aria-label="Lernkarten durchsuchen" placeholder="Frage, Antwort oder Notiz …" value={filter} onChange={event => setFilter(event.target.value)} /></label>
+    {pausedSession && <section className="flashcard-paused-round" aria-label="Gespeicherte Lernrunde"><div className="flashcard-paused-icon"><Clock3 size={22} /></div><div className="flashcard-paused-copy"><span className="eyebrow">HIER GEHT ES WEITER</span><h2>{pausedTitle}</h2><p>{pausedRemaining ? `${pausedRemaining} ${pausedRemaining === 1 ? "Karte wartet" : "Karten warten"} noch auf dich. Dein Stand bleibt auch nach dem Schließen der App gespeichert.` : "Alle verbleibenden Karten wurden inzwischen wiederholt oder entfernt. Du kannst die gespeicherte Runde abschließen."}</p><span className="flashcard-paused-position">Stand: {pausedSession.index} von {pausedSession.queue.length} · Zuletzt am {reviewDate(pausedSession.updatedAt)}</span></div><div className="flashcard-paused-actions"><Button disabled={saving || pendingStart} onClick={() => void resume()}><Play size={16} />{pausedRemaining ? "Lernrunde fortsetzen" : "Gespeicherte Runde abschließen"}</Button><Button variant="outline" disabled={saving || pendingStart || !visibleCards.length} onClick={() => void start(due.length ? due : visibleCards, due.length ? "due" : "all")}><RotateCcw size={16} />Neue Runde beginnen</Button></div></section>}
+    <section className="flashcard-filter-panel flashcard-start-panel" aria-label="Lernkarten auswählen">
+      {selectedCollection && onBackToCollection && <Button type="button" variant="ghost" size="sm" className="flashcard-collection-back" onClick={onBackToCollection}><ArrowLeft size={16} />Zur Lernsammlung</Button>}
+      <div className="flashcard-filter-heading"><div><span className="eyebrow"><Layers3 size={15} />DEIN WISSEN FESTIGEN</span><h2>{scopeTitle}</h2><p>{selectedCollection?.collection.description || "Wähle deine Lernsammlung und starte die Wiederholung. Du kannst deine Auswahl nach Thema, Priorität oder Suchbegriff eingrenzen."}</p></div></div>
+      <div className="flashcard-start-grid">
+        <label className="field flashcard-collection-picker"><span>Lernsammlung</span><select aria-label="Lernsammlung für Lernkarten" value={activeCollectionId} onChange={event => { setLocalCollectionId(event.target.value); onCollectionChange?.(event.target.value); setTopicSelection({ collectionId: event.target.value, value: "" }); setPriorityFilter("all"); setFilter(""); }}><option value="">Alle Lernkarten ({workspace.cards.length})</option>{collections.map(({ collection, cards }) => <option key={collection.id} value={collection.id}>{collection.title} ({cards.length})</option>)}</select></label>
+        <div className="flashcard-start-actions" role="group" aria-label="Lernrunde für die aktuelle Auswahl starten">
+          {workspace.cards.length ? <><Button className={due.length ? "primary-action" : "flashcard-due-action"} variant={due.length ? "default" : "outline"} disabled={saving || pendingStart || !due.length} onClick={() => void start(due)}><Play size={16} />Lernrunde starten</Button><Button className={!due.length ? "primary-action" : ""} variant={due.length ? "outline" : "default"} disabled={saving || pendingStart || !visibleCards.length} onClick={() => void start(visibleCards, "all")}><RotateCcw size={16} />Alle Karten üben</Button></> : <Button disabled={saving || pendingStart} onClick={() => onEdit(newFlashcard())}><Plus size={17} />Erste Lernkarte</Button>}
+        </div>
       </div>
-      {selectedCollection?.collection.description && <p className="flashcard-collection-description">{selectedCollection.collection.description}</p>}
-      <section className="flashcard-priority-overview" aria-label="Prioritäten in Sammlung und Thema"><h3>Drei Prioritäten für deinen Lernstoff</h3><p>Die Priorität beschreibt die Bedeutung für deinen Lernstoff. Wiederholungen folgen deinem gespeicherten Lernfortschritt. Die Zahlen zeigen alle {topicCards.length} Karten der gewählten Sammlung und des gewählten Themas. Markierte Vorschläge kannst du im Karteneditor übernehmen oder ändern; jede Einstufung bleibt bearbeitbar.</p><div className="flashcard-priority-layers">{layerCounts.map(({ priority, count }) => <Button type="button" variant="ghost" key={priority} className={`flashcard-priority-layer is-priority-${priority}`} aria-pressed={priorityFilter === String(priority)} onClick={() => setPriorityFilter(current => current === String(priority) ? "all" : String(priority) as PriorityFilter)}><span className="flashcard-priority-layer-title">{priority} {priorityLabels[priority]}</span><span className="flashcard-priority-layer-description">{priorityDescriptions[priority]}</span><strong>{count}<small> Karten</small></strong></Button>)}</div><Button type="button" variant="ghost" className="flashcard-unclassified" aria-pressed={priorityFilter === "null"} onClick={() => setPriorityFilter(current => current === "null" ? "all" : "null")}>Noch nicht eingestuft <strong>{unclassifiedCount}</strong></Button></section>
+      {pendingStart && <p className="flashcard-start-status" role="status"><LoaderCircle size={15} className="animate-spin" />Deine Lernrunde wird gespeichert und vorbereitet …</p>}
+      <dl className="flashcard-scope-counts" aria-label="Gesamter Bestand und aktuelle Auswahl">
+        <div><dt>{selectedCollection ? "In dieser Sammlung" : "Gesamter Bestand"}</dt><dd>{collectionCards.length}<small> Karten</small></dd></div>
+        <div><dt>Aktuelle Auswahl</dt><dd>{visibleCards.length}<small> Karten</small></dd></div>
+        <div className="flashcard-due-count"><dt>Jetzt fällig</dt><dd>{due.length}<small> Karten</small></dd></div>
+      </dl>
+      <p className="flashcard-round-hint" role="status">{due.length ? `Die Lernrunde enthält ${due.length} fällige ${due.length === 1 ? "Karte" : "Karten"} aus deiner aktuellen Auswahl.` : next ? `Aktuell keine Karten fällig. Die nächste Karte wird am ${reviewDate(next.dueAt)} fällig. Du kannst vorher alle Karten üben.` : collectionCards.length ? "Keine Karte passt zu deinen Filtern. Passe deine Auswahl an, um zu starten." : "In dieser Auswahl gibt es noch keine Lernkarten."} {visibleCards.length > 0 && "Beim Üben wird dein Lernfortschritt gespeichert."}</p>
+      {hasFilters && <div className="flashcard-active-filters" aria-label="Aktive Lernkartenfilter">{topicFilter && <span>{topicFilter === "::unassigned" ? "Ohne Thema" : `${getTopicPathLabel(workspace.topics, topicFilter)} · mit Unterthemen`}</span>}{priorityFilter !== "all" && <span>{priorityFilter === "null" ? "Noch nicht eingestuft" : `${priorityFilter} ${priorityLabels[Number(priorityFilter) as 1 | 2 | 3]}`}</span>}{filter.trim() && <span>Suche: „{filter.trim()}“</span>}<Button type="button" variant="ghost" size="sm" onClick={() => { setTopicSelection({ collectionId: activeCollectionId, value: "" }); setPriorityFilter("all"); setFilter(""); }}><X size={14} />Filter zurücksetzen</Button></div>}
+      <details className="flashcard-filters-disclosure">
+        <summary><SlidersHorizontal size={16} /><span>Auswahl eingrenzen<small>{activeFilterCount ? `${activeFilterCount} Filter aktiv` : "Thema, Priorität und Suche"}</small></span><ChevronDown size={16} className="flashcard-filter-chevron" /></summary>
+        <div className="flashcard-filters">
+          <label className="field"><span>Thema mit Unterthemen</span><select aria-label="Thema der Lernkarten" value={topicFilter} onChange={event => setTopicSelection({ collectionId: activeCollectionId, value: event.target.value })}><option value="">Alle Themen</option>{availableTopics.map(({ topic, depth }) => <option key={topic.id} value={topic.id}>{`${"— ".repeat(depth)}${topic.title}`}</option>)}{cardTopicIds.has(null) && <option value="::unassigned">Ohne Thema</option>}</select></label>
+          <label className="field"><span>Prioritätsstufe</span><select aria-label="Prioritätsstufe" value={priorityFilter} onChange={event => setPriorityFilter(event.target.value as PriorityFilter)}><option value="all">Alle Prioritäten</option>{priorityLevels.map(priority => <option key={priority} value={priority}>{priority} {priorityLabels[priority]}</option>)}<option value="null">Noch nicht eingestuft</option></select></label>
+          <label className="field"><span>Suche</span><Input className="card-search" aria-label="Lernkarten durchsuchen" placeholder="Frage, Antwort oder Notiz …" value={filter} onChange={event => setFilter(event.target.value)} /></label>
+        </div>
+        <section className="flashcard-priority-overview" aria-label="Prioritäten in Sammlung und Thema"><h3>Nach Bedeutung für deinen Lernstoff</h3><p>Die Zahlen zeigen alle {topicCards.length} Karten der gewählten Sammlung und des gewählten Themas. Du kannst die Priorität jeder Karte bearbeiten; Wiederholungen folgen deinem Lernfortschritt.</p><div className="flashcard-priority-layers">{layerCounts.map(({ priority, count }) => <Button type="button" variant="ghost" key={priority} className={`flashcard-priority-layer is-priority-${priority}`} aria-pressed={priorityFilter === String(priority)} onClick={() => setPriorityFilter(current => current === String(priority) ? "all" : String(priority) as PriorityFilter)}><span className="flashcard-priority-layer-title">{priority} {priorityLabels[priority]}</span><span className="flashcard-priority-layer-description">{priorityDescriptions[priority]}</span><strong>{count}<small> Karten</small></strong></Button>)}</div><Button type="button" variant="ghost" className="flashcard-unclassified" aria-pressed={priorityFilter === "null"} onClick={() => setPriorityFilter(current => current === "null" ? "all" : "null")}>Noch nicht eingestuft <strong>{unclassifiedCount}</strong></Button></section>
+      </details>
     </section>
-    <div className="flashcards-intro"><div><span className="eyebrow"><Layers3 size={15} />DEIN WISSEN FESTIGEN</span><h2>{due.length ? `${due.length} ${due.length === 1 ? "Karte ist" : "Karten sind"} in deiner Auswahl fällig.` : visibleCards.length ? "In dieser Auswahl ist gerade nichts fällig." : workspace.cards.length ? "Keine Karten in dieser Auswahl." : "Was möchtest du dir merken?"}</h2><p>{due.length ? "Die Lernrunde verwendet nur die fälligen Karten aus deiner Sammlung, deinem Thema, deiner Prioritätsstufe und deiner Suche." : next ? `Die nächste Wiederholung in dieser Auswahl ist am ${reviewDate(next.dueAt)}.` : workspace.cards.length ? "Passe die Filter an, um andere Karten anzuzeigen." : "Halte eine Frage und ihre Antwort fest – mit Worten, Bildern oder Diagrammen."}</p></div>{workspace.cards.length ? <Button className="primary-action" disabled={saving || !due.length} onClick={() => start(due)}>Lernrunde starten</Button> : <Button onClick={() => onEdit(newFlashcard())}><Plus size={17} />Erste Lernkarte</Button>}</div>
     {workspace.cards.length > 0 && <><div className="section-heading"><h2>Lernkarten in deiner Auswahl</h2><span className="flashcard-visible-count">{visibleCards.length} sichtbar · {due.length} fällig</span></div><div className="flashcard-list">{visibleCards.map(card => {
       const linked = card.noteId ? notesById.get(card.noteId) : undefined;
-      return <article key={card.id}><span className="flashcard-list-icon"><Layers3 size={20} /></span><div className="flashcard-list-body"><h3>{card.question.replace(/!\[[^\]]*\]\([^)]*\)/g, "Abbildung").replace(/[#*`]/g, "").slice(0, 160)}</h3><p>{Date.parse(card.dueAt) <= clock ? "Bereit zum Lernen" : `Nächste Wiederholung: ${reviewDate(card.dueAt)}`} · {card.reviews} Wiederholungen</p><CardContext note={linked} topicTitle={linked?.topicId ? topicsById.get(linked.topicId)?.title ?? "Ohne Thema" : "Ohne Thema"} collectionTitles={memberships.get(card.id) ?? []} priority={priorities.get(card.id) ?? null} suggested={card.priority === undefined && priorities.get(card.id) != null} onOpenNote={onOpenNote} /></div><Button type="button" variant="ghost" size="icon" aria-label="Lernkarte bearbeiten" onClick={() => onEdit(card)}><Pencil size={16} /></Button></article>;
+      return <article key={card.id}><span className="flashcard-list-icon"><Layers3 size={20} /></span><div className="flashcard-list-body"><h3>{card.question.replace(/!\[[^\]]*\]\([^)]*\)/g, "Abbildung").replace(/[#*`]/g, "").slice(0, 160)}</h3><p>{Date.parse(card.dueAt) <= clock ? "Bereit zum Lernen" : `Nächste Wiederholung: ${reviewDate(card.dueAt)}`} · {card.reviews} Wiederholungen</p><CardContext note={linked} topicTitle={linked?.topicId ? getTopicPathLabel(workspace.topics, linked.topicId) : "Ohne Thema"} collectionTitles={memberships.get(card.id) ?? []} priority={priorities.get(card.id) ?? null} suggested={card.priority === undefined && priorities.get(card.id) != null} onOpenNote={onOpenNote} /></div><Button type="button" variant="ghost" size="icon" aria-label="Lernkarte bearbeiten" onClick={() => onEdit(card)}><Pencil size={16} /></Button></article>;
     })}</div>{!visibleCards.length && <p className="flashcard-empty-selection">Keine Karte passt zu diesen Filtern. Wähle eine andere Sammlung, ein anderes Thema oder eine andere Priorität, oder ändere die Suche.</p>}</>}
+    <AlertDialog open={replacement !== null} onOpenChange={open => { if (!open && !pendingStart) setReplacement(null); }}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Pausierte Lernrunde ersetzen?</AlertDialogTitle><AlertDialogDescription>Deine bisherige Runde in „{pausedTitle}“ wird durch die neue Auswahl ersetzt. Bereits gespeicherte Bewertungen und Wiederholungstermine bleiben erhalten.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={saving || pendingStart}>Abbrechen</AlertDialogCancel><AlertDialogAction disabled={saving || pendingStart} onClick={event => { event.preventDefault(); if (replacement) void start(replacement.cards, replacement.mode, true, replacement.collectionId, replacement.previousSession); }}>{pendingStart ? "Wird vorbereitet …" : "Neue Runde beginnen"}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
   </section>;
 }
