@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { Archive, BookOpen, Check, ChevronRight, Compass, Download, FileText, FolderOpen, GitBranch, GraduationCap, KeyRound, LayoutGrid, Link2, List, LockKeyhole, LogOut, Network, Pencil, Plus, Search, Star, X, Layers3, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { SidebarProvider, Sidebar, SidebarContent, SidebarHeader, SidebarFooter, SidebarGroup, SidebarGroupLabel, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarInset, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -49,8 +50,8 @@ async function signOut() {
   window.location.assign("/login");
 }
 
-function Navigation({ view, go, workspace, topicId, setTopic, newTopic, openKeys }: {
-  view: View; go: (v: View) => void; workspace: Workspace; topicId: string; setTopic: (id: string) => void; newTopic: () => void; openKeys: () => void;
+function Navigation({ view, go, workspace, topicId, setTopic, newTopic, openKeys, onSignOut }: {
+  view: View; go: (v: View) => void; workspace: Workspace; topicId: string; setTopic: (id: string) => void; newTopic: () => void; openKeys: () => void; onSignOut: () => void;
 }) {
   const { setOpenMobile } = useSidebar();
   function navigate(v: View) { go(v); setOpenMobile(false); }
@@ -60,7 +61,7 @@ function Navigation({ view, go, workspace, topicId, setTopic, newTopic, openKeys
     <SidebarGroup><SidebarGroupLabel>LERNEN & VERBINDEN</SidebarGroupLabel><SidebarMenu>{nav.slice(3).map(({ id, label, icon: Icon }) => <SidebarMenuItem key={id}><SidebarMenuButton isActive={view === id} onClick={() => navigate(id)}><Icon /><span>{label}</span></SidebarMenuButton></SidebarMenuItem>)}</SidebarMenu></SidebarGroup>
     {workspace.topics.length > 0 && <SidebarGroup className="sidebar-topics"><Collapsible defaultOpen><div className="side-section-heading"><CollapsibleTrigger asChild><button className="sidebar-topics-trigger">THEMEN<ChevronDown size={14} /></button></CollapsibleTrigger><button onClick={newTopic} aria-label="Neues Thema"><Plus size={16} /></button></div><CollapsibleContent><TopicTree topics={workspace.topics} notes={workspace.notes} selectedId={topicId} onSelect={id => { setTopic(id); setOpenMobile(false); }} compact /><button className="all-topics-link" onClick={() => navigate("topics")}>Themen strukturieren</button></CollapsibleContent></Collapsible></SidebarGroup>}
     <SidebarGroup><SidebarMenu><SidebarMenuItem><SidebarMenuButton isActive={view === "favorites"} onClick={() => navigate("favorites")}><Star /><span>Favoriten</span></SidebarMenuButton></SidebarMenuItem><SidebarMenuItem><SidebarMenuButton isActive={view === "archive"} onClick={() => navigate("archive")}><Archive /><span>Archiv</span></SidebarMenuButton></SidebarMenuItem><SidebarMenuItem><SidebarMenuButton onClick={() => { openKeys(); setOpenMobile(false); }}><KeyRound /><span>Zugangsschlüssel</span></SidebarMenuButton></SidebarMenuItem></SidebarMenu></SidebarGroup></SidebarContent>
-    <SidebarFooter><div className="private-label"><LockKeyhole size={14} />Privater Wissensraum<button className="sign-out" onClick={() => void signOut()}><LogOut size={14} />Abmelden</button></div></SidebarFooter>
+    <SidebarFooter><div className="private-label"><LockKeyhole size={14} />Privater Wissensraum<button className="sign-out" onClick={onSignOut}><LogOut size={14} />Abmelden</button></div></SidebarFooter>
   </Sidebar>;
 }
 
@@ -88,6 +89,9 @@ export function BrainApp() {
   const { workspace: w, loading, saving, save } = brain;
   const [view, setView] = useState<View>("home");
   const [studying, setStudying] = useState(false);
+  const quizPending = useRef(false);
+  const [hasQuizPending, setHasQuizPending] = useState(false);
+  const onQuizPendingChange = useCallback((pending: boolean) => { quizPending.current = pending; setHasQuizPending(pending); }, []);
   const [learningCollectionId, setLearningCollectionId] = useState("");
   const [cardStartRequest, setCardStartRequest] = useState(0);
   const [cardResumeRequest, setCardResumeRequest] = useState(0);
@@ -129,10 +133,10 @@ export function BrainApp() {
   const firstProgress = firstPath ? pathProgress(firstPath, w.completedStepIds) : null;
   const allTags = [...new Set(scopeNotes.filter(matchesTopic).flatMap(n => n.tags))].sort();
   const freshNote = (): Note => ({ id: crypto.randomUUID(), title: "", summary: "", content: "", topicId: topicId && topicId !== UNASSIGNED ? topicId : null, tags: [], relatedIds: [], favorite: false, archived: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
-  function go(v: View) { setOverviewClock(Date.now()); setStudying(false); setCardStartRequest(0); setCardResumeRequest(0); setQuizLaunchRequest(undefined); setQuizResultRequest(undefined); if (v === "collections") setLearningCollectionId(""); setView(v); setTopicId(""); setTag(""); setQuery(""); setSelectedPathId(null); window.scrollTo({ top: 0, behavior: "instant" }); }
+  function go(v: View) { if (quizPending.current) { toast.info("Speichere zuerst die offenen Antworten in deiner Lernrunde."); return false; } setOverviewClock(Date.now()); setStudying(false); setCardStartRequest(0); setCardResumeRequest(0); setQuizLaunchRequest(undefined); setQuizResultRequest(undefined); if (v === "collections") setLearningCollectionId(""); setView(v); setTopicId(""); setTag(""); setQuery(""); setSelectedPathId(null); window.scrollTo({ top: 0, behavior: "instant" }); return true; }
   function openNote(id: string) { if (id === selectedId) return; setSelectedId(id); window.history.pushState(null, "", "#note=" + encodeURIComponent(id)); }
   function closeNote() { setSelectedId(null); window.history.replaceState(null, "", window.location.pathname + window.location.search); }
-  function setTopic(id: string) { go("library"); setTopicId(id); }
+  function setTopic(id: string) { if (go("library")) setTopicId(id); }
   function openCollection(id: string) { go("collections"); setLearningCollectionId(id); }
   function startCollectionCards(id: string | null) { go("flashcards"); setLearningCollectionId(id ?? ""); setCardStartRequest(value => value + 1); }
   function handleLearningAction(action: LearningAction) {
@@ -150,7 +154,7 @@ export function BrainApp() {
   useEffect(() => {
     const readHash = () => { try { setSelectedId(window.location.hash.startsWith("#note=") ? decodeURIComponent(window.location.hash.slice(6)) : null); } catch { setSelectedId(null); } };
     readHash(); window.addEventListener("hashchange", readHash); window.addEventListener("popstate", readHash);
-    const keyboard = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key === "k") { e.preventDefault(); setSelectedId(null); window.history.replaceState(null, "", window.location.pathname + window.location.search); setView("library"); requestAnimationFrame(() => searchRef.current?.focus()); } };
+    const keyboard = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key === "k") { e.preventDefault(); if (quizPending.current) { toast.info("Speichere zuerst die offenen Antworten in deiner Lernrunde."); return; } setSelectedId(null); window.history.replaceState(null, "", window.location.pathname + window.location.search); setView("library"); requestAnimationFrame(() => searchRef.current?.focus()); } };
     window.addEventListener("keydown", keyboard);
     return () => { window.removeEventListener("hashchange", readHash); window.removeEventListener("popstate", readHash); window.removeEventListener("keydown", keyboard); };
   }, []);
@@ -166,8 +170,8 @@ export function BrainApp() {
     return () => controller.abort();
   }, [w, topicId, editingNote, editingPath, editingTopic, editingCard]);
 
-  return <SidebarProvider style={{ "--sidebar-width": "250px" } as CSSProperties}><Navigation view={view} go={go} workspace={w} topicId={topicId} setTopic={setTopic} newTopic={() => createTopic()} openKeys={() => setShowKeys(true)} /><SidebarInset className={"brain-main" + (studying ? " is-studying" : "")}>
-    <header className="topbar"><div className="breadcrumb"><SidebarTrigger className="mobile-toggle" aria-label="Navigation öffnen" /><span>Wissensatelier</span><ChevronRight size={14} /><strong>{topic?.title ?? labels[view]}</strong></div><div className="topbar-right"><span className="save-state"><Check size={14} className={saving ? "pulse" : ""} />{saving ? "Speichert …" : loading ? "Lädt …" : brain.error ? "Bitte prüfen" : "Gespeichert"}</span><Button variant="ghost" size="icon" aria-label="Import & Datensicherung" onClick={() => setShowTransfer(true)}><Download size={18} /></Button></div></header>
+  return <SidebarProvider style={{ "--sidebar-width": "250px" } as CSSProperties}><Navigation view={view} go={go} workspace={w} topicId={topicId} setTopic={setTopic} newTopic={() => createTopic()} openKeys={() => setShowKeys(true)} onSignOut={() => { if (quizPending.current) toast.info("Speichere zuerst die offenen Antworten in deiner Lernrunde."); else void signOut(); }} /><SidebarInset className={"brain-main" + (studying ? " is-studying" : "")}>
+    <header className="topbar"><div className="breadcrumb"><SidebarTrigger className="mobile-toggle" aria-label="Navigation öffnen" /><span>Wissensatelier</span><ChevronRight size={14} /><strong>{topic?.title ?? labels[view]}</strong></div><div className="topbar-right"><span className="save-state"><Check size={14} className={saving ? "pulse" : ""} />{saving ? "Speichert …" : loading ? "Lädt …" : brain.error ? "Bitte prüfen" : hasQuizPending ? "Antworten offen" : "Gespeichert"}</span><Button variant="ghost" size="icon" aria-label="Import & Datensicherung" disabled={hasQuizPending} onClick={() => setShowTransfer(true)}><Download size={18} /></Button></div></header>
     <div className="workspace-content">
       {!(view === "flashcards" && studying) && <><div className="page-heading"><div><div className="eyebrow">{view === "home" ? "PLATZ FÜR DEINE GEDANKEN" : "DEIN PERSÖNLICHER WISSENSRAUM"}</div><h1>{topic?.title ?? (topicId === UNASSIGNED ? "Ohne Thema" : view === "home" ? "Dein Wissen" : labels[view])}</h1><p>{topic?.description ?? ({ home: "Gedanken festhalten. Zusammenhänge entdecken.", library: "Deine Einträge an einem Ort.", topics: "Fachthemen und Unterthemen ordnen dein Wissen. Öffne eine Ebene, um alle zugehörigen Einträge zu sehen.", collections: "Stelle Wissen, Lernkarten und Aufgaben für ein konkretes Lernziel zusammen.", paths: "Aus einzelnen Gedanken wird ein Weg. Lerne in deinem Tempo.", connections: "Entdecke, wie deine Gedanken zusammengehören.", favorites: "Die Gedanken, zu denen du gern zurückkommst.", archive: "Aufbewahrt für später. Hier geht kein Gedanke verloren.", flashcards: "Weniger nachlesen. Mehr im Gedächtnis behalten.", quizzes: "Wissen prüfen, Denkfehler verstehen und gezielt weiterüben." }[view])}</p></div><div className="heading-actions">{topic && <Button variant="outline" onClick={() => setEditingTopic(topic)} aria-label="Thema bearbeiten"><Pencil size={16} /></Button>}{view !== "quizzes" && view !== "collections" && <Button className="primary-action" disabled={loading} onClick={() => view === "flashcards" ? setEditingCard(newFlashcard()) : view === "topics" ? createTopic() : view === "paths" ? setEditingPath({ id: crypto.randomUUID(), title: "", description: "", steps: [] }) : setEditingNote(freshNote())}><Plus size={18} />{view === "flashcards" ? "Neue Lernkarte" : view === "topics" ? "Neues Thema" : view === "paths" ? "Neuer Lernpfad" : "Neue Notiz"}</Button>}</div></div>
       {topic && <div className="topic-context">
@@ -177,8 +181,8 @@ export function BrainApp() {
       </div>}
       {["library", "favorites", "archive"].includes(view) && <div className="search-bar"><Search size={20} /><Input ref={searchRef} aria-label="Wissen durchsuchen" placeholder="Suche nach Gedanken, Themen oder Tags …" value={query} onChange={e => { setQuery(e.target.value); }} />{query ? <button aria-label="Suche leeren" onClick={() => setQuery("")}><X size={18} /></button> : <kbd>Strg K</kbd>}</div>}
       </>}
-      {brain.error && <div className="error-banner" role="alert"><p>{brain.error}</p><Button variant="outline" size="sm" onClick={() => void brain.load()}>Aktuellen Stand laden</Button></div>}
-      {loading ? <div className="card-grid loading-grid" aria-label="Wissenssammlung wird geladen">{[1, 2, 3].map(i => <Skeleton key={i} className="h-56 rounded-xl" />)}</div> : <>
+      {brain.error && <div className="error-banner" role="alert"><p>{brain.error}</p><Button variant="outline" size="sm" disabled={saving || loading} onClick={() => void brain.load()}>Aktuellen Stand laden</Button></div>}
+      {loading && brain.revision < 0 ? <div className="card-grid loading-grid" aria-label="Wissenssammlung wird geladen">{[1, 2, 3].map(i => <Skeleton key={i} className="h-56 rounded-xl" />)}</div> : <>
       {view === "home" && <LearningOverview workspace={w} save={save} saving={saving} now={overviewClock} onAction={handleLearningAction} onOpenNote={openNote} onOpenCollection={openCollection} onViewResult={viewLearningResult} />}
       {view === "home" && <div className="search-bar"><Search size={20} /><Input ref={searchRef} aria-label="Wissen durchsuchen" placeholder="Suche nach Gedanken, Themen oder Tags …" value={query} onChange={e => { setQuery(e.target.value); setView("library"); }} /><kbd>Strg K</kbd></div>}
       {view === "home" && <div className="workspace-entrypoints"><button onClick={() => go("topics")}><span className="entrypoint-icon"><FolderOpen size={22} /></span><span><strong>Wissen entdecken</strong><small>{w.topics.filter(t => !t.parentId).length} Fachthemen · {activeNotes.length} Einträge</small></span><ChevronRight size={18} /></button><button onClick={() => go("flashcards")}><span className="entrypoint-icon"><Layers3 size={22} /></span><span><strong>Wissen wiederholen</strong><small>{w.cards.length} Lernkarten · {w.cards.filter(c => Date.parse(c.dueAt) <= overviewClock).length} fällig</small></span><ChevronRight size={18} /></button></div>}
@@ -186,7 +190,7 @@ export function BrainApp() {
       {view === "topics" && <section className="topic-browser" aria-label="Themenstruktur"><div className="structure-intro"><FolderOpen size={22} /><div><h2>Vom Fachthema zum Detail</h2><p>Unterthemen gehören zu ihrem übergeordneten Thema. Einträge bleiben ihrer konkreten Ebene zugeordnet und erscheinen auch beim übergeordneten Thema.</p></div></div><TopicTree topics={w.topics} notes={w.notes} onSelect={setTopic} onEdit={setEditingTopic} onCreateChild={parentId => createTopic(parentId)} /><button className="unassigned-topic" onClick={() => setTopic(UNASSIGNED)}><FileText size={18} /><span>Ohne Thema<small>Einträge, die noch einen Platz suchen.</small></span><strong>{activeNotes.filter(n => !n.topicId).length}</strong><ChevronRight size={16} /></button>{!w.topics.length && <p className="topic-empty-hint">Lege ein Fachthema an und ergänze darunter passende Unterthemen.</p>}<div className="structure-collection-link"><div><h3>Für ein Lernziel bündeln</h3><p>Lernsammlungen verbinden Inhalte aus mehreren Themen mit Karten und Übungen.</p></div><Button variant="outline" onClick={() => go("collections")}>Lernsammlungen öffnen<ChevronRight size={16} /></Button></div></section>}
       {view === "home" && w.topics.length > 0 && <section className="topic-shortcuts" aria-label="Themen entdecken">{w.topics.filter(t => !t.parentId).slice(0, 4).map(t => <button key={t.id} onClick={() => setTopic(t.id)}><span className={"topic-dot " + t.color} />{t.title}</button>)}<button className="all-topics-shortcut" onClick={() => go("topics")}>Alle Themen</button></section>}
       {view === "home" && <LearningReminders workspace={w} save={save} saving={saving} onOpen={() => go("quizzes")} />}
-      {view === "quizzes" && <Quizzes workspace={w} save={save} saving={saving} onStudyChange={setStudying} onOpenNote={openNote} collectionId={learningCollectionId} onCollectionChange={setLearningCollectionId} launchRequest={quizLaunchRequest} onLaunchConsumed={consumeQuizLaunch} resultRequest={quizResultRequest} onResultRequestConsumed={consumeQuizResult} onBackToOverview={() => go("home")} />}
+      {view === "quizzes" && <Quizzes workspace={w} save={save} saving={saving} onStudyChange={setStudying} onOpenNote={openNote} collectionId={learningCollectionId} onCollectionChange={setLearningCollectionId} launchRequest={quizLaunchRequest} onLaunchConsumed={consumeQuizLaunch} resultRequest={quizResultRequest} onResultRequestConsumed={consumeQuizResult} onBackToOverview={() => go("home")} onPendingChange={onQuizPendingChange} />}
       {view === "flashcards" && <Flashcards workspace={w} save={save} saving={saving} onEdit={setEditingCard} onStudyChange={onCardStudyChange} onOpenNote={openNote} collectionId={learningCollectionId} onCollectionChange={setLearningCollectionId} startRequest={cardStartRequest} resumeRequest={cardResumeRequest} onResumeRequestConsumed={consumeCardResume} onBackToCollection={learningCollectionId ? () => openCollection(learningCollectionId) : undefined} />}
       {["home", "library", "favorites", "archive"].includes(view) && <section className="library-section">
         <div className="section-heading"><h2>{view === "home" ? "Zuletzt in deinem Wissensraum" : query ? "Suchergebnisse" : topic ? "Notizen in diesem Thema" : view === "archive" ? "Archivierte Notizen" : view === "favorites" ? "Deine Favoriten" : "Alle Notizen"} <span>{filtered.length}</span></h2>{view === "home" && <button onClick={() => go("library")}>Alle Notizen ansehen</button>}</div>

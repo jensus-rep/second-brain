@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { emptyWorkspace, quizQuestionSchema, quizRunSchema, workspaceSchema } from "../lib/brain/model.ts";
 import { ARCHIVED_EXPLANATION, compactQuizRuns, isCorrect } from "../lib/brain/quiz.ts";
 import { imageLearningSignature, learningQuestionFingerprint, questionLearningMaterial, withLearningNotes } from "../lib/brain/quiz-content.ts";
-import { preparationAreas, selectPreparationQuestions } from "../lib/brain/quiz-preparation.ts";
+import { latestQuestionResults, preparationAreas, selectAdaptivePreparationQuestions, selectPreparationQuestions } from "../lib/brain/quiz-preparation.ts";
 import { projectManagementLearning } from "../lib/brain/project-management-learning.ts";
 
 const subject = "Wissensarbeit im Test";
@@ -154,6 +154,53 @@ test("preparation rotates toward less used questions at every available level", 
   const second = selectPreparationQuestions(questions, history, subject, concept);
   assert.deepEqual(second.map(q => q.id), ["level-1-b", "level-2-b", "level-3-b"]);
   assert.equal(second.some(q => first.some(previous => previous.id === q.id)), false);
+});
+
+test("short preparation repeats unresolved tasks before unused application tasks", () => {
+  const basic = question("basic", 1), wrong = question("wrong", 2), newApplication = question("new-application", 2), transfer = question("transfer", 3);
+  const previous = run("previous", [basic, wrong], { answers: [answer(basic), answer(wrong, ["guess"])] });
+  const selected = selectAdaptivePreparationQuestions([basic, wrong, newApplication, transfer], [previous], subject, concept);
+  assert.equal(selected[0].id, wrong.id);
+  assert.deepEqual(new Set(selected.map(q => q.id)), new Set([wrong.id, newApplication.id, transfer.id]));
+  assert.equal(selected.some(q => q.id === basic.id), false, "Already correct foundations should not replace open application tasks.");
+});
+
+test("correctly answered tasks of the same level cannot clear or replace another task's mistake", () => {
+  const wrong = question("wrong", 2), right = question("right", 2);
+  const old = run("old", [wrong], { answers: [answer(wrong, ["guess"])] });
+  const correct = run("correct", [right], { startedAt: "2026-10-09T10:00:00.000Z", finishedAt: "2026-10-09T10:05:00.000Z", answers: [{ ...answer(right), answeredAt: "2026-10-09T10:02:00.000Z" }] });
+  assert.deepEqual(selectPreparationQuestions([wrong, right], [old, correct], subject, concept).map(q => q.id), [wrong.id]);
+});
+
+test("adaptive preparation ignores answers in unfinished exams", () => {
+  const first = question("a-first", 2), second = question("b-second", 2), third = question("c-third", 2), fourth = question("d-fourth", 2);
+  const active = run("active", [first, second, third], { mode: "exam", preparationConcept: undefined, finishedAt: null });
+  assert.deepEqual(selectPreparationQuestions([first, second, third, fourth], [active], subject, concept).map(q => q.id), [first.id, second.id, third.id]);
+  assert.equal(latestQuestionResults([first, second, third], [active]).size, 0);
+});
+
+test("compacted unchanged history retains correct evidence but edited tasks require new practice", () => {
+  const q = question();
+  const data = compactQuizRuns(workspace([q], { quizRuns: [run("old", [q])] }), undefined, 0);
+  assert.equal(latestQuestionResults([q], data.quizRuns).get(q.id).correct, true);
+  for (const changed of [
+    { ...q, prompt: "Eine andere Frage mit derselben ID." },
+    { ...q, difficulty: 2 },
+    { ...q, correctOptionIds: ["guess"] },
+    { ...q, options: q.options.map(option => ({ ...option, text: "Neuer Wortlaut" })) },
+  ]) {
+    const edited = compactQuizRuns({ ...data, quizQuestions: [changed] }, data, 0);
+    assert.equal(latestQuestionResults([changed], edited.quizRuns).size, 0);
+  }
+});
+
+test("adaptive preparation returns unique question IDs without changing its bank or history", () => {
+  const q = question();
+  const pool = [q, structuredClone(q)];
+  const history = [run("past", [q])];
+  const before = structuredClone({ pool, history });
+  assert.deepEqual(selectAdaptivePreparationQuestions(pool, history, subject, concept).map(item => item.id), [q.id]);
+  assert.deepEqual({ pool, history }, before);
 });
 
 test("small custom banks return only their one or two available questions without duplication", () => {

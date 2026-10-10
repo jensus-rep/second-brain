@@ -1,6 +1,7 @@
 import type { Flashcard, FlashcardSession, LearningCollection, QuizQuestion, QuizRun, Workspace } from "./model.ts";
 import { collectionItems, learningCollections } from "./learning-collections.ts";
-import { preparationAreas, type PreparationArea } from "./quiz-preparation.ts";
+import { latestQuestionResults, preparationAreas, selectAdaptivePreparationQuestions, type PreparationArea } from "./quiz-preparation.ts";
+import { withLearningNotes } from "./quiz-content.ts";
 import { isCorrect } from "./quiz.ts";
 
 export type LearningWeakness = {
@@ -28,6 +29,19 @@ export type LearningRecommendation = {
   recentResult: LearningResult | null;
   weaknesses: LearningWeakness[];
   primaryAction: LearningAction | null;
+};
+export type LearningContinuation = {
+  collectionId: string | null;
+  title: string;
+  subject: string;
+  action: Extract<LearningAction, { kind: "preparation" | "checkpoint" }> | null;
+  reason: "repair" | "coverage" | "application" | "checkpoint" | "unavailable";
+  concept: string | null;
+  questionCount: number;
+  questions: QuizQuestion[];
+  noteIds: string[];
+  progress: { covered: number; total: number; secure: number };
+  description: string;
 };
 
 const runActivity = (run: QuizRun) => Math.max(Date.parse(run.startedAt), ...run.answers.map(answer => Date.parse(answer.answeredAt)), run.finishedAt ? Date.parse(run.finishedAt) : 0);
@@ -79,26 +93,90 @@ function recentLearningResult(runs: QuizRun[]): LearningResult | null {
 }
 
 function currentWeaknesses(workspace: Workspace, questions: QuizQuestion[], runs: QuizRun[]): LearningWeakness[] {
-  const bank = new Map(questions.map(question => [question.id, question]));
   const availableNotes = new Set(workspace.notes.map(note => note.id));
-  const latest = new Map<string, { weakness: LearningWeakness; correct: boolean; time: number }>();
-  for (const run of [...runs].sort((a, b) => runActivity(a) - runActivity(b))) {
-    // Practice reveals its feedback immediately. An unfinished exam reveals no
-    // results, including indirectly through recommendations and weaknesses.
-    if (run.mode === "exam" && !run.finishedAt) continue;
-    for (const answer of run.answers) {
-      const saved = run.questions.find(question => question.id === answer.questionId);
-      const current = bank.get(answer.questionId);
-      if (!saved || !current || saved.subject !== current.subject || saved.concept !== current.concept) continue;
-      const key = conceptKey(current.subject, current.concept), time = Date.parse(answer.answeredAt);
-      if ((latest.get(key)?.time ?? -Infinity) > time) continue;
-      latest.set(key, {
-        time, correct: isCorrect(saved, answer.selectedOptionIds),
-        weakness: { subject: current.subject, concept: current.concept, questionId: current.id, answeredAt: answer.answeredAt, noteIds: [...new Set(current.noteIds ?? [])].filter(id => availableNotes.has(id)) },
-      });
-    }
+  const latest = latestQuestionResults(questions, runs);
+  const concepts = new Map<string, LearningWeakness>();
+  for (const current of questions) {
+    const result = latest.get(current.id);
+    if (!result || result.correct) continue;
+    const key = conceptKey(current.subject, current.concept);
+    const previous = concepts.get(key);
+    const noteIds = [...new Set([...(previous?.noteIds ?? []), ...(current.noteIds ?? [])])].filter(id => availableNotes.has(id));
+    const newer = !previous || previous.answeredAt <= result.answeredAt;
+    concepts.set(key, newer
+      ? { subject: current.subject, concept: current.concept, questionId: current.id, answeredAt: result.answeredAt, noteIds }
+      : { ...previous, noteIds });
   }
-  return [...latest.values()].filter(item => !item.correct).sort((a, b) => b.time - a.time).map(item => item.weakness);
+  return [...concepts.values()].sort((a, b) => b.answeredAt.localeCompare(a.answeredAt));
+}
+
+// The finished round anchors the selection even when the global focus changes.
+// Continue directly with exercises: repair, cover new concepts, work through
+// remaining application tasks, then check the concepts together.
+export function recommendLearningAfterRun(workspace: Workspace, run: QuizRun, collectionId?: string | null): LearningContinuation | null {
+  if (!run.finishedAt) return null;
+  const collections = learningCollections(workspace);
+  const requestedId = run.collectionId ?? collectionId ?? null;
+  const collection = requestedId
+    ? collections.find(item => item.id === requestedId && runMatchesLearningCollection(run, item))
+    : collectionId === undefined ? collections.find(item => runMatchesLearningCollection(run, item)) : undefined;
+  const unavailable = !!requestedId && !collection;
+  const scope = { collectionId: collection?.id ?? requestedId };
+  const empty: LearningContinuation = {
+    ...scope, title: collection?.title ?? (unavailable ? "Frühere Lernsammlung" : run.subject), subject: run.subject,
+    action: null, reason: "unavailable", concept: null, questions: [], questionCount: 0, noteIds: [],
+    progress: { covered: 0, total: 0, secure: 0 },
+    description: unavailable ? "Diese Lernsammlung ist nicht mehr verfügbar. Wähle im Lernüberblick eine aktuelle Sammlung." : "Für diese Runde sind keine aktuellen Aufgaben mehr verfügbar.",
+  };
+  if (unavailable) return empty;
+  const questions = collection ? collectionItems(workspace, collection).questions : workspace.quizQuestions.filter(question => question.subject === run.subject);
+  if (!questions.length) return empty;
+  const history = [...workspace.quizRuns.filter(item => item.id !== run.id), run].filter(item =>
+    !!item.finishedAt && (collection ? runMatchesLearningCollection(item, collection) : item.subject === run.subject));
+  const latest = latestQuestionResults(questions, history);
+  const subjects = [...new Set(questions.map(question => question.subject))];
+  const areas = subjects.flatMap(subject => preparationAreas({ ...workspace, quizQuestions: questions, quizRuns: history }, subject).map(area => ({ ...area, subject })));
+  const areaQuestions = (subject: string, concept: string) => questions.filter(question => question.subject === subject && question.concept === concept);
+  // "Covered" records work, not mastery. "Secure" means every task currently in
+  // this concept has a correct latest answer, including available higher levels.
+  const progress = {
+    covered: areas.filter(area => areaQuestions(area.subject, area.concept).some(question => latest.has(question.id))).length,
+    total: areas.length,
+    secure: areas.filter(area => areaQuestions(area.subject, area.concept).every(question => latest.get(question.id)?.correct)).length,
+  };
+  const weaknesses = currentWeaknesses(workspace, questions, history);
+  const weakness = weaknesses[0];
+  const unanswered = questions.find(question => run.questions.some(saved => saved.id === question.id) &&
+    !run.answers.some(answer => answer.questionId === question.id) && !latest.get(question.id)?.correct);
+  const uncovered = areas.find(area => !areaQuestions(area.subject, area.concept).some(question => latest.has(question.id)));
+  const openApplication = areas.find(area => areaQuestions(area.subject, area.concept).some(question => !latest.get(question.id)?.correct));
+  const next = weakness ?? unanswered ?? uncovered ?? openApplication;
+  if (next) {
+    const reason = weakness || unanswered ? "repair" : uncovered ? "coverage" : "application";
+    const selected = selectAdaptivePreparationQuestions(questions, history, next.subject, next.concept);
+    const noteIds = [...new Set(selected.flatMap(question => question.noteIds ?? []))].filter(id => workspace.notes.some(note => note.id === id));
+    const hasApplication = selected.some(question => question.difficulty === 2);
+    const hasTransfer = selected.some(question => question.difficulty === 3);
+    const advancedTasks = hasApplication && hasTransfer ? "Anwendungs- und Transferaufgaben" : hasTransfer ? "Transferaufgaben" : "Anwendungsaufgaben";
+    const description = reason === "repair"
+      ? `Bei „${next.concept}“ sind noch Antworten falsch oder offen. Wir greifen diese Aufgaben erneut auf und wenden die Erklärung direkt an.`
+      : reason === "coverage"
+        ? `„${next.concept}“ wurde noch nicht geübt. Damit deine Lernsammlung Schritt für Schritt vollständig abgedeckt wird, folgt jetzt dieser Bereich.`
+        : hasApplication || hasTransfer
+          ? `Du hast „${next.concept}“ bereits aufgegriffen. Jetzt festigst du den Bereich mit weiteren ${advancedTasks}.`
+          : `Du hast „${next.concept}“ bereits aufgegriffen. Weitere Aufgaben festigen den Bereich und schließen noch offene Inhalte.`;
+    return {
+      ...empty, subject: next.subject, action: { ...scope, kind: "preparation", subject: next.subject, concept: next.concept },
+      reason, concept: next.concept, questions: selected, questionCount: selected.length, noteIds, progress, description,
+    };
+  }
+  const checkpointSubject = subjects.includes(run.subject) ? run.subject : subjects[0];
+  const selected = selectCheckpointQuestions(questions, history, checkpointSubject).map(question => withLearningNotes(question));
+  return {
+    ...empty, subject: checkpointSubject, action: { ...scope, kind: "checkpoint", subject: checkpointSubject, questionCount: selected.length },
+    reason: "checkpoint", questions: selected, questionCount: selected.length, progress,
+    description: "Für alle aktuellen Aufgaben liegt eine richtige Antwort vor. Ein gemischter Kurztest prüft jetzt, ob du die Zusammenhänge auch ohne direkte Hinweise abrufen und anwenden kannst.",
+  };
 }
 
 // A checkpoint samples the current subject across concepts. It never adds
@@ -189,7 +267,13 @@ export function recommendLearning(workspace: Workspace, now = Date.now()): Learn
   else if (areas.some(area => !area.completed)) {
     const next = areas.find(area => !area.completed)!;
     primaryAction = { ...scope, kind: "preparation", subject: next.subject, concept: next.concept };
-  } else if (subject && questions.length) primaryAction = { ...scope, kind: "checkpoint", subject, questionCount: selectCheckpointQuestions(questions, runs, subject).length };
+  } else if (subject && questions.length) {
+    const latest = latestQuestionResults(questions, runs);
+    const remaining = areas.find(area => questions.some(question => question.subject === area.subject && question.concept === area.concept && !latest.get(question.id)?.correct));
+    primaryAction = remaining
+      ? { ...scope, kind: "preparation", subject: remaining.subject, concept: remaining.concept }
+      : { ...scope, kind: "checkpoint", subject, questionCount: selectCheckpointQuestions(questions, runs, subject).length };
+  }
   else if (collection) primaryAction = { ...scope, kind: "open-collection" };
   return {
     ...scope, title: missingSessionCollection ? "Gespeicherte Lernrunde" : collection?.title ?? subject ?? "Dein Lernen", subject, subjects,

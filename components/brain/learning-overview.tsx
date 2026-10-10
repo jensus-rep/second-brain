@@ -42,9 +42,11 @@ export function LearningOverview({ workspace, save, saving, now, onAction, onOpe
   const actionDescription = !primaryAction ? "Wähle eine Lernsammlung mit Karten oder Testaufgaben, um deine Vorbereitung zu beginnen."
     : primaryAction.kind === "resume-quiz" ? "Deine beantworteten Aufgaben sind gespeichert. Steige direkt in die offene Einheit ein."
     : primaryAction.kind === "resume-cards" ? `Deine Kartenrunde ist unterbrochen. ${primaryAction.remaining} ${primaryAction.remaining === 1 ? "Karte wartet" : "Karten warten"} noch auf dich.`
-    : primaryAction.kind === "review-concept" ? `Bei „${primaryAction.concept}“ war die letzte Antwort noch nicht richtig. Schau den Zusammenhang nach und prüfe ihn erneut.`
+    : primaryAction.kind === "review-concept" ? `Bei „${primaryAction.concept}“ sind noch Antworten falsch. Schau den Zusammenhang nach und prüfe diese Aufgaben erneut.`
     : primaryAction.kind === "review-cards" ? `${cards.due} ${cards.due === 1 ? "Karte ist" : "Karten sind"} jetzt fällig. Wiederhole diese Auswahl, bevor du neuen Stoff dazunimmst.`
-    : primaryAction.kind === "preparation" ? `„${primaryAction.concept}“ ist noch offen. Die nächste kurze Einheit knüpft an deine Vorbereitung an.`
+    : primaryAction.kind === "preparation" ? areas.some(area => area.subject === primaryAction.subject && area.concept === primaryAction.concept && area.completed)
+      ? `Du hast „${primaryAction.concept}“ bereits bearbeitet. Weitere Aufgaben festigen den Bereich und prüfen die Anwendung.`
+      : `„${primaryAction.concept}“ ist noch offen. Die nächste kurze Einheit knüpft an deine Vorbereitung an.`
     : primaryAction.kind === "checkpoint" ? `Die Vorbereitungseinheiten sind bearbeitet. Prüfe mit ${primaryAction.questionCount} gemischten Aufgaben, was du bereits anwenden kannst.`
     : "Öffne die zugehörigen Wissensnotizen und Lernpfade für deinen nächsten Schritt.";
   const checkpointSubject = recommendation.subject;

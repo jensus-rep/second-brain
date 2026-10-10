@@ -1,17 +1,17 @@
 "use client";
 
-import { useEffect, useId, useRef, type CSSProperties } from "react";
+import { useEffect, useId, useRef, type CSSProperties, type ReactNode } from "react";
 import { Check, CircleHelp, Compass, X } from "lucide-react";
 import type { QuizQuestion, QuizRun } from "@/lib/brain/model";
 import { isCorrect } from "@/lib/brain/quiz";
 
-type Props = { run: QuizRun; questions?: QuizQuestion[] };
+type Props = { run: QuizRun; questions?: QuizQuestion[]; nextStep?: ReactNode };
 
 const finishedDate = (date: string) => new Intl.DateTimeFormat("de-DE", {
   day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin",
 }).format(new Date(date));
 
-export function QuizResultSummary({ run, questions = run.questions }: Props) {
+export function QuizResultSummary({ run, questions = run.questions, nextStep }: Props) {
   const headingId = useId();
   const summaryRef = useRef<HTMLElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -67,12 +67,12 @@ export function QuizResultSummary({ run, questions = run.questions }: Props) {
         <p className="quiz-result-meta">{run.subject} · {run.mode === "exam" ? "Prüfungssimulation" : "Übungsrunde"}<br />{finishedDate(run.finishedAt)} (Berlin)</p>
       </div>
     </div>
+    <div className="quiz-result-next"><Compass size={20} aria-hidden="true" /><div>{nextStep ?? <><h3>{review.length ? "Dein nächster Lernschritt" : "Wissen weiter festigen"}</h3><p>{review.length ? <>Sieh dir unten die Erklärungen an und erkläre die Zusammenhänge anschließend mit eigenen Worten. Besonders hilfreich: <strong>{review.join(", ")}</strong>.</> : "Alle Aufgaben dieser Runde stimmen. Erkläre die Antworten auch mit eigenen Worten und prüfe dein Wissen später mit weiteren Aufgaben."}</p>{unanswered > 0 && <p className="quiz-result-open-note">{unanswered === 1 ? "Eine Aufgabe blieb unbeantwortet." : `${unanswered} Aufgaben blieben unbeantwortet.`} Auch dort lohnt sich ein Blick auf die Erklärung.</p>}</>}</div></div>
     <dl className="quiz-result-stats" aria-label="Ergebnis nach Antwortstatus">
       <div className="quiz-result-stat is-correct"><dt><Check size={16} aria-hidden="true" />Richtig</dt><dd>{correct}</dd></div>
       <div className="quiz-result-stat is-incorrect"><dt><X size={16} aria-hidden="true" />Falsch</dt><dd>{incorrect}</dd></div>
       <div className="quiz-result-stat is-unanswered"><dt><CircleHelp size={16} aria-hidden="true" />Offen</dt><dd>{unanswered}</dd></div>
     </dl>
-    <div className="quiz-result-next"><Compass size={20} aria-hidden="true" /><div><h3>{review.length ? "Dein nächster Lernschritt" : "Wissen weiter festigen"}</h3><p>{review.length ? <>Sieh dir unten die Erklärungen an und erkläre die Zusammenhänge anschließend mit eigenen Worten. Besonders hilfreich: <strong>{review.join(", ")}</strong>.</> : "Alle Aufgaben dieser Runde stimmen. Erkläre die Antworten auch mit eigenen Worten und prüfe dein Wissen später mit weiteren Aufgaben."}</p>{unanswered > 0 && <p className="quiz-result-open-note">{unanswered === 1 ? "Eine Aufgabe blieb unbeantwortet." : `${unanswered} Aufgaben blieben unbeantwortet.`} Auch dort lohnt sich ein Blick auf die Erklärung.</p>}</div></div>
     <p className="quiz-result-grading">Nur vollständig richtige Aufgaben zählen. Offene Aufgaben zählen nicht als richtig.</p>
   </section>;
 }

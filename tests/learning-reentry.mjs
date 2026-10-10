@@ -285,7 +285,7 @@ try {
   await uiSave(() => hub().getByLabel("Lernfokus auswählen").selectOption(collection.id), workspace => workspace.learningFocus.collectionId === collection.id);
   await click("Auswertung ansehen", hub());
   await expect(page.locator(".quiz-result-summary")).toContainText("2 von 2 richtig");
-  stored = await uiSave(() => click("Nächste Lerneinheit starten"), workspace => workspace.quizRuns.length === 2);
+  stored = await uiSave(() => click("Nächsten Lernbereich starten", page.locator(".quiz-result-summary")), workspace => workspace.quizRuns.length === 2);
   run = stored.quizRuns[1];
   assert.equal(run.collectionId, collection.id);
   assert.equal(run.preparationConcept, concepts[1]);

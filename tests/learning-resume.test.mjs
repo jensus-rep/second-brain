@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { emptyWorkspace, workspaceSchema, flashcardSessionSchema } from "../lib/brain/model.ts";
-import { recommendLearning, resumableFlashcardSession, selectCheckpointQuestions } from "../lib/brain/learning-resume.ts";
+import { recommendLearning, recommendLearningAfterRun, resumableFlashcardSession, selectCheckpointQuestions } from "../lib/brain/learning-resume.ts";
 
 const subject = "Agiles Projektmanagement";
 const timestamp = "2026-10-10T10:00:00.000Z";
@@ -110,7 +110,7 @@ test("cards removed from an existing selection do not re-enter its paused queue"
   assert.notEqual(recommendLearning(data, now).primaryAction?.kind, "resume-cards");
 });
 
-test("only unresolved latest concept answers recommend remediation using explicit note links", () => {
+test("only unresolved latest question answers recommend remediation using explicit note links", () => {
   const q = question("linked", "Sprintziel", { noteIds: ["n1"] }), unlinked = question("unlinked", "Entscheidungen");
   const old = run("old", [q, unlinked], { answers: [answer(q, false), answer(unlinked, false)] });
   const corrected = run("corrected", [q], { startedAt: later, finishedAt: later, answers: [answer(q, true, later)] });
@@ -120,6 +120,29 @@ test("only unresolved latest concept answers recommend remediation using explici
   assert.equal(result.primaryAction.kind, "review-concept");
   assert.equal(result.primaryAction.concept, "Entscheidungen");
   assert.deepEqual(result.primaryAction.noteIds, []);
+});
+
+test("a correct answer to another task of the same concept never hides an unresolved mistake", () => {
+  const wrong = question("wrong", "Sprintziel", { noteIds: ["n1"] }), right = question("right", "Sprintziel");
+  const earlier = run("earlier", [wrong], { answers: [answer(wrong, false)] });
+  const laterCorrect = run("later-correct", [right], { startedAt: later, finishedAt: later, answers: [answer(right, true, later)] });
+  const data = workspace([wrong, right], { quizRuns: [earlier, laterCorrect] });
+  const result = recommendLearning(data, now);
+  assert.deepEqual(result.weaknesses.map(item => item.questionId), [wrong.id]);
+  assert.equal(result.primaryAction.kind, "review-concept");
+  const next = recommendLearningAfterRun(data, laterCorrect);
+  assert.equal(next.reason, "repair");
+  assert.deepEqual(next.questions.map(item => item.id), [wrong.id]);
+  const repaired = run("repaired", [wrong], { startedAt: "2026-10-10T11:30:00.000Z", finishedAt: "2026-10-10T11:30:00.000Z", answers: [answer(wrong, true, "2026-10-10T11:30:00.000Z")] });
+  assert.deepEqual(recommendLearning({ ...data, quizRuns: [...data.quizRuns, repaired] }, now).weaknesses, []);
+});
+
+test("weaknesses collect explicit notes from every still unresolved task in a concept", () => {
+  const first = question("first", "Sprintziel", { noteIds: ["n1"] }), second = question("second", "Sprintziel", { noteIds: ["n2"] });
+  const wrong = run("wrong", [first, second], { answers: [answer(first, false), answer(second, false, later)] });
+  const result = recommendLearning(workspace([first, second], { notes: [note("n1"), note("n2")], quizRuns: [wrong] }), now);
+  assert.equal(result.weaknesses.length, 1);
+  assert.deepEqual(new Set(result.weaknesses[0].noteIds), new Set(["n1", "n2"]));
 });
 
 test("work completed and cards already reviewed are counted without claiming mastery", () => {
@@ -159,11 +182,13 @@ test("only equivalent finished rounds produce a percentage-point comparison", ()
   }
 });
 
-test("a checkpoint follows completed preparation and samples distinct available concepts", () => {
+test("completed short preparation continues with unseen tasks before a checkpoint", () => {
   const questions = [question("a1", "Ziele"), question("a2", "Ziele"), question("b1", "Planung"), question("c1", "Zusammenarbeit")];
   const completed = questions.filter(q => q.id !== "a2").map(q => run(`done-${q.id}`, [q], { preparationConcept: q.concept }));
   const data = workspace(questions, { quizRuns: completed });
-  assert.equal(recommendLearning(data, now).primaryAction.kind, "checkpoint");
+  assert.deepEqual(recommendLearning(data, now).primaryAction, { kind: "preparation", subject, concept: "Ziele", collectionId: "agile" });
+  const allAnswered = { ...data, quizRuns: [...completed, run("done-a2", [questions[1]], { preparationConcept: questions[1].concept })] };
+  assert.equal(recommendLearning(allAnswered, now).primaryAction.kind, "checkpoint");
   const selected = selectCheckpointQuestions(questions, completed, subject, 3);
   assert.equal(new Set(selected.map(q => q.concept)).size, 3);
   assert.equal(selected[0].id, "a2", "The less-used question is preferred within a concept.");
@@ -172,6 +197,116 @@ test("a checkpoint follows completed preparation and samples distinct available 
   assert.equal(selectCheckpointQuestions([questions[0], questions[0]], [], subject).length, 1);
   assert.deepEqual(selectCheckpointQuestions(questions, [], "Missing subject"), []);
   assert.deepEqual(selectCheckpointQuestions(questions, [], subject, 0), []);
+});
+
+test("continuation covers untouched concepts before extending a correctly completed short round", () => {
+  const basic = question("basic", "Ziele"), application = question("application", "Ziele", { difficulty: 2 }), newArea = question("new-area", "Planung");
+  const completed = run("completed", [basic], { preparationConcept: "Ziele" });
+  const data = workspace([basic, application, newArea], { quizRuns: [completed], cards: [card()], learningFocus: { collectionId: "other-focus", subject: "Anderes Thema", updatedAt: later } });
+  const before = structuredClone(data);
+  const next = recommendLearningAfterRun(data, completed);
+  assert.equal(next.collectionId, "agile");
+  assert.equal(next.reason, "coverage");
+  assert.equal(next.concept, "Planung");
+  assert.deepEqual(next.questions.map(item => item.id), [newArea.id]);
+  assert.deepEqual(next.progress, { covered: 1, total: 2, secure: 0 });
+  assert.deepEqual(data, before, "Continuation must not mutate stored content or history.");
+  const coverage = run("covered", [newArea], { startedAt: later, finishedAt: later, preparationConcept: newArea.concept, answers: [answer(newArea, true, later)] });
+  const afterCoverage = recommendLearningAfterRun({ ...data, quizRuns: [...data.quizRuns, coverage] }, coverage);
+  assert.equal(afterCoverage.reason, "application");
+  assert.equal(afterCoverage.concept, "Ziele");
+  assert.deepEqual(afterCoverage.questions.map(item => item.id), [application.id]);
+  assert.deepEqual(afterCoverage.progress, { covered: 2, total: 2, secure: 1 });
+});
+
+test("continuation repairs mistakes before introducing another topic and distinguishes work from evidence", () => {
+  const wrong = question("wrong", "Ziele"), unseen = question("unseen", "Planung");
+  const completed = run("completed-wrong", [wrong], { preparationConcept: wrong.concept, answers: [answer(wrong, false)] });
+  const next = recommendLearningAfterRun(workspace([wrong, unseen], { quizRuns: [completed] }), completed);
+  assert.equal(next.reason, "repair");
+  assert.equal(next.concept, "Ziele");
+  assert.deepEqual(next.questions.map(item => item.id), [wrong.id]);
+  assert.deepEqual(next.progress, { covered: 1, total: 2, secure: 0 });
+});
+
+test("an early finish continues unanswered tasks before introducing another concept", () => {
+  const answered = question("answered", "Ziele"), skipped = question("skipped", "Ziele", { difficulty: 2 }), untouched = question("untouched", "Planung");
+  const early = run("early", [answered, skipped], { answers: [answer(answered)] });
+  const next = recommendLearningAfterRun(workspace([answered, skipped, untouched], { quizRuns: [early] }), early);
+  assert.equal(next.reason, "repair");
+  assert.equal(next.concept, "Ziele");
+  assert.deepEqual(next.questions.map(item => item.id), [skipped.id]);
+});
+
+test("all current tasks need correct evidence before continuation becomes a mixed checkpoint", () => {
+  const questions = [question("basic", "Ziele"), question("application", "Ziele", { difficulty: 2 }), question("transfer", "Ziele", { difficulty: 3 }), question("plan", "Planung")];
+  const completed = run("completed", questions);
+  const next = recommendLearningAfterRun(workspace(questions, { quizRuns: [completed] }), completed);
+  assert.equal(next.reason, "checkpoint");
+  assert.equal(next.action.kind, "checkpoint");
+  assert.deepEqual(next.progress, { covered: 2, total: 2, secure: 2 });
+  assert.equal(new Set(next.questions.map(item => item.id)).size, next.questionCount);
+  assert.equal(new Set(next.questions.map(item => item.concept)).size, 2);
+});
+
+test("continuation uses current scoped history even when an older result is opened", () => {
+  const q = question();
+  const mistaken = run("mistaken", [q], { answers: [answer(q, false)], collectionId: "agile" });
+  const corrected = run("corrected", [q], { startedAt: later, finishedAt: later, answers: [answer(q, true, later)], collectionId: "agile" });
+  const next = recommendLearningAfterRun(workspace([q], { quizRuns: [mistaken, corrected] }), mistaken);
+  assert.equal(next.reason, "checkpoint");
+  assert.deepEqual(next.progress, { covered: 1, total: 1, secure: 1 });
+});
+
+test("continuation never borrows correct answers from another collection", () => {
+  const q = question(), outside = question("outside", "Anderer Bereich");
+  const mistaken = run("mistaken", [q], { answers: [answer(q, false)], collectionId: "agile" });
+  const elsewhere = run("elsewhere", [q], { startedAt: later, finishedAt: later, answers: [answer(q, true, later)], collectionId: "other" });
+  const data = workspace([q, outside], { quizRuns: [mistaken, elsewhere], learningCollections: [collection([q]), collection([q, outside], { id: "other" })] });
+  const next = recommendLearningAfterRun(data, mistaken);
+  assert.equal(next.reason, "repair");
+  assert.deepEqual(next.questions.map(item => item.id), [q.id]);
+  assert.deepEqual(next.progress, { covered: 1, total: 1, secure: 0 });
+});
+
+test("continuation stays inside the finished collection and covers its other subjects", () => {
+  const first = question("first", "Ziele"), nextSubject = question("next-subject", "Entdeckung", { subject: "Produktmanagement" }), outside = question("outside", "Fremder Bereich");
+  const completed = run("completed", [first], { collectionId: "agile" });
+  const data = workspace([first, nextSubject, outside], { quizRuns: [completed], learningCollections: [collection([first, nextSubject])] });
+  const next = recommendLearningAfterRun(data, completed);
+  assert.equal(next.reason, "coverage");
+  assert.equal(next.subject, "Produktmanagement");
+  assert.deepEqual(next.questions.map(item => item.id), [nextSubject.id]);
+  assert.deepEqual(next.progress, { covered: 1, total: 2, secure: 1 });
+});
+
+test("deleted, mismatched and empty collections cannot launch outside their original scope", () => {
+  const q = question(), outside = question("outside", "Fremder Bereich");
+  for (const [completed, data, requested] of [
+    [run("deleted", [q], { collectionId: "deleted" }), workspace([outside], { learningCollections: [] }), undefined],
+    [run("mismatch", [q]), workspace([q, outside], { learningCollections: [collection([outside])] }), "agile"],
+    [run("empty", [q], { collectionId: "agile" }), workspace([outside], { learningCollections: [collection([])] }), undefined],
+  ]) {
+    const next = recommendLearningAfterRun(data, completed, requested);
+    assert.equal(next.action, null);
+    assert.equal(next.reason, "unavailable");
+    assert.deepEqual(next.questions, []);
+  }
+});
+
+test("unfinished exams never expose a continuation or correct-answer evidence", () => {
+  const q = question();
+  const activeExam = run("exam", [q], { mode: "exam", finishedAt: null });
+  assert.equal(recommendLearningAfterRun(workspace([q], { quizRuns: [activeExam] }), activeExam), null);
+});
+
+test("edited current tasks do not inherit correct evidence from the old snapshot", () => {
+  const old = question("stable-id"), edited = { ...old, prompt: "Eine neue Anwendungsfrage.", difficulty: 2 };
+  const completed = run("old-round", [old]);
+  const next = recommendLearningAfterRun(workspace([edited], { quizRuns: [completed] }), completed);
+  assert.equal(next.reason, "coverage");
+  assert.deepEqual(next.progress, { covered: 0, total: 1, secure: 0 });
+  assert.equal(next.questions[0].prompt, edited.prompt);
 });
 
 test("an empty workspace has no invented scope or launch action", () => {

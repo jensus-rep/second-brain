@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowRight, Bell, Check, ClipboardCheck, Download, Pencil, Plus, RotateCcw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,7 +14,7 @@ import { quizQuestionSchema, type LearningReminder, type QuizQuestion, type Quiz
 import type { SaveWorkspace } from "@/lib/brain/use-brain";
 import { withLearningNotes } from "@/lib/brain/quiz-content";
 import { preparationAreas, selectPreparationQuestions } from "@/lib/brain/quiz-preparation";
-import { runMatchesLearningCollection, selectCheckpointQuestions } from "@/lib/brain/learning-resume";
+import { recommendLearningAfterRun, runMatchesLearningCollection, selectCheckpointQuestions } from "@/lib/brain/learning-resume";
 import { addToLearningCollection, collectionItems, learningCollections } from "@/lib/brain/learning-collections";
 import { QuizResultSummary } from "./quiz-result";
 import { QuizPreparation } from "./quiz-preparation";
@@ -108,14 +108,20 @@ function Feedback({ question, answer, run, workspace, save, saving, actions, onO
   return <section className={"quiz-feedback " + (correct ? "correct" : "incorrect")} aria-label="Auswertung"><h3 className="quiz-verdict">{correct ? <Check size={18} /> : <X size={18} />}{correct ? "Richtig beantwortet" : answer ? "Nicht ganz richtig" : "Nicht beantwortet"}</h3>{answer && !correct && <p className="quiz-verdict-note">{hits} von {question.correctOptionIds.length} richtigen Antworten gewählt{selected.length > hits ? ` · ${selected.length - hits} falsch gewählt` : ""}. Ohne Teilpunkte zählt die Aufgabe als falsch.</p>}<OptionReview question={question} selected={selected} />{actions}<div className="quiz-explanation"><p>{question.explanation}</p>{question.source && <a href={question.source} target="_blank" rel="noopener noreferrer">Fachliche Quelle öffnen</a>}</div><QuizLearningMaterial question={question} notes={workspace.notes} onOpenNote={onOpenNote} />{answer && !correct && <div className="quiz-reflection"><label className="field"><span>Mein Denkfehler / Merksatz</span><Textarea value={reflection} maxLength={1500} rows={2} onChange={e => setReflection(e.target.value)} placeholder="Was habe ich verwechselt? Woran erkenne ich es beim nächsten Mal?" /></label><Button variant="outline" size="sm" disabled={saving || reflection === answer.reflection} onClick={() => void save(w => ({ ...w, quizRuns: w.quizRuns.map(r => r.id === run.id ? { ...r, answers: r.answers.map(a => a.questionId === question.id ? { ...a, reflection } : a) } : r) }), "Denkfehler gespeichert")}>Merksatz speichern</Button></div>}</section>;
 }
 
-function QuizSession({ run, workspace, save, saving, onOpenNote, onBackToOverview, collectionId }: Props & { run: QuizRun; onBackToOverview?: () => void; collectionId?: string }) {
+function QuizSession({ run, workspace, save, saving, onOpenNote, onBackToOverview, collectionId, onPendingChange }: Props & { run: QuizRun; onBackToOverview?: () => void; collectionId?: string; onPendingChange?: (pending: boolean) => void }) {
   const collectionName = learningCollections(workspace).find(collection => collection.id === (run.collectionId ?? collectionId) && runMatchesLearningCollection(run, collection))?.title;
   const initialIndex = Math.max(0, run.questions.findIndex(q => !run.answers.some(a => a.questionId === q.id)));
   const [index, setIndex] = useState(initialIndex);
   const [selected, setSelected] = useState<string[]>(() => run.answers.find(a => a.questionId === run.questions[initialIndex].id)?.selectedOptionIds ?? []);
   const [reviewId, setReviewId] = useState<string | null>(() => run.mode === "practice" ? run.answers.at(-1)?.questionId ?? null : null);
-  // Practice answers are evaluated locally and shown at once; the save runs in the background.
-  const [pending, setPending] = useState<QuizAnswer | null>(null);
+  // Keep every unconfirmed answer while revision-bound writes run in order.
+  const [pendingAnswers, setPendingAnswers] = useState<QuizAnswer[]>([]);
+  const pendingAnswersRef = useRef<QuizAnswer[]>([]);
+  const answerWrites = useRef(new Set<Promise<boolean>>());
+  const [saveFailed, setSaveFailed] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+  const [finishing, setFinishing] = useState(false);
+  const finishingRef = useRef(false);
   const [now, setNow] = useState(() => Date.now());
   const autoAttempt = useRef(0);
   const heading = useRef<HTMLHeadingElement>(null);
@@ -124,18 +130,33 @@ function QuizSession({ run, workspace, save, saving, onOpenNote, onBackToOvervie
   const question = run.questions[index];
   const expired = !!run.deadlineAt && Date.parse(run.deadlineAt) <= now;
   const answered = run.answers.find(a => a.questionId === question.id);
-  const review = run.mode === "practice" ? run.questions.find(q => q.id === (pending?.questionId ?? reviewId)) : undefined;
-  const reviewAnswer = review && (pending?.questionId === review.id ? pending : run.answers.find(a => a.questionId === review.id));
-  const answeredCount = run.answers.length + (pending && !run.answers.some(a => a.questionId === pending.questionId) ? 1 : 0);
+  const review = run.mode === "practice" ? run.questions.find(q => q.id === reviewId) : undefined;
+  const reviewAnswer = review && (pendingAnswers.find(answer => answer.questionId === review.id) ?? run.answers.find(a => a.questionId === review.id));
+  const answeredCount = run.answers.length + pendingAnswers.filter(answer => !run.answers.some(a => a.questionId === answer.questionId)).length;
+  const backgroundSaving = run.mode === "practice" && pendingAnswers.length > 0 && !saveFailed;
+  const interactionBlocked = finishing || saveFailed || (saving && !backgroundSaving);
   const reviewKey = review?.id;
+  const hasPending = pendingAnswers.length > 0;
+  useEffect(() => { onPendingChange?.(hasPending); return () => onPendingChange?.(false); }, [hasPending, onPendingChange]);
+  useEffect(() => {
+    const guard = (event: BeforeUnloadEvent) => { if (pendingAnswersRef.current.length) event.preventDefault(); };
+    window.addEventListener("beforeunload", guard);
+    return () => window.removeEventListener("beforeunload", guard);
+  }, []);
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, []);
-  useEffect(() => { if (reviewKey && !saving) nextButton.current?.focus({ preventScroll: true }); }, [reviewKey, saving]);
+  useEffect(() => { if (reviewKey) nextButton.current?.focus({ preventScroll: true }); }, [reviewKey]);
   useEffect(() => { if (focusHeading.current && !reviewKey) { focusHeading.current = false; heading.current?.focus(); } });
   async function finish() {
-    return save(w => {
-      const finishedAt = new Date().toISOString();
-      return { ...withQuizFocus(w, run, finishedAt, collectionId), quizRuns: w.quizRuns.map(r => r.id === run.id && !r.finishedAt ? { ...r, finishedAt } : r) };
-    }, "Test beendet und Auswertung gespeichert");
+    if (finishingRef.current || saveFailed) return false;
+    finishingRef.current = true; setFinishing(true);
+    try {
+      await Promise.all([...answerWrites.current]);
+      if (pendingAnswersRef.current.length) return false;
+      return await save(w => {
+        const finishedAt = new Date().toISOString();
+        return { ...withQuizFocus(w, run, finishedAt, collectionId), quizRuns: w.quizRuns.map(r => r.id === run.id && !r.finishedAt ? { ...r, finishedAt } : r) };
+      }, "Test beendet und Auswertung gespeichert", { queue: true });
+    } finally { finishingRef.current = false; setFinishing(false); }
   }
   useEffect(() => {
     if (!expired || saving || run.finishedAt || now - autoAttempt.current < 30000) return;
@@ -145,28 +166,63 @@ function QuizSession({ run, workspace, save, saving, onOpenNote, onBackToOvervie
       return { ...withQuizFocus(w, run, finishedAt, collectionId), quizRuns: w.quizRuns.map(r => r.id === run.id && !r.finishedAt ? { ...r, finishedAt } : r) };
     }, "Zeit abgelaufen. Auswertung gespeichert.");
   }, [expired, now, saving, run, save, collectionId]);
-  function move(next: number) { focusHeading.current = true; setIndex(next); setSelected(run.answers.find(a => a.questionId === run.questions[next].id)?.selectedOptionIds ?? []); }
-  function next() { const open = run.questions.findIndex(q => !run.answers.some(a => a.questionId === q.id)); if (open < 0) void finish(); else { move(open); setReviewId(null); } }
+  function move(next: number) { focusHeading.current = true; setIndex(next); setSelected((pendingAnswersRef.current.find(a => a.questionId === run.questions[next].id) ?? run.answers.find(a => a.questionId === run.questions[next].id))?.selectedOptionIds ?? []); }
+  function next() {
+    if (interactionBlocked) return;
+    const open = run.questions.findIndex(q => !run.answers.some(a => a.questionId === q.id) && !pendingAnswersRef.current.some(a => a.questionId === q.id));
+    if (open < 0) void finish(); else { move(open); setReviewId(null); }
+  }
   function toggle(id: string, checked: boolean) { setSelected(current => checked ? [...current.filter(x => x !== id), id] : current.filter(x => x !== id)); }
   function finishEarly() {
     void finish();
   }
+  function persistAnswer(answer: QuizAnswer) {
+    const write = save(w => {
+      if (!w.quizRuns.some(item => item.id === run.id)) throw new Error("Diese Lernrunde ist nicht mehr verfügbar. Deine offenen Antworten bleiben hier erhalten.");
+      return { ...withQuizFocus(w, run, answer.answeredAt, collectionId), quizRuns: w.quizRuns.map(r => {
+        if (r.id !== run.id) return r;
+        if (r.finishedAt || (r.deadlineAt && Date.parse(r.deadlineAt) <= Date.now())) throw new Error("Die Testrunde ist bereits beendet.");
+        const existing = r.answers.find(item => item.questionId === answer.questionId);
+        if (run.mode === "practice" && existing && existing.answeredAt !== answer.answeredAt) throw new Error("Diese Aufgabe wurde inzwischen in einem anderen Fenster beantwortet. Deine offene Antwort bleibt hier erhalten.");
+        return { ...r, answers: [...r.answers.filter(a => a.questionId !== answer.questionId), answer] };
+      }) };
+    }, "", { queue: true }).then(ok => {
+      if (ok) {
+        pendingAnswersRef.current = pendingAnswersRef.current.filter(item => item !== answer);
+        setPendingAnswers(pendingAnswersRef.current);
+      } else if (run.mode === "practice") setSaveFailed(true);
+      return ok;
+    });
+    answerWrites.current.add(write);
+    void write.finally(() => answerWrites.current.delete(write));
+    return write;
+  }
+  async function retryAnswers() {
+    if (retrying || saving) return;
+    setRetrying(true);
+    try {
+      for (const answer of [...pendingAnswersRef.current]) if (!await persistAnswer(answer)) return;
+      setSaveFailed(false);
+    } finally { setRetrying(false); }
+  }
+  function discardPendingAnswers() {
+    if (saving || retrying || !window.confirm("Die noch nicht gespeicherten Antworten dieser Runde verwerfen und den zuletzt gespeicherten Stand übernehmen?")) return;
+    pendingAnswersRef.current = []; setPendingAnswers([]); setSaveFailed(false);
+  }
   async function submit() {
-    if (expired || !selected.length || saving || review) return;
+    if (expired || !selected.length || interactionBlocked || review) return;
     const answer = { questionId: question.id, selectedOptionIds: selected, answeredAt: new Date().toISOString(), reflection: answered?.reflection ?? "" };
-    if (run.mode === "practice") setPending(answer);
-    const ok = await save(w => ({ ...withQuizFocus(w, run, answer.answeredAt, collectionId), quizRuns: w.quizRuns.map(r => {
-      if (r.id !== run.id) return r;
-      if (r.finishedAt || (r.deadlineAt && Date.parse(r.deadlineAt) <= Date.now())) throw new Error("Die Testrunde ist bereits beendet.");
-      return { ...r, answers: [...r.answers.filter(a => a.questionId !== question.id), answer] };
-    }) }), "");
-    setPending(null);
-    if (ok) { if (run.mode === "practice") setReviewId(question.id); else if (index < run.questions.length - 1) move(index + 1); }
+    if (run.mode === "practice") {
+      if (pendingAnswersRef.current.some(item => item.questionId === answer.questionId)) return;
+      pendingAnswersRef.current = [...pendingAnswersRef.current, answer];
+      setPendingAnswers(pendingAnswersRef.current); setReviewId(question.id);
+      void persistAnswer(answer);
+    } else if (await persistAnswer(answer) && index < run.questions.length - 1) move(index + 1);
   }
   // Keyboard: digits toggle answers, Enter confirms or moves on. Typing in fields and open dialogs stay untouched.
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
-      if (event.altKey || event.ctrlKey || event.metaKey || event.isComposing || saving || expired) return;
+      if (event.altKey || event.ctrlKey || event.metaKey || event.isComposing || interactionBlocked || expired) return;
       const target = event.target instanceof HTMLElement ? event.target : null;
       if (target?.closest("input, textarea, select, [contenteditable='true'], [role='dialog']")) return;
       const onButton = !!target?.closest("button:not([role='checkbox']), a");
@@ -179,25 +235,26 @@ function QuizSession({ run, workspace, save, saving, onOpenNote, onBackToOvervie
     return () => window.removeEventListener("keydown", onKey);
   });
   const reviewNumber = review ? run.questions.findIndex(q => q.id === review.id) + 1 : 0;
-  const mobileEnd = <Button className="quiz-mobile-end" type="button" variant="outline" disabled={saving} onClick={finishEarly} aria-label={run.mode === "exam" ? "Test abgeben" : "Runde vorzeitig beenden"}>{run.mode === "exam" ? "Test abgeben" : "Beenden"}</Button>;
+  const mobileEnd = <Button className="quiz-mobile-end" type="button" variant="outline" disabled={interactionBlocked} onClick={finishEarly} aria-label={run.mode === "exam" ? "Test abgeben" : "Runde vorzeitig beenden"}>{run.mode === "exam" ? "Test abgeben" : "Beenden"}</Button>;
   return <section className="quiz-session">
     <div className="quiz-session-top"><strong>{run.preparationConcept ? "Vorbereitung" : run.mode === "exam" ? "Prüfungssimulation" : "Adaptiv üben"} · {run.subject}</strong><span>{answeredCount} von {run.questions.length} beantwortet{run.deadlineAt && " · " + (expired ? "Zeit abgelaufen" : Math.ceil((Date.parse(run.deadlineAt) - now) / 60000) + " Min. übrig")}</span></div>
     {collectionName && <p className="small-note quiz-session-collection">Sammlung: {collectionName}</p>}
     <Progress value={answeredCount / run.questions.length * 100} aria-label="Testfortschritt" />
+    {pendingAnswers.length > 0 && <div className="quiz-save-notice" role={saveFailed ? "alert" : "status"}>{saveFailed ? <><p>Deine Antworten konnten noch nicht gespeichert werden. Sie bleiben hier erhalten. Prüfe den Speicherhinweis und versuche es erneut.</p><div className="quiz-actions"><Button variant="outline" disabled={saving || retrying} onClick={() => void retryAnswers()}>{retrying ? "Antworten werden gespeichert …" : "Antworten erneut speichern"}</Button><Button variant="ghost" disabled={saving || retrying} onClick={discardPendingAnswers}>Offene Antworten verwerfen</Button></div></> : <p>{finishing ? "Deine letzten Antworten werden gespeichert. Danach erscheint die Auswertung." : "Antworten werden gespeichert. Du kannst direkt weiterüben."}</p>}</div>}
     {run.mode === "exam" && <nav className="quiz-question-nav" aria-label="Aufgaben im Test">{run.questions.map((q, i) => <Button key={q.id} variant={i === index ? "default" : "outline"} size="sm" onClick={() => move(i)} disabled={saving || expired} aria-label={"Aufgabe " + (i + 1) + (run.answers.some(a => a.questionId === q.id) ? ", beantwortet" : "")}>{i + 1}{run.answers.some(a => a.questionId === q.id) ? " ✓" : ""}</Button>)}</nav>}
     {review ? <article className="quiz-panel quiz-question">
       <div className="eyebrow">{review.concept} · {difficultyLabels[review.difficulty]}</div><h2 tabIndex={-1}>Aufgabe {reviewNumber}: {review.prompt}</h2>
-      <Feedback key={review.id} question={review} answer={reviewAnswer} run={run} workspace={workspace} save={save} saving={saving} onOpenNote={onOpenNote} actions={<div className="quiz-actions quiz-session-controls" role="group" aria-label="Aktionen für die Testaufgabe"><Button ref={nextButton} disabled={saving} onClick={next}>{answeredCount === run.questions.length ? "Runde abschließen" : "Nächste Aufgabe"}<ArrowRight size={16} /></Button>{mobileEnd}<small className="quiz-keys">Enter: weiter</small></div>} />
+      <Feedback key={review.id} question={review} answer={reviewAnswer} run={run} workspace={workspace} save={save} saving={saving || pendingAnswers.length > 0} onOpenNote={onOpenNote} actions={<div className="quiz-actions quiz-session-controls" role="group" aria-label="Aktionen für die Testaufgabe"><Button ref={nextButton} disabled={interactionBlocked} onClick={next}>{finishing ? "Runde wird abgeschlossen …" : answeredCount === run.questions.length ? "Runde abschließen" : "Nächste Aufgabe"}<ArrowRight size={16} /></Button>{mobileEnd}<small className="quiz-keys">Enter: weiter</small></div>} />
     </article> : <form className="quiz-panel quiz-question" onSubmit={event => { event.preventDefault(); void submit(); }}>
       <div className="eyebrow">{question.concept} · {difficultyLabels[question.difficulty]}</div><h2 ref={heading} tabIndex={-1}>Aufgabe {index + 1}: {question.prompt}</h2><p>Wähle alle passenden Antworten. Die Auswahl muss vollständig stimmen; es gibt keine Teilpunkte.</p>
-      <fieldset disabled={saving || expired}><legend className="sr-only">Antwortmöglichkeiten</legend>{question.options.map((option, i) => <label className="quiz-option" key={option.id}><Checkbox checked={selected.includes(option.id)} onCheckedChange={checked => toggle(option.id, checked === true)} /><span>{option.text}</span>{i < 9 && <kbd className="quiz-key" aria-hidden="true">{i + 1}</kbd>}</label>)}</fieldset>
-      <div className="quiz-actions quiz-session-controls" role="group" aria-label="Aktionen für die Testaufgabe"><Button type="submit" disabled={saving || expired || !selected.length}>{run.mode === "practice" ? "Bestätigen" : "Antwort speichern"}</Button>{mobileEnd}{answered && run.mode === "exam" && <span>Gespeicherte Auswahl: {question.options.filter(o => answered.selectedOptionIds.includes(o.id)).map(o => o.text).join(" · ")}</span>}<small className="quiz-keys">Tasten 1–{Math.min(question.options.length, 9)} wählen · Enter {run.mode === "practice" ? "bestätigt" : "speichert"}</small></div>
+      <fieldset disabled={interactionBlocked || expired}><legend className="sr-only">Antwortmöglichkeiten</legend>{question.options.map((option, i) => <label className="quiz-option" key={option.id}><Checkbox checked={selected.includes(option.id)} onCheckedChange={checked => toggle(option.id, checked === true)} /><span>{option.text}</span>{i < 9 && <kbd className="quiz-key" aria-hidden="true">{i + 1}</kbd>}</label>)}</fieldset>
+      <div className="quiz-actions quiz-session-controls" role="group" aria-label="Aktionen für die Testaufgabe"><Button type="submit" disabled={interactionBlocked || expired || !selected.length}>{run.mode === "practice" ? "Bestätigen" : "Antwort speichern"}</Button>{mobileEnd}{answered && run.mode === "exam" && <span>Gespeicherte Auswahl: {question.options.filter(o => answered.selectedOptionIds.includes(o.id)).map(o => o.text).join(" · ")}</span>}<small className="quiz-keys">Tasten 1–{Math.min(question.options.length, 9)} wählen · Enter {run.mode === "practice" ? "bestätigt" : "speichert"}</small></div>
     </form>}
-    <div className="quiz-session-end"><p>{run.mode === "exam" ? "Lösungen und Fehlerhinweise erscheinen nach der Abgabe. Unbeantwortete Aufgaben zählen als falsch." : "Deine bestätigten Antworten sind gespeichert. Du kannst die Runde später fortsetzen oder jetzt auswerten."}{onBackToOverview && run.deadlineAt && " Bei einer Pause läuft das Zeitlimit weiter."}</p>{onBackToOverview && <div className="quiz-actions"><Button variant="outline" disabled={saving || !!pending} onClick={onBackToOverview}>Zum Lernüberblick</Button></div>}<Button variant="outline" disabled={saving} onClick={finishEarly}>{run.mode === "exam" ? "Test abgeben" : "Runde vorzeitig beenden"}</Button></div>
+    <div className="quiz-session-end"><p>{run.mode === "exam" ? "Lösungen und Fehlerhinweise erscheinen nach der Abgabe. Unbeantwortete Aufgaben zählen als falsch." : pendingAnswers.length ? "Deine Antworten werden noch gespeichert. Lass die App dafür geöffnet." : "Deine bestätigten Antworten sind gespeichert. Du kannst die Runde später fortsetzen oder jetzt auswerten."}{onBackToOverview && run.deadlineAt && " Bei einer Pause läuft das Zeitlimit weiter."}</p>{onBackToOverview && <div className="quiz-actions"><Button variant="outline" disabled={saving || pendingAnswers.length > 0 || finishing} onClick={onBackToOverview}>Zum Lernüberblick</Button></div>}<Button variant="outline" disabled={interactionBlocked} onClick={finishEarly}>{run.mode === "exam" ? "Test abgeben" : "Runde vorzeitig beenden"}</Button></div>
   </section>;
 }
 
-export function Quizzes({ workspace, save, saving, onStudyChange, onOpenNote, collectionId = "", onCollectionChange, launchRequest, onLaunchConsumed, resultRequest, onResultRequestConsumed, onBackToOverview }: Props & { onStudyChange?: (studying: boolean) => void; collectionId?: string; onCollectionChange?: (id: string) => void; launchRequest?: QuizLaunchRequest; onLaunchConsumed?: () => void; resultRequest?: { id: string; runId: string; collectionId?: string }; onResultRequestConsumed?: () => void; onBackToOverview?: () => void }) {
+export function Quizzes({ workspace, save, saving, onStudyChange, onOpenNote, collectionId = "", onCollectionChange, launchRequest, onLaunchConsumed, resultRequest, onResultRequestConsumed, onBackToOverview, onPendingChange }: Props & { onStudyChange?: (studying: boolean) => void; collectionId?: string; onCollectionChange?: (id: string) => void; launchRequest?: QuizLaunchRequest; onLaunchConsumed?: () => void; resultRequest?: { id: string; runId: string; collectionId?: string }; onResultRequestConsumed?: () => void; onBackToOverview?: () => void; onPendingChange?: (pending: boolean) => void }) {
   const requestedResult = resultRequest ? workspace.quizRuns.find(run => run.id === resultRequest.runId && run.finishedAt) : undefined;
   const requestedResultCollectionId = requestedResult ? matchingQuizCollection(workspace, requestedResult, resultRequest?.collectionId ?? collectionId)?.id ?? "" : "";
   const [subjectChoice, setSubject] = useState(() => requestedResult?.subject ?? launchRequest?.subject ?? workspace.learningFocus?.subject ?? workspace.quizQuestions[0]?.subject ?? "Projektmanagement");
@@ -216,11 +273,20 @@ export function Quizzes({ workspace, save, saving, onStudyChange, onOpenNote, co
   const [selectedResultRequest, setSelectedResultRequest] = useState<string | null>(resultRequest?.id ?? null);
   const [journal, setJournal] = useState(false);
   const [launching, setLaunching] = useState(false);
+  const [continuing, setContinuing] = useState(false);
+  const continuingRequest = useRef(false);
   const [launchError, setLaunchError] = useState<{ id: string; message: string } | null>(null);
+  const [heldRun, setHeldRun] = useState<QuizRun | null>(null);
   const attemptedRequest = useRef<string | null>(null);
   const launchingRequest = useRef(false);
   const consumedResultRequest = useRef<string | null>(null);
-  const active = workspace.quizRuns.find(r => !r.finishedAt);
+  const active = heldRun
+    ? workspace.quizRuns.find(run => run.id === heldRun.id && !run.finishedAt) ?? heldRun
+    : workspace.quizRuns.find(r => !r.finishedAt);
+  const onSessionPendingChange = useCallback((pending: boolean) => {
+    setHeldRun(pending ? active ?? null : null);
+    onPendingChange?.(pending);
+  }, [active, onPendingChange]);
   const studying = !!active;
   useEffect(() => { onStudyChange?.(studying); return () => onStudyChange?.(false); }, [studying, onStudyChange]);
   const result = workspace.quizRuns.find(r => r.id === resultId && r.finishedAt);
@@ -268,7 +334,7 @@ export function Quizzes({ workspace, save, saving, onStudyChange, onOpenNote, co
       if (requestedCollectionId && !requestedCollection) throw new Error("Die gewählte Lernsammlung ist nicht mehr verfügbar. Wähle im Lernüberblick eine andere Sammlung.");
       const questionsInScope = requestedCollection ? collectionItems(workspace, requestedCollection).questions : workspace.quizQuestions;
       const questions = request.mode === "preparation"
-        ? request.concept ? selectPreparationQuestions(questionsInScope, workspace.quizRuns, request.subject, request.concept) : []
+        ? request.concept ? selectPreparationQuestions(questionsInScope, runsForCollection(workspace, requestedCollection?.id), request.subject, request.concept) : []
         : request.mode === "checkpoint"
           ? selectCheckpointQuestions(questionsInScope, workspace.quizRuns, request.subject).map(question => withLearningNotes(question))
           : selectQuestions(questionsInScope, workspace.quizRuns, request.subject, "practice", 6).map(question => withLearningNotes(question));
@@ -295,12 +361,12 @@ export function Quizzes({ workspace, save, saving, onStudyChange, onOpenNote, co
     void attemptLaunch(launchRequest);
   });
   const launchNotice = launchRequest && (launching || launchError?.id === launchRequest.id) ? <section className="quiz-panel" aria-label="Lerneinheit starten">{launching ? <p role="status">Deine Lerneinheit wird gestartet …</p> : <><p role="alert">{launchError?.message}</p><div className="quiz-actions"><Button disabled={saving || !!active} onClick={() => void attemptLaunch(launchRequest)}>Start erneut versuchen</Button>{onBackToOverview && <Button variant="outline" disabled={saving} onClick={onBackToOverview}>Zum Lernüberblick</Button>}</div></>}</section> : null;
-  if (active) return <>{launchNotice}<QuizSession key={active.id} run={active} workspace={workspace} save={save} saving={saving} onOpenNote={onOpenNote} onBackToOverview={onBackToOverview} collectionId={collectionId} /></>;
+  if (active) return <>{launchNotice}<QuizSession key={active.id} run={active} workspace={workspace} save={save} saving={saving} onOpenNote={onOpenNote} onBackToOverview={onBackToOverview} collectionId={collectionId} onPendingChange={onSessionPendingChange} /></>;
   async function startPreparation(concept: string, allQuestions = false, startSubject = subject, startCollectionId = collection?.id) {
     const startCollection = collections.find(item => item.id === startCollectionId);
     if (startCollectionId && !startCollection) return false;
     const questionsInScope = startCollection ? collectionItems(workspace, startCollection).questions : workspace.quizQuestions;
-    const questions = selectPreparationQuestions(questionsInScope, workspace.quizRuns, startSubject, concept, allQuestions);
+    const questions = selectPreparationQuestions(questionsInScope, runsForCollection(workspace, startCollection?.id), startSubject, concept, allQuestions);
     if (!questions.length) return false;
     const run: QuizRun = { id: crypto.randomUUID(), subject: startSubject, mode: "practice", preparationConcept: concept, ...(startCollection ? { collectionId: startCollection.id } : {}), startedAt: new Date().toISOString(), deadlineAt: null, finishedAt: null, questions, answers: [] };
     const saved = await persistRun(run, "Vorbereitungseinheit gestartet");
@@ -312,22 +378,39 @@ export function Quizzes({ workspace, save, saving, onStudyChange, onOpenNote, co
     const resultCollection = resultRequest?.runId === result.id
       ? matchingQuizCollection(workspace, result, resultRequest.collectionId ?? collectionId)
       : collections.find(item => item.id === (result.collectionId ?? collectionId) && runMatchesLearningCollection(result, item));
-    const resultContents = resultCollection ? collectionItems(workspace, resultCollection) : null;
-    const resultPreparation = preparationAreas({
-      ...workspace,
-      quizQuestions: result.collectionId && !resultCollection ? [] : resultContents?.questions ?? workspace.quizQuestions,
-      notes: resultContents?.notes ?? workspace.notes,
-      quizRuns: runsForCollection(workspace, resultCollection?.id),
-    }, result.subject);
-    const conceptsToReview = result.questions.filter(question => !isCorrect(question, result.answers.find(answer => answer.questionId === question.id)?.selectedOptionIds ?? [])).map(question => question.concept);
-    const reviewArea = resultPreparation.find(area => conceptsToReview.includes(area.concept));
-    const nextArea = reviewArea ?? resultPreparation.find(area => !area.completed);
+    const continuation = recommendLearningAfterRun(workspace, result, resultCollection?.id);
+    const continueLabel = continuation?.reason === "repair" ? "Unsicheren Bereich festigen"
+      : continuation?.reason === "coverage" ? "Nächsten Lernbereich starten"
+      : continuation?.reason === "application" ? continuation.questions.some(question => question.difficulty > 1) ? "Anwendung weiter üben" : "Wissen weiter festigen" : "Wissen im Kurztest prüfen";
+    async function continueLearning() {
+      if (!continuation?.action || !continuation.questions.length || continuingRequest.current) return;
+      continuingRequest.current = true;
+      setContinuing(true);
+      try {
+        const run: QuizRun = {
+          id: crypto.randomUUID(), subject: continuation.subject,
+          mode: continuation.action.kind === "checkpoint" ? "exam" : "practice",
+          ...(continuation.concept ? { preparationConcept: continuation.concept } : {}),
+          ...(continuation.collectionId ? { collectionId: continuation.collectionId } : {}),
+          startedAt: new Date().toISOString(), deadlineAt: null, finishedAt: null,
+          questions: continuation.questions.map(question => withLearningNotes(question)), answers: [],
+        };
+        if (await persistRun(run, "Nächster Lernschritt gestartet")) {
+          setSubject(run.subject); setResultId(null); onCollectionChange?.(continuation.collectionId ?? "");
+        }
+      } finally { continuingRequest.current = false; setContinuing(false); }
+    }
     function openTestOverview() { setSubject(result!.subject); onCollectionChange?.(resultCollection?.id ?? ""); setResultId(null); }
     return <div className="quizzes">
       {launchNotice}
-      <QuizResultSummary key={result.id} run={result} questions={shown} />
-      {(resultCollection || result.collectionId) && <p className="small-note">Sammlung: {resultCollection?.title ?? "Frühere Lernsammlung"}</p>}
-      <section className="quiz-panel" aria-label="Nach der Lernrunde"><h2>Dein nächster Lernschritt</h2><p>{nextArea ? <>Als Nächstes: <strong>{nextArea.concept}</strong>. {reviewArea ? "Die letzte Runde enthält hier falsche oder offene Antworten. Eine kurze Wiederholung hilft dir, die Erklärung anzuwenden." : "Diese Lerneinheit ist in deiner Vorbereitung noch offen."}</> : "Im Lernüberblick siehst du deine Ergebnisse, fällige Lernkarten und weitere passende Lernschritte."}</p><div className="quiz-actions">{onBackToOverview && <Button onClick={onBackToOverview} disabled={saving || launching}>Zum Lernüberblick<ArrowRight size={16} /></Button>}{nextArea && <Button variant={onBackToOverview ? "outline" : "default"} disabled={saving || launching || workspace.quizRuns.length >= 200} onClick={() => void startPreparation(nextArea.concept, false, result.subject, resultCollection?.id ?? "")}>{reviewArea ? "Unsicheren Lernbereich üben" : "Nächste Lerneinheit starten"}<ArrowRight size={16} /></Button>}<Button variant="outline" onClick={openTestOverview} disabled={saving || launching}>Zur Testübersicht</Button>{result.preparationConcept && <Button variant="ghost" onClick={openTestOverview} disabled={saving || launching}>Vorbereitung fortsetzen<ArrowRight size={16} /></Button>}</div></section>
+      <QuizResultSummary key={result.id} run={result} questions={shown} nextStep={continuation && <>
+        <h3>{continuation.reason === "repair" ? "Dein nächster Lernschritt" : "Wissen weiter festigen"}</h3>
+        <p>{continuation.description}</p>
+        {continuation.progress.total > 0 && <p className="quiz-result-path-progress">{continuation.title}: {continuation.progress.covered} von {continuation.progress.total} Lernbereichen bearbeitet · {continuation.progress.secure} in allen vorhandenen Aufgaben richtig beantwortet.</p>}
+        {continuation.action && <Button disabled={saving || launching || continuing || workspace.quizRuns.length >= 200} onClick={() => void continueLearning()}>{continuing ? "Lernschritt wird gestartet …" : continueLabel}<ArrowRight size={16} /></Button>}
+        {workspace.quizRuns.length >= 200 && <p>Die Grenze von 200 gespeicherten Runden ist erreicht.</p>}
+      </>} />
+      <div className="quiz-actions quiz-result-navigation">{onBackToOverview && <Button variant="ghost" onClick={onBackToOverview} disabled={saving || continuing}>Zum Lernüberblick</Button>}<Button variant="ghost" onClick={openTestOverview} disabled={saving || continuing}>Zur Testübersicht</Button></div>
       {shown.map((question, index) => <article key={question.id} className="quiz-panel"><h3>Aufgabe {index + 1}: {question.prompt}</h3><Feedback question={question} answer={result.answers.find(answer => answer.questionId === question.id)} run={result} workspace={workspace} save={save} saving={saving} onOpenNote={onOpenNote} /></article>)}
       <ReminderForm subject={result.subject} workspace={workspace} save={save} saving={saving} />
     </div>;

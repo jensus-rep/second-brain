@@ -4,7 +4,7 @@ import { workspaceSchema, MAX_WORKSPACE_BYTES } from "@/lib/brain/model";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
-const response = (body: unknown, status = 200) => Response.json(body, { status, headers: { "Cache-Control": "private, no-store" } });
+const response = (body: unknown, status = 200, headers: Record<string, string> = {}) => Response.json(body, { status, headers: { "Cache-Control": "private, no-store", ...headers } });
 export async function GET(request: Request) {
   const user = await getApiUser(request);
   if (!user) return response({ error: "Bitte melde dich erneut an." }, 401);
@@ -24,6 +24,9 @@ export async function PUT(request: Request) {
     if (new TextEncoder().encode(JSON.stringify(input.data.workspace)).length > MAX_WORKSPACE_BYTES) return response({ error: "Die Sammlung ist zu groß (maximal 4 MB)." }, 413);
     const saved = await writeWorkspace(user.userId, input.data.workspace, input.data.revision);
     if (!saved) return response({ error: "Die Sammlung wurde in einem anderen Fenster geändert. Deine Eingabe bleibt erhalten. Sichere sie und lade den aktuellen Stand neu.", conflict: true }, 409);
+    if (request.headers.get("prefer")?.split(",").some(preference => preference.trim().toLowerCase() === "return=minimal")) {
+      return response({ revision: saved.revision }, 200, { "Preference-Applied": "return=minimal" });
+    }
     return response(saved);
   } catch (error) {
     if (error instanceof SyntaxError) return response({ error: "Die Datei enthält kein gültiges JSON." }, 400);
