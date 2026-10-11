@@ -83,7 +83,7 @@ async function resume(id) {
 async function answer(question) {
   await page.getByRole("checkbox", { name: question.options.find(option => question.correctOptionIds.includes(option.id)).text, exact: true }).check();
   await click("Bestätigen");
-  await expect(page.locator(".quiz-verdict")).toHaveText("Richtig beantwortet", { timeout: 1000 });
+  await expect(page.locator(".quiz-verdict").last()).toHaveText("Richtig beantwortet", { timeout: 1000 });
 }
 
 // A controlled gate proves the next interaction is independent of the network.
@@ -187,7 +187,6 @@ try {
     await settled(current => current.workspace.quizRuns.find(item => item.id === run.id).answers.length === index + 1);
     if (index < run.questions.length - 1) await click("Nächste Aufgabe");
   }
-  await click("Runde abschließen");
   await settled(current => !!current.workspace.quizRuns.find(item => item.id === run.id).finishedAt);
   await expect(summary).toContainText("2 von 2 richtig");
   await expect(next.getByRole("button")).toHaveCount(1);
@@ -206,15 +205,13 @@ try {
   await queueTwoAnswers(run, delayed);
   await pendingNavigationStaysInQuiz();
   assert.equal((await snapshot()).revision, beforeDelay.revision, "Held saves have not committed either answer.");
-  await click("Runde abschließen");
-  await expect(button("Runde wird abgeschlossen …")).toBeDisabled();
   await expect(summary).toHaveCount(0);
-  assert.equal((await snapshot()).workspace.quizRuns[0].finishedAt, null, "Finishing waits for the answer queue before storing the result.");
+  assert.equal((await snapshot()).workspace.quizRuns[0].finishedAt, null, "Automatic completion waits for the answer queue before storing the result.");
   delayed.release();
-  stored = await settled(current => current.revision === beforeDelay.revision + 3 && current.workspace.quizRuns[0].answers.length === 2 && !!current.workspace.quizRuns[0].finishedAt);
-  assert.deepEqual(delayed.writes.map(write => write.body.revision), [beforeDelay.revision, beforeDelay.revision + 1, beforeDelay.revision + 2]);
-  assert.deepEqual(delayed.writes.map(write => write.body.workspace.quizRuns[0].answers.length), [1, 2, 2]);
-  assert.deepEqual(delayed.writes.map(write => !!write.body.workspace.quizRuns[0].finishedAt), [false, false, true]);
+  stored = await settled(current => current.revision === beforeDelay.revision + 2 && current.workspace.quizRuns[0].answers.length === 2 && !!current.workspace.quizRuns[0].finishedAt);
+  assert.deepEqual(delayed.writes.map(write => write.body.revision), [beforeDelay.revision, beforeDelay.revision + 1]);
+  assert.deepEqual(delayed.writes.map(write => write.body.workspace.quizRuns[0].answers.length), [1, 2]);
+  assert.deepEqual(delayed.writes.map(write => !!write.body.workspace.quizRuns[0].finishedAt), [false, true]);
   assert.ok(delayed.writes.every(write => write.prefer === "return=minimal"), "Interactive saves request a compact response.");
   assert.deepEqual(stored.workspace.quizRuns[0].answers.map(answer => answer.questionId), run.questions.map(question => question.id));
   await expect(summary).toContainText("2 von 2 richtig");
@@ -244,12 +241,13 @@ try {
   await expect(button("Antworten erneut speichern")).toBeVisible();
   await expect(page.locator(".quiz-verdict")).toHaveText("Richtig beantwortet");
   await click("Antworten erneut speichern");
-  stored = await settled(current => current.revision === beforeFailure.revision + 2 && current.workspace.quizRuns[0].answers.length === 2);
+  stored = await settled(current => current.revision === beforeFailure.revision + 2 && current.workspace.quizRuns[0].answers.length === 2 && !!current.workspace.quizRuns[0].finishedAt);
   assert.deepEqual(failed.writes.map(write => write.body.revision), [beforeFailure.revision, beforeFailure.revision, beforeFailure.revision + 1, beforeFailure.revision + 1]);
   assert.deepEqual(failed.writes.map(write => write.body.workspace.quizRuns[0].answers.length), [1, 1, 2, 2]);
   assert.equal(failed.writes[3].body.workspace.quizRuns[0].answers[0].answeredAt, stored.workspace.quizRuns[0].answers[0].answeredAt, "A confirmed first answer is retained during retry of the remaining answer.");
   assert.deepEqual(stored.workspace.quizRuns[0].answers.map(answer => answer.questionId), run.questions.map(question => question.id));
   await expect(button("Antworten erneut speichern")).toHaveCount(0);
+  await expect(summary).toContainText("2 von 2 richtig");
   await stopGate(failed);
 
   console.log("Checking a revision conflict preserves a parallel change and never retries over it");

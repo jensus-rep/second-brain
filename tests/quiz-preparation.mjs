@@ -60,7 +60,9 @@ async function answer(question, selectedIds, runId, count) {
   for (const id of selectedIds) await page.getByRole("checkbox", { name: question.options.find(option => option.id === id).text, exact: true }).check();
   await click("Bestätigen");
   await expect.poll(async () => (await snapshot()).workspace.quizRuns.find(run => run.id === runId)?.answers.length).toBe(count);
-  await expect(page.locator(".quiz-verdict")).toBeVisible();
+  const saved = (await snapshot()).workspace.quizRuns.find(run => run.id === runId);
+  if (saved.finishedAt) await expect(page.locator(".quiz-result-summary")).toBeVisible();
+  else await expect(page.locator(".quiz-verdict")).toBeVisible();
 }
 
 async function result(correct, total, incorrect, unanswered) {
@@ -167,13 +169,13 @@ try {
   await expect.poll(() => material.getByRole("img", { name: "Kosten, Zeit und Qualität", exact: true }).evaluate(image => image.complete && image.naturalWidth > 0)).toBe(true);
   await mobileFits("Practice feedback with stored private image");
   await click("Nächste Aufgabe");
-  await answer(run.questions[2], run.questions[2].options.map(option => option.id), run.id, 3);
-  // Read to the end of long feedback while the mobile finish action stays pinned.
-  // Finishing from that scroll position must reveal and focus the result immediately.
+  // The final saved answer opens and focuses the result from a scrolled mobile view.
   await page.setViewportSize({ width: 390, height: 420 });
-  await page.getByLabel("Mein Denkfehler / Merksatz").scrollIntoViewIfNeeded();
+  for (const option of run.questions[2].options) await page.getByRole("checkbox", { name: option.text, exact: true }).check();
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
   assert.ok(await page.locator(".quiz-question h2").first().evaluate(heading => heading.getBoundingClientRect().top < 0), "Finish after scrolling the question heading out of view");
-  await click("Runde abschließen");
+  await click("Bestätigen");
+  await expect.poll(async () => !!(await snapshot()).workspace.quizRuns.find(item => item.id === run.id)?.finishedAt).toBe(true);
   let summary = await result(1, 3, 2, 0);
   assert.equal(await summary.locator(".quiz-result-ring-value").evaluate(element => getComputedStyle(element).animationName), "quiz-result-fill");
   assert.equal(await summary.locator(".quiz-result-stat").first().evaluate(element => getComputedStyle(element).animationName), "quiz-result-stat-enter");
@@ -193,7 +195,7 @@ try {
   assert.equal(new Set(run.questions.map(question => question.id)).size, 6);
   for (const [index, question] of run.questions.entries()) {
     await answer(question, question.correctOptionIds, run.id, index + 1);
-    await click(index === run.questions.length - 1 ? "Runde abschließen" : "Nächste Aufgabe");
+    if (index < run.questions.length - 1) await click("Nächste Aufgabe");
   }
   summary = await result(6, 6, 0, 0);
   assert.equal(await summary.locator(".quiz-result-ring-value").evaluate(element => getComputedStyle(element).animationName), "none");

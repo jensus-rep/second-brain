@@ -10,6 +10,8 @@ import "./workspace-redesign.css";
 import "./learning-overview.css";
 import "./learning-tutor.css";
 import "./workspace-composition.css";
+import "./learning-transitions.css";
+import "./flashcard-transitions.css";
 
 export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover" };
 

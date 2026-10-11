@@ -11,7 +11,7 @@ page.on("pageerror", error => errors.push(error.message));
 page.on("dialog", dialog => dialog.accept());
 const snapshot = async () => { const response = await page.request.get(origin + "/api/brain"); assert.equal(response.status(), 200); return response.json(); };
 const write = async workspace => { const current = await snapshot(); const response = await page.request.put(origin + "/api/brain", { data: { revision: current.revision, workspace } }); assert.equal(response.status(), 200); };
-const openTests = async () => { await page.getByRole("button", { name: "Tests & Übungen", exact: true }).click(); await page.getByRole("heading", { name: "Tests & Übungen", exact: true }).waitFor(); };
+const openTests = async () => { await page.getByRole("button", { name: "Tests & Übungen", exact: true }).click(); await page.locator(".quizzes, .quiz-session").first().waitFor(); };
 const reload = async () => { await page.reload({ waitUntil: "networkidle" }); await openTests(); };
 let initial;
 try {
@@ -49,15 +49,14 @@ try {
   assert.equal(await page.getByLabel("Mein Denkfehler / Merksatz").inputValue(), "Ich habe Arbeitsmenge und Lernziel verwechselt.");
   await page.getByRole("button", { name: "Nächste Aufgabe" }).click();
   await page.getByRole("heading", { name: /^Aufgabe 2:/ }).waitFor();
-  // Keyboard only: digits toggle answers in display order, Enter confirms and Enter moves on.
+  // Keyboard only: digits toggle answers; the final confirmation opens the result.
   const second = run.questions[1];
   for (const [i, option] of second.options.entries()) if (second.correctOptionIds.includes(option.id)) await page.keyboard.press(String(i + 1));
   for (const option of second.options) assert.equal(await page.getByRole("checkbox", { name: option.text, exact: true }).isChecked(), second.correctOptionIds.includes(option.id));
   await page.keyboard.press("Enter");
   await page.getByRole("heading", { name: "Richtig beantwortet" }).waitFor();
-  await page.waitForFunction(() => document.activeElement?.textContent?.includes("Runde abschließen"));
-  await page.keyboard.press("Enter");
   await page.getByRole("heading", { name: "1 von 2 richtig · 50 %" }).waitFor();
+  assert.ok((await snapshot()).workspace.quizRuns.find(item => item.id === run.id).finishedAt);
 
   // Reminder survives reload, appears on the home page and exports an actual alarm.
   const due = new Date(Date.now() + 86400000);
@@ -87,7 +86,8 @@ try {
   await page.getByRole("button", { name: "Simulation starten" }).click();
   await page.getByRole("heading", { name: /^Aufgabe 1:/ }).waitFor();
   run = (await snapshot()).workspace.quizRuns.at(-1);
-  for (let i = 0; i < run.questions.length; i++) {
+  // Keep one question open to verify editable saved answers and conflict recovery.
+  for (let i = 0; i < run.questions.length - 1; i++) {
     const q = run.questions[i];
     await page.getByRole("heading", { name: new RegExp(`^Aufgabe ${i + 1}:`) }).waitFor();
     for (const option of q.options.filter(o => q.correctOptionIds.includes(o.id))) await page.getByRole("checkbox", { name: option.text, exact: true }).check();
@@ -109,8 +109,12 @@ try {
   for (const option of run.questions[0].options.filter(o => run.questions[0].correctOptionIds.includes(o.id))) assert.equal(await page.getByRole("checkbox", { name: option.text, exact: true }).isChecked(), true);
   await page.getByRole("button", { name: "Aktuellen Stand laden" }).click();
   await page.getByRole("heading", { name: /^Aufgabe 1:/ }).waitFor();
-  await page.getByRole("button", { name: "Test abgeben", exact: true }).click();
+  const finalQuestion = run.questions.at(-1);
+  await page.getByRole("button", { name: `Aufgabe ${run.questions.length}`, exact: true }).click();
+  for (const option of finalQuestion.options.filter(option => finalQuestion.correctOptionIds.includes(option.id))) await page.getByRole("checkbox", { name: option.text, exact: true }).check();
+  await page.getByRole("button", { name: "Antwort speichern", exact: true }).click();
   await page.getByRole("heading", { name: "6 von 6 richtig · 100 %" }).waitFor();
+  assert.ok((await snapshot()).workspace.quizRuns.find(item => item.id === run.id).finishedAt);
   await page.getByRole("button", { name: "Zur Testübersicht" }).click();
 
   // Create and edit a custom question without rewriting historical snapshots.

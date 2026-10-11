@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { getTopicAncestors } from "./topics.ts";
+import { answerComparisonSchema } from "./answer-comparison.ts";
 
 const id = z.string().min(1).max(100).regex(/^[a-zA-Z0-9_-]+$/);
 const title = z.string().trim().min(1, "Bitte einen Titel eingeben.").max(160);
@@ -124,6 +125,11 @@ export const cardReviewEventSchema = z.object({
   known: z.boolean(), reviewedAt: z.string().datetime(),
   contentFingerprint: z.string().regex(/^[a-f0-9]{16}$/),
   response: z.string().max(1500).optional(),
+  comparison: answerComparisonSchema.optional(),
+}).superRefine((event, ctx) => {
+  if (event.comparison && !event.response?.trim()) {
+    ctx.addIssue({ code: "custom", path: ["comparison"], message: "Ein Antwortvergleich braucht die eigene Antwort." });
+  }
 });
 export const tutorCheckpointDecisionSchema = z.object({
   sessionId: id, reviewedAt: z.string().datetime(),

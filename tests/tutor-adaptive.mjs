@@ -299,10 +299,12 @@ try {
     const question = run.questions[index];
     await expect(page.locator(".quiz-question")).toContainText(question.prompt);
     await page.getByRole("checkbox", { name: question.options[0].text, exact: true }).check();
-    await uiSave(() => click("Antwort speichern"), workspace => workspace.quizRuns.find(current => current.id === run.id)?.answers.length === index + 1);
-    await expect(page.locator(".quiz-verdict, .quiz-option-review")).toHaveCount(0);
+    await uiSave(() => click("Antwort speichern"), workspace => {
+      const saved = workspace.quizRuns.find(current => current.id === run.id);
+      return saved?.answers.length === index + 1 && (index < run.questions.length - 1 || !!saved.finishedAt);
+    });
+    if (index < run.questions.length - 1) await expect(page.locator(".quiz-verdict, .quiz-option-review")).toHaveCount(0);
   }
-  await uiSave(() => click("Test abgeben"), workspace => !!workspace.quizRuns.find(current => current.id === run.id)?.finishedAt);
   await expect(page.locator(".quiz-result-summary")).toContainText("3 von 3 richtig");
   await click("Mit deinen Karten weiterlernen");
   await expect(studyQuestion()).toContainText(cards[5].question);

@@ -206,19 +206,21 @@ async function learningLayouts(workspace, note) {
         const correctOption = question.options.find(option => question.correctOptionIds.includes(option.id));
         await page.getByRole("checkbox", { name: correctOption.text, exact: true }).check();
         await controls.getByRole("button", { name: mode === "practice" ? "Bestätigen" : "Antwort speichern", exact: true }).click();
-        if (mode === "practice") {
+        if (mode === "practice" && index < run.questions.length - 1) {
           await expect(page.getByRole("heading", { name: "Richtig beantwortet", exact: true })).toBeVisible();
           await fixedControls(controls, height, "Quiz feedback");
           if (width === 390 && index === 0) await page.screenshot({ path: `.sites-runtime/qa/mobile-navigation-${engine.name()}-quiz-feedback.png`, animations: "disabled" });
-          await controls.getByRole("button", { name: index === run.questions.length - 1 ? "Runde abschließen" : "Nächste Aufgabe", exact: true }).click();
+          await controls.getByRole("button", { name: "Nächste Aufgabe", exact: true }).click();
         } else {
           await expect.poll(async () => (await snapshot()).workspace.quizRuns.find(r => r.id === run.id).answers.length).toBe(index + 1);
         }
       }
-      if (mode === "exam") await controls.getByRole("button", { name: "Test abgeben", exact: true }).click();
       await expect(page.getByRole("heading", { name: "2 von 2 richtig · 100 %", exact: true })).toBeVisible();
-      await expect(navigation).toBeVisible();
+      await expect(controls).toHaveCount(0);
+      await expect(navigation).not.toBeVisible();
       assert.ok((await snapshot()).workspace.quizRuns.find(r => r.id === run.id).finishedAt, "Completed test still persists its result");
+      await page.getByRole("button", { name: "Zur Testübersicht", exact: true }).click();
+      await expect(navigation).toBeVisible();
     }
   }
 }

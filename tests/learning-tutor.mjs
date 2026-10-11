@@ -82,8 +82,44 @@ async function uiSave(action, predicate) {
   await verifyLocal(after);
   return after.workspace;
 }
+async function smoothTransition(action, target) {
+  // Observe every committed DOM change and painted frame, not just the final view.
+  await page.evaluate(() => {
+    const unexpected = new Set();
+    const scan = () => {
+      for (const selector of [".flashcards-home", ".quiz-config", ".quiz-history", ".quiz-collection-scope"]) {
+        if (document.querySelector(selector)) unexpected.add(selector);
+      }
+      for (const heading of document.querySelectorAll(".page-heading h1")) {
+        if (/^(Lernkarten|Tests|Tests & Übungen)$/.test(heading.textContent.trim())) unexpected.add("management heading: " + heading.textContent);
+      }
+      if (document.querySelector(".brain-main.is-studying") && document.querySelector(".mobile-navigation")) unexpected.add("mobile navigation in learning scene");
+    };
+    const observer = new MutationObserver(scan);
+    observer.observe(document.querySelector(".brain-main"), { childList: true, subtree: true, attributes: true });
+    let frame;
+    const sample = () => { scan(); frame = requestAnimationFrame(sample); };
+    sample();
+    window.__learningTransitionCheck = () => { observer.disconnect(); cancelAnimationFrame(frame); scan(); return [...unexpected]; };
+  });
+  const delayWrite = async route => {
+    if (route.request().method() === "PUT") await new Promise(resolve => setTimeout(resolve, 160));
+    await route.continue();
+  };
+  await page.route(api, delayWrite);
+  try {
+    const value = await action();
+    await expect(page.locator(target).first()).toBeVisible();
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    assert.deepEqual(await page.evaluate(() => window.__learningTransitionCheck()), [], "No unrelated intermediate view during " + target);
+    return value;
+  } finally {
+    await page.unroute(api, delayWrite);
+    await page.evaluate(() => { window.__learningTransitionCheck?.(); delete window.__learningTransitionCheck; });
+  }
+}
 async function startRound() {
-  const data = await uiSave(() => primary().click(), workspace => !!workspace.tutorSession);
+  const data = await smoothTransition(() => uiSave(() => primary().click(), workspace => !!workspace.tutorSession), ".study-question, .quiz-question");
   await expect(page.locator(data.tutorSession.cardIds.length ? ".study-question" : ".quiz-question")).toBeVisible();
   return (await snapshot()).workspace;
 }
@@ -98,15 +134,34 @@ async function rateCurrent(known = true, response = "") {
   return uiSave(() => click(known ? /^Gewusst/ : /^Noch üben/, page.getByRole("group", { name: "Bewertung der Lernkarte", exact: true })), workspace =>
     workspace.cardReviewEvents?.some(event => event.sessionId === session.id && event.cardId === cardId));
 }
-async function completeQuiz(run, wrongFirst = false) {
+async function completeQuiz(run, wrongFirst = false, failLastSave = false) {
   for (let index = run.answers.length; index < run.questions.length; index++) {
     const question = run.questions[index];
     await expect(page.locator(".quiz-question")).toContainText(question.prompt);
     await page.getByRole("checkbox", { name: question.options[wrongFirst && index === 0 ? 1 : 0].text, exact: true }).check();
-    await uiSave(() => click("Antwort speichern"), workspace => workspace.quizRuns.find(item => item.id === run.id)?.answers.length === index + 1);
-    await expect(page.locator(".quiz-verdict, .quiz-option-review")).toHaveCount(0);
+    if (index === run.questions.length - 1) {
+      if (failLastSave) {
+        const before = await snapshot();
+        const failedWrite = async route => route.request().method() === "PUT"
+          ? route.fulfill({ status: 503, json: { error: "Lokaler Test: Letzte Testantwort konnte nicht gespeichert werden." } }) : route.continue();
+        await page.route(api, failedWrite);
+        try {
+          const rejected = page.waitForResponse(response => response.url() === api && response.request().method() === "PUT");
+          await click("Antwort speichern");
+          assert.equal((await rejected).status(), 503);
+          await expect(page.locator(".quiz-result-summary")).toHaveCount(0);
+          await expect(page.locator(".quiz-question")).toContainText(question.prompt);
+          assert.deepEqual(await snapshot(), before, "The failed final answer never completes the test.");
+        } finally { await page.unroute(api, failedWrite); }
+      }
+      const before = await snapshot();
+      await smoothTransition(() => uiSave(() => click("Antwort speichern"), workspace => !!workspace.quizRuns.find(item => item.id === run.id)?.finishedAt), ".quiz-result-summary");
+      assert.equal((await snapshot()).revision, before.revision + 1, "Last answer and completion use one confirmed revision.");
+    } else {
+      await uiSave(() => click("Antwort speichern"), workspace => workspace.quizRuns.find(item => item.id === run.id)?.answers.length === index + 1);
+      await expect(page.locator(".quiz-verdict, .quiz-option-review")).toHaveCount(0);
+    }
   }
-  await uiSave(() => click("Test abgeben"), workspace => !!workspace.quizRuns.find(item => item.id === run.id)?.finishedAt);
   await expect(page.locator(".quiz-result-summary")).toBeVisible();
 }
 async function responsive(stage, scope = tutor()) {
@@ -240,7 +295,7 @@ try {
   await click("Beenden", page.locator(".study-topline"));
   await reloadTutor();
   assert.equal((await snapshot()).workspace.flashcardSession.index, 1);
-  await uiSave(() => primary().click(), workspace => workspace.flashcardSession?.id === session.id && workspace.flashcardSession.index === 1);
+  await smoothTransition(() => uiSave(() => primary().click(), workspace => workspace.flashcardSession?.id === session.id && workspace.flashcardSession.index === 1), ".study-question");
   for (let index = 1; index < 4; index++) await rateCurrent();
   const beforeFailure = await snapshot();
   await page.route(api, async route => {
@@ -253,7 +308,7 @@ try {
   assert.deepEqual(await snapshot(), beforeFailure);
   await expect(page.locator(".quiz-question")).toHaveCount(0);
   await page.unroute(api);
-  data = await uiSave(() => click(/^Noch üben/, page.getByRole("group", { name: "Bewertung der Lernkarte", exact: true })), workspace => workspace.quizRuns.some(run => !run.finishedAt && run.tutorSessionId === session.id));
+  data = await smoothTransition(() => uiSave(() => click(/^Noch üben/, page.getByRole("group", { name: "Bewertung der Lernkarte", exact: true })), workspace => workspace.quizRuns.some(run => !run.finishedAt && run.tutorSessionId === session.id)), ".quiz-question");
   await expect(page.locator(".quiz-question")).toBeVisible();
   assert.equal(data.flashcardSession, null);
   assert.equal(data.cardReviewEvents.filter(event => event.sessionId === session.id).length, 5);
@@ -263,8 +318,13 @@ try {
   assert.equal(test.collectionId, collection.id);
   assert.equal(test.mode, "exam");
   assert.equal(test.tutorSessionId, session.id);
+  assert.equal(await page.locator(".workspace-content").evaluate(element => getComputedStyle(element).animationName), "learning-scene-enter");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  assert.equal(await page.locator(".workspace-content").evaluate(element => getComputedStyle(element).animationName), "none");
+  assert.equal(await page.locator(".quiz-question").evaluate(element => getComputedStyle(element).animationName), "none");
+  await page.emulateMedia({ reducedMotion: "no-preference" });
   await responsive("short-test", page.locator(".quiz-session"));
-  await completeQuiz(test, true);
+  await completeQuiz(test, true, true);
   await click("Rückmeldung im Tutor ansehen");
   await expect(tutor()).toContainText("2 von 3");
   await responsive("feedback");
@@ -294,7 +354,20 @@ try {
 
   console.log("Checking quiz-only pause/resume and the next uncovered foundation");
   await fixture({ ...structuredClone(mainFixture), cards: [], learningCollections: [structuredClone(collection)] });
-  data = await startRound();
+  await page.setViewportSize({ width: 390, height: 844 });
+  const failQuizStart = async route => {
+    if (route.request().method() !== "PUT" || !route.request().postDataJSON().workspace.quizRuns.length) return route.continue();
+    await route.fulfill({ status: 503, json: { error: "Lokaler Test: Kurztest konnte nicht gestartet werden." } });
+  };
+  await page.route(api, failQuizStart);
+  await primary().click();
+  await expect(page.locator(".learning-transition.is-error")).toBeVisible();
+  await expect(page.locator(".quiz-config, .quiz-history, .flashcards-home, .mobile-navigation")).toHaveCount(0);
+  data = (await snapshot()).workspace;
+  assert.ok(data.tutorSession);
+  assert.equal(data.quizRuns.length, 0, "Failed launch does not create a test or discard the saved unit.");
+  await page.unroute(api, failQuizStart);
+  data = await smoothTransition(() => uiSave(() => click("Start erneut versuchen"), workspace => workspace.quizRuns.some(run => !run.finishedAt)), ".quiz-question");
   assert.deepEqual(data.tutorSession.cardIds, []);
   let quizOnlyRun = data.quizRuns.find(run => !run.finishedAt);
   await page.getByRole("checkbox", { name: quizOnlyRun.questions[0].options[0].text, exact: true }).check();
@@ -322,6 +395,30 @@ try {
   await click("Rückmeldung im Tutor ansehen");
   await expect(tutor()).toContainText("selbst als sicher eingeschätzt");
   await expect(tutor()).toContainText("noch kein Testergebnis");
+  console.log("Checking explicit navigation stays selected when a tutor start finishes later");
+  await fixture();
+  let releaseStart;
+  const startGate = new Promise(resolve => { releaseStart = resolve; });
+  const heldStart = async route => {
+    if (route.request().method() === "PUT") await startGate;
+    await route.continue();
+  };
+  await page.route(api, heldStart);
+  try {
+    const requested = page.waitForRequest(request => request.url() === api && request.method() === "PUT");
+    const saved = page.waitForResponse(response => response.url() === api && response.request().method() === "PUT");
+    await primary().click();
+    await requested;
+    await expect(page.locator(".learning-transition")).toBeVisible();
+    await page.keyboard.press("Control+k");
+    await expect(page.locator(".library-section")).toBeVisible();
+    releaseStart();
+    assert.equal((await saved).status(), 200);
+    await expect(page.locator(".save-state")).toHaveText("Gespeichert");
+    await expect(page.locator(".library-section")).toBeVisible();
+    await expect(page.locator(".study-session, .quiz-session")).toHaveCount(0);
+    assert.ok((await snapshot()).workspace.tutorSession, "Saving succeeds while an explicit navigation is preserved.");
+  } finally { releaseStart(); await page.unroute(api, heldStart); }
   await fixture({ schemaVersion: 1, topics: [], notes: [], paths: [], completedStepIds: [], cards: [], quizQuestions: [], quizRuns: [], learningReminders: [], learningCollections: [] });
   await expect(tutor()).toContainText(/keine passende|Ergänze passende|Lernsammlung/);
   assert.equal((await snapshot()).workspace.tutorSession, undefined);

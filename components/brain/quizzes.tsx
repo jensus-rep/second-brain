@@ -21,6 +21,7 @@ import { addToLearningCollection, collectionItems, learningCollections } from "@
 import { QuizResultSummary } from "./quiz-result";
 import { QuizPreparation } from "./quiz-preparation";
 import { QuizLearningMaterial } from "./quiz-learning-material";
+import { LearningTransition } from "./learning-transition";
 
 type Props = { workspace: Workspace; save: SaveWorkspace; saving: boolean; onOpenNote?: (id: string) => void; onLearningAction?: (action: LearningAction) => void };
 export type QuizLaunchRequest = { id: string; subject: string; concept?: string; mode: "preparation" | "checkpoint" | "practice"; collectionId?: string; questionCount?: number; questionIds?: string[]; cardCheckpoint?: QuizRun["cardCheckpoint"]; tutorWeekCheckpoint?: QuizRun["tutorWeekCheckpoint"]; tutorWeekStartedOn?: string; tutorSessionId?: string };
@@ -107,7 +108,7 @@ function Feedback({ question, answer, run, workspace, save, saving, actions, onO
   const correct = isCorrect(question, selected);
   const hits = question.correctOptionIds.filter(id => selected.includes(id)).length;
   if (run.mode === "exam" && !run.finishedAt) return null;
-  return <section className={"quiz-feedback " + (correct ? "correct" : "incorrect")} aria-label="Auswertung"><h3 className="quiz-verdict">{correct ? <Check size={18} /> : <X size={18} />}{correct ? "Richtig beantwortet" : answer ? "Nicht ganz richtig" : "Nicht beantwortet"}</h3>{answer && !correct && <p className="quiz-verdict-note">{hits} von {question.correctOptionIds.length} richtigen Antworten gewählt{selected.length > hits ? ` · ${selected.length - hits} falsch gewählt` : ""}. Ohne Teilpunkte zählt die Aufgabe als falsch.</p>}<OptionReview question={question} selected={selected} />{actions}<div className="quiz-explanation"><p>{question.explanation}</p>{question.source && <a href={question.source} target="_blank" rel="noopener noreferrer">Fachliche Quelle öffnen</a>}</div><QuizLearningMaterial question={question} notes={workspace.notes} onOpenNote={onOpenNote} />{answer && !correct && <div className="quiz-reflection"><label className="field"><span>Mein Denkfehler / Merksatz</span><Textarea value={reflection} maxLength={1500} rows={2} onChange={e => setReflection(e.target.value)} placeholder="Was habe ich verwechselt? Woran erkenne ich es beim nächsten Mal?" /></label><Button variant="outline" size="sm" disabled={saving || reflection === answer.reflection} onClick={() => void save(w => ({ ...w, quizRuns: w.quizRuns.map(r => r.id === run.id ? { ...r, answers: r.answers.map(a => a.questionId === question.id ? { ...a, reflection } : a) } : r) }), "Denkfehler gespeichert")}>Merksatz speichern</Button></div>}</section>;
+  return <section className={"quiz-feedback quiz-feedback-enter " + (correct ? "correct" : "incorrect")} aria-label="Auswertung"><h3 className="quiz-verdict">{correct ? <Check size={18} /> : <X size={18} />}{correct ? "Richtig beantwortet" : answer ? "Nicht ganz richtig" : "Nicht beantwortet"}</h3>{answer && !correct && <p className="quiz-verdict-note">{hits} von {question.correctOptionIds.length} richtigen Antworten gewählt{selected.length > hits ? ` · ${selected.length - hits} falsch gewählt` : ""}. Ohne Teilpunkte zählt die Aufgabe als falsch.</p>}<OptionReview question={question} selected={selected} />{actions}<div className="quiz-explanation"><p>{question.explanation}</p>{question.source && <a href={question.source} target="_blank" rel="noopener noreferrer">Fachliche Quelle öffnen</a>}</div><QuizLearningMaterial question={question} notes={workspace.notes} onOpenNote={onOpenNote} />{answer && !correct && <div className="quiz-reflection"><label className="field"><span>Mein Denkfehler / Merksatz</span><Textarea value={reflection} maxLength={1500} rows={2} onChange={e => setReflection(e.target.value)} placeholder="Was habe ich verwechselt? Woran erkenne ich es beim nächsten Mal?" /></label><Button variant="outline" size="sm" disabled={saving || reflection === answer.reflection} onClick={() => void save(w => ({ ...w, quizRuns: w.quizRuns.map(r => r.id === run.id ? { ...r, answers: r.answers.map(a => a.questionId === question.id ? { ...a, reflection } : a) } : r) }), "Denkfehler gespeichert")}>Merksatz speichern</Button></div>}</section>;
 }
 
 function QuizSession({ run, workspace, save, saving, onOpenNote, onBackToOverview, collectionId, onPendingChange }: Props & { run: QuizRun; onBackToOverview?: () => void; collectionId?: string; onPendingChange?: (pending: boolean) => void }) {
@@ -147,7 +148,18 @@ function QuizSession({ run, workspace, save, saving, onOpenNote, onBackToOvervie
   }, []);
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, []);
   useEffect(() => { if (reviewKey) nextButton.current?.focus({ preventScroll: true }); }, [reviewKey]);
-  useEffect(() => { if (focusHeading.current && !reviewKey) { focusHeading.current = false; heading.current?.focus(); } });
+  useEffect(() => {
+    if (!focusHeading.current || reviewKey) return;
+    focusHeading.current = false;
+    const frame = requestAnimationFrame(() => {
+      const title = heading.current;
+      if (!title) return;
+      title.focus({ preventScroll: true });
+      const bounds = title.getBoundingClientRect();
+      if (bounds.top < 24 || bounds.top > window.innerHeight - 120) title.scrollIntoView({ block: "start", behavior: "instant" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [question.id, reviewKey]);
   async function finish() {
     if (finishingRef.current || saveFailed) return false;
     finishingRef.current = true; setFinishing(true);
@@ -157,7 +169,7 @@ function QuizSession({ run, workspace, save, saving, onOpenNote, onBackToOvervie
       return await save(w => {
         const finishedAt = new Date().toISOString();
         return { ...withQuizFocus(w, run, finishedAt, collectionId), quizRuns: w.quizRuns.map(r => r.id === run.id && !r.finishedAt ? { ...r, finishedAt } : r) };
-      }, "Test beendet und Auswertung gespeichert", { queue: true });
+      }, run.tutorSessionId ? "" : "Test beendet und Auswertung gespeichert", { queue: true });
     } finally { finishingRef.current = false; setFinishing(false); }
   }
   useEffect(() => {
@@ -186,7 +198,11 @@ function QuizSession({ run, workspace, save, saving, onOpenNote, onBackToOvervie
         if (r.finishedAt || (r.deadlineAt && Date.parse(r.deadlineAt) <= Date.now())) throw new Error("Die Testrunde ist bereits beendet.");
         const existing = r.answers.find(item => item.questionId === answer.questionId);
         if (run.mode === "practice" && existing && existing.answeredAt !== answer.answeredAt) throw new Error("Diese Aufgabe wurde inzwischen in einem anderen Fenster beantwortet. Deine offene Antwort bleibt hier erhalten.");
-        return { ...r, answers: [...r.answers.filter(a => a.questionId !== answer.questionId), answer] };
+        const answers = [...r.answers.filter(a => a.questionId !== answer.questionId), answer];
+        // Complete together with the last saved answer. Other optimistic
+        // answers do not count until their earlier writes were confirmed.
+        const completed = r.questions.every(item => answers.some(saved => saved.questionId === item.id));
+        return { ...r, answers, ...(completed ? { finishedAt: answer.answeredAt } : {}) };
       }) };
     }, "", { queue: true }).then(ok => {
       if (ok) {
@@ -238,21 +254,21 @@ function QuizSession({ run, workspace, save, saving, onOpenNote, onBackToOvervie
   });
   const reviewNumber = review ? run.questions.findIndex(q => q.id === review.id) + 1 : 0;
   const mobileEnd = <Button className="quiz-mobile-end" type="button" variant="outline" disabled={interactionBlocked} onClick={finishEarly} aria-label={run.mode === "exam" ? "Test abgeben" : "Runde vorzeitig beenden"}>{run.mode === "exam" ? "Test abgeben" : "Beenden"}</Button>;
-  return <section className="quiz-session">
+  return <section className="quiz-session quiz-session-enter">
     <div className="quiz-session-top"><strong>{run.tutorSessionId ? "Tutor-Kurztest" : run.preparationConcept ? "Vorbereitung" : run.mode === "exam" ? "Prüfungssimulation" : "Adaptiv üben"} · {run.subject}</strong><span>{answeredCount} von {run.questions.length} beantwortet{run.deadlineAt && " · " + (expired ? "Zeit abgelaufen" : Math.ceil((Date.parse(run.deadlineAt) - now) / 60000) + " Min. übrig")}</span></div>
     {collectionName && <p className="small-note quiz-session-collection">Sammlung: {collectionName}</p>}
     <Progress value={answeredCount / run.questions.length * 100} aria-label="Testfortschritt" />
     {pendingAnswers.length > 0 && <div className="quiz-save-notice" role={saveFailed ? "alert" : "status"}>{saveFailed ? <><p>Deine Antworten konnten noch nicht gespeichert werden. Sie bleiben hier erhalten. Prüfe den Speicherhinweis und versuche es erneut.</p><div className="quiz-actions"><Button variant="outline" disabled={saving || retrying} onClick={() => void retryAnswers()}>{retrying ? "Antworten werden gespeichert …" : "Antworten erneut speichern"}</Button><Button variant="ghost" disabled={saving || retrying} onClick={discardPendingAnswers}>Offene Antworten verwerfen</Button></div></> : <p>{finishing ? "Deine letzten Antworten werden gespeichert. Danach erscheint die Auswertung." : "Antworten werden gespeichert. Du kannst direkt weiterüben."}</p>}</div>}
     {run.mode === "exam" && <nav className="quiz-question-nav" aria-label="Aufgaben im Test">{run.questions.map((q, i) => <Button key={q.id} variant={i === index ? "default" : "outline"} size="sm" onClick={() => move(i)} disabled={saving || expired} aria-label={"Aufgabe " + (i + 1) + (run.answers.some(a => a.questionId === q.id) ? ", beantwortet" : "")}>{i + 1}{run.answers.some(a => a.questionId === q.id) ? " ✓" : ""}</Button>)}</nav>}
-    {review ? <article className="quiz-panel quiz-question">
+    {review ? <article key={`review-${review.id}`} className="quiz-panel quiz-question">
       <div className="eyebrow">{review.concept} · {difficultyLabels[review.difficulty]}</div><h2 tabIndex={-1}>Aufgabe {reviewNumber}: {review.prompt}</h2>
       <Feedback key={review.id} question={review} answer={reviewAnswer} run={run} workspace={workspace} save={save} saving={saving || pendingAnswers.length > 0} onOpenNote={onOpenNote} actions={<div className="quiz-actions quiz-session-controls" role="group" aria-label="Aktionen für die Testaufgabe"><Button ref={nextButton} disabled={interactionBlocked} onClick={next}>{finishing ? "Runde wird abgeschlossen …" : answeredCount === run.questions.length ? "Runde abschließen" : "Nächste Aufgabe"}<ArrowRight size={16} /></Button>{mobileEnd}<small className="quiz-keys">Enter: weiter</small></div>} />
-    </article> : <form className="quiz-panel quiz-question" onSubmit={event => { event.preventDefault(); void submit(); }}>
+    </article> : <form key={question.id} className="quiz-panel quiz-question quiz-question-enter" onSubmit={event => { event.preventDefault(); void submit(); }}>
       <div className="eyebrow">{question.concept} · {difficultyLabels[question.difficulty]}</div><h2 ref={heading} tabIndex={-1}>Aufgabe {index + 1}: {question.prompt}</h2><p>Wähle alle passenden Antworten. Die Auswahl muss vollständig stimmen; es gibt keine Teilpunkte.</p>
       <fieldset disabled={interactionBlocked || expired}><legend className="sr-only">Antwortmöglichkeiten</legend>{question.options.map((option, i) => <label className="quiz-option" key={option.id}><Checkbox checked={selected.includes(option.id)} onCheckedChange={checked => toggle(option.id, checked === true)} /><span>{option.text}</span>{i < 9 && <kbd className="quiz-key" aria-hidden="true">{i + 1}</kbd>}</label>)}</fieldset>
       <div className="quiz-actions quiz-session-controls" role="group" aria-label="Aktionen für die Testaufgabe"><Button type="submit" disabled={interactionBlocked || expired || !selected.length}>{run.mode === "practice" ? "Bestätigen" : "Antwort speichern"}</Button>{mobileEnd}{answered && run.mode === "exam" && <span>Gespeicherte Auswahl: {question.options.filter(o => answered.selectedOptionIds.includes(o.id)).map(o => o.text).join(" · ")}</span>}<small className="quiz-keys">Tasten 1–{Math.min(question.options.length, 9)} wählen · Enter {run.mode === "practice" ? "bestätigt" : "speichert"}</small></div>
     </form>}
-    <div className="quiz-session-end"><p>{run.mode === "exam" ? "Lösungen und Fehlerhinweise erscheinen nach der Abgabe. Unbeantwortete Aufgaben zählen als falsch." : pendingAnswers.length ? "Deine Antworten werden noch gespeichert. Lass die App dafür geöffnet." : "Deine bestätigten Antworten sind gespeichert. Du kannst die Runde später fortsetzen oder jetzt auswerten."}{onBackToOverview && run.deadlineAt && " Bei einer Pause läuft das Zeitlimit weiter."}</p>{onBackToOverview && <div className="quiz-actions"><Button variant="outline" disabled={saving || pendingAnswers.length > 0 || finishing} onClick={onBackToOverview}>Zum Lernüberblick</Button></div>}<Button variant="outline" disabled={interactionBlocked} onClick={finishEarly}>{run.mode === "exam" ? "Test abgeben" : "Runde vorzeitig beenden"}</Button></div>
+    <div className="quiz-session-end"><p>{pendingAnswers.length ? "Deine Antworten werden noch gespeichert. Lass die App dafür geöffnet. " : ""}Mit deiner letzten gespeicherten Antwort startet die Auswertung. {run.mode === "exam" ? "Du kannst auch vorzeitig abgeben; unbeantwortete Aufgaben zählen dann als falsch." : "Du kannst die Runde später fortsetzen oder vorzeitig auswerten."}{onBackToOverview && run.deadlineAt && " Bei einer Pause läuft das Zeitlimit weiter."}</p>{onBackToOverview && <div className="quiz-actions"><Button variant="outline" disabled={saving || pendingAnswers.length > 0 || finishing} onClick={onBackToOverview}>Zum Lernüberblick</Button></div>}<Button variant="outline" disabled={interactionBlocked} onClick={finishEarly}>{run.mode === "exam" ? "Test abgeben" : "Runde vorzeitig beenden"}</Button></div>
   </section>;
 }
 
@@ -281,6 +297,7 @@ export function Quizzes({ workspace, save, saving, onStudyChange, onOpenNote, co
   const [heldRun, setHeldRun] = useState<QuizRun | null>(null);
   const attemptedRequest = useRef<string | null>(null);
   const launchingRequest = useRef(false);
+  const [launchedRequest, setLaunchedRequest] = useState<{ requestId: string; runId: string } | null>(null);
   const consumedResultRequest = useRef<string | null>(null);
   const active = heldRun
     ? workspace.quizRuns.find(run => run.id === heldRun.id && !run.finishedAt) ?? heldRun
@@ -289,11 +306,18 @@ export function Quizzes({ workspace, save, saving, onStudyChange, onOpenNote, co
     setHeldRun(pending ? active ?? null : null);
     onPendingChange?.(pending);
   }, [active, onPendingChange]);
-  const studying = !!active;
+  const [previousActiveId, setPreviousActiveId] = useState(active?.id);
+  // Select the saved result in the same render that removes the active run,
+  // before React can commit a frame of the management view.
+  const finishedActive = !active && previousActiveId
+    ? workspace.quizRuns.find(run => run.id === previousActiveId && run.finishedAt) : undefined;
+  const result = requestedResult ?? finishedActive ?? workspace.quizRuns.find(r => r.id === resultId && r.finishedAt);
+  const studying = !!active || !!launchRequest || !!result;
   useEffect(() => { onStudyChange?.(studying); return () => onStudyChange?.(false); }, [studying, onStudyChange]);
-  const result = workspace.quizRuns.find(r => r.id === resultId && r.finishedAt);
-  const previousActive = useRef(active?.id);
-  useEffect(() => { if (previousActive.current && !active) setResultId(previousActive.current); previousActive.current = active?.id; }, [active]);
+  if (previousActiveId !== active?.id) {
+    setPreviousActiveId(active?.id);
+    if (finishedActive) setResultId(finishedActive.id);
+  }
   // Synchronize a new result request during rendering; the effect below only
   // acknowledges it and updates the parent's collection selection.
   if (resultRequest && selectedResultRequest !== resultRequest.id) {
@@ -374,7 +398,8 @@ export function Quizzes({ workspace, save, saving, onStudyChange, onOpenNote, co
         ...(request.tutorSessionId ? { tutorSessionId: request.tutorSessionId } : {}),
         startedAt: new Date().toISOString(), deadlineAt: null, finishedAt: null, questions, answers: [],
       };
-      if (await persistRun(run, request.mode === "checkpoint" ? "Abschlusstest gestartet" : "Lerneinheit gestartet")) {
+      setLaunchedRequest({ requestId: request.id, runId: run.id });
+      if (await persistRun(run, request.tutorSessionId ? "" : request.mode === "checkpoint" ? "Abschlusstest gestartet" : "Lerneinheit gestartet")) {
         setResultId(null);
         onLaunchConsumed?.();
       } else setLaunchError({ id: request.id, message: "Die Einheit konnte nicht gespeichert werden. Prüfe den Speicherhinweis und versuche den Start erneut." });
@@ -389,8 +414,19 @@ export function Quizzes({ workspace, save, saving, onStudyChange, onOpenNote, co
     if (!launchRequest || saving || launchingRequest.current || attemptedRequest.current === launchRequest.id) return;
     void attemptLaunch(launchRequest);
   });
-  const launchNotice = launchRequest && (launching || launchError?.id === launchRequest.id) ? <section className="quiz-panel" aria-label="Lerneinheit starten">{launching ? <p role="status">Deine Lerneinheit wird gestartet …</p> : <><p role="alert">{launchError?.message}</p><div className="quiz-actions"><Button disabled={saving || !!active} onClick={() => void attemptLaunch(launchRequest)}>Start erneut versuchen</Button>{onBackToOverview && <Button variant="outline" disabled={saving} onClick={onBackToOverview}>Zum Lernüberblick</Button>}</div></>}</section> : null;
-  if (active) return <>{launchNotice}<QuizSession key={active.id} run={active} workspace={workspace} save={save} saving={saving} onOpenNote={onOpenNote} onBackToOverview={onBackToOverview} collectionId={collectionId} onPendingChange={onSessionPendingChange} /></>;
+  const savedLaunch = launchRequest && active && launchedRequest?.requestId === launchRequest.id && launchedRequest.runId === active.id;
+  const launchFailed = launchRequest && launchError?.id === launchRequest.id;
+  // Requests hide the management view from the first render, including while
+  // another save is finishing. Once the exact new run is saved, show it directly.
+  if (launchRequest && !savedLaunch) return <LearningTransition
+    title={launchFailed ? "Deine Einheit konnte noch nicht starten" : launchRequest.mode === "checkpoint" ? "Dein Kurztest wird vorbereitet" : "Deine Lerneinheit wird vorbereitet"}
+    description={launchFailed ? launchError.message : saving && !launching ? "Dein letzter Fortschritt wird noch gespeichert. Danach geht es direkt weiter." : "Die passenden Aufgaben werden zusammengestellt. Gleich geht es weiter."}
+    error={!!launchFailed}
+  >{launchFailed && <div className="quiz-actions">
+    {active && onLaunchConsumed ? <Button disabled={saving} onClick={() => { setLaunchError(null); onLaunchConsumed(); }}>Laufende Einheit fortsetzen</Button> : <Button disabled={saving || !!active} onClick={() => void attemptLaunch(launchRequest)}>Start erneut versuchen</Button>}
+    {onBackToOverview && <Button variant="outline" disabled={saving} onClick={() => { onLaunchConsumed?.(); onBackToOverview(); }}>Zum Lernüberblick</Button>}
+  </div>}</LearningTransition>;
+  if (active) return <QuizSession key={active.id} run={active} workspace={workspace} save={save} saving={saving} onOpenNote={onOpenNote} onBackToOverview={onBackToOverview} collectionId={collectionId} onPendingChange={onSessionPendingChange} />;
   async function startPreparation(concept: string, allQuestions = false, startSubject = subject, startCollectionId = collection?.id) {
     const startCollection = collections.find(item => item.id === startCollectionId);
     if (startCollectionId && !startCollection) return false;
@@ -434,8 +470,7 @@ export function Quizzes({ workspace, save, saving, onStudyChange, onOpenNote, co
       } finally { continuingRequest.current = false; setContinuing(false); }
     }
     function openTestOverview() { setSubject(result!.subject); onCollectionChange?.(resultCollection?.id ?? ""); setResultId(null); }
-    return <div className="quizzes">
-      {launchNotice}
+    return <div key={result.id} className="quizzes quiz-result-enter">
       <QuizResultSummary key={result.id} run={result} questions={shown} nextStep={result.tutorSessionId ? <>
         <h3>Deine Lernrunde ist abgeschlossen</h3>
         <p>{guidedResult?.session?.id === result.tutorSessionId ? guidedResult.description : "Kartenbewertungen und Testergebnis sind gespeichert. Der Tutor bereitet daraus deinen nächsten Schritt vor."}</p>
@@ -456,7 +491,7 @@ export function Quizzes({ workspace, save, saving, onStudyChange, onOpenNote, co
     </div>;
   }
 
-  return <div className="quizzes">{launchNotice}<div className="quiz-actions"><Button onClick={() => setEditing(newQuestion(subject))} disabled={saving}><Plus size={16} />Neue Testaufgabe</Button><Button variant="outline" disabled={saving || quizExamples.every(q => workspace.quizQuestions.some(existing => existing.id === q.id))} onClick={() => void save(w => ({ ...w, quizQuestions: [...w.quizQuestions, ...quizExamples.filter(q => !w.quizQuestions.some(existing => existing.id === q.id))] }), "Beispielaufgaben hinzugefügt")}><ClipboardCheck size={16} />Beispiele hinzufügen</Button></div><p className="small-note">12 Beispielaufgaben in drei Stufen: Projektmanagement am Scrum-Beispiel und Produktmanagement mit Discovery-Risiken. Eigene Aufgaben kannst du für jedes Fachthema anlegen.</p><section className="quiz-panel quiz-collection-scope"><label className="field"><span>Lernsammlung für den Test</span><select aria-label="Lernsammlung für Tests" value={collection?.id ?? ""} onChange={event => { onCollectionChange?.(event.target.value); setJournal(false); }}><option value="">Alle Testaufgaben ({workspace.quizQuestions.length})</option>{collections.map(item => <option key={item.id} value={item.id}>{item.title} ({collectionItems(workspace, item).questions.length} Aufgaben)</option>)}</select></label><p className="small-note">{collection && contents ? `${collection.title}: insgesamt ${contents.questions.length} Testaufgaben, ${contents.notes.length} Notizen und ${contents.cards.length} Lernkarten. Die folgende Vorbereitung und neue Testrunden verwenden diese Auswahl.` : `Gesamter Bestand: ${workspace.quizQuestions.length} Testaufgaben. Wähle eine Lernsammlung, um zusammengehörende Inhalte zu üben.`}</p></section><QuizPreparation subject={subject} areas={preparationAreas(preparationWorkspace, subject)} workspace={workspace} saving={saving || launching || workspace.quizRuns.length >= 200} onStart={(concept, allQuestions) => void startPreparation(concept, allQuestions)} onOpenNote={onOpenNote} /><section className="quiz-panel"><div className="quiz-config"><label className="field"><span>Fachthema für den Test</span><select aria-label="Fachthema für den Test" value={subject} onChange={e => { setSubject(e.target.value); setJournal(false); }}>{subjects.map(s => <option key={s}>{s}</option>)}</select></label><label className="field"><span>Modus</span><select aria-label="Modus" value={mode} onChange={e => setMode(e.target.value as QuizRun["mode"])}><option value="practice">Adaptiv üben</option><option value="exam">Prüfungssimulation</option></select></label><label className="field"><span>Aufgabenanzahl</span><select aria-label="Aufgabenanzahl" value={count} onChange={e => setCount(Number(e.target.value))}>{[2, 3, 6, 10, 20].map(n => <option key={n} value={n}>{n}</option>)}</select></label>{mode === "exam" && <label className="field"><span>Zeitlimit</span><select aria-label="Zeitlimit" value={minutes} onChange={e => setMinutes(Number(e.target.value))}><option value={0}>Ohne Zeitlimit</option>{[5, 10, 20, 30].map(n => <option key={n} value={n}>{n} Minuten</option>)}</select></label>}</div><p>{mode === "practice" ? "Direkte Erklärungen nach jeder Antwort. Schwächere Bereiche kommen zuerst. Nach zwei richtigen Antworten auf der aktuellen Stufe steigt das Niveau; bei einem Fehler geht es eine Stufe zurück. Die nächste Runde berücksichtigt deinen gespeicherten Lernstand." : "Zufällige Aufgaben aus dem gewählten Fachthema. Bis zur Abgabe bleiben die Lösungen verborgen; gespeicherte Antworten kannst du über die Aufgabennummern ändern."}</p><p>{pool.length ? `${selectQuestions(scopedQuestions, workspace.quizRuns, subject, mode, count).length} unterschiedliche Aufgaben aus ${pool.length} verfügbaren Aufgaben.` : "Füge Beispiele oder eigene Testaufgaben hinzu, um zu starten."} {workspace.quizRuns.length >= 200 && "Die Grenze von 200 gespeicherten Runden ist erreicht."}</p><Button disabled={saving || launching || !pool.length || workspace.quizRuns.length >= 200} onClick={async () => {
+  return <div className="quizzes"><div className="quiz-actions"><Button onClick={() => setEditing(newQuestion(subject))} disabled={saving}><Plus size={16} />Neue Testaufgabe</Button><Button variant="outline" disabled={saving || quizExamples.every(q => workspace.quizQuestions.some(existing => existing.id === q.id))} onClick={() => void save(w => ({ ...w, quizQuestions: [...w.quizQuestions, ...quizExamples.filter(q => !w.quizQuestions.some(existing => existing.id === q.id))] }), "Beispielaufgaben hinzugefügt")}><ClipboardCheck size={16} />Beispiele hinzufügen</Button></div><p className="small-note">12 Beispielaufgaben in drei Stufen: Projektmanagement am Scrum-Beispiel und Produktmanagement mit Discovery-Risiken. Eigene Aufgaben kannst du für jedes Fachthema anlegen.</p><section className="quiz-panel quiz-collection-scope"><label className="field"><span>Lernsammlung für den Test</span><select aria-label="Lernsammlung für Tests" value={collection?.id ?? ""} onChange={event => { onCollectionChange?.(event.target.value); setJournal(false); }}><option value="">Alle Testaufgaben ({workspace.quizQuestions.length})</option>{collections.map(item => <option key={item.id} value={item.id}>{item.title} ({collectionItems(workspace, item).questions.length} Aufgaben)</option>)}</select></label><p className="small-note">{collection && contents ? `${collection.title}: insgesamt ${contents.questions.length} Testaufgaben, ${contents.notes.length} Notizen und ${contents.cards.length} Lernkarten. Die folgende Vorbereitung und neue Testrunden verwenden diese Auswahl.` : `Gesamter Bestand: ${workspace.quizQuestions.length} Testaufgaben. Wähle eine Lernsammlung, um zusammengehörende Inhalte zu üben.`}</p></section><QuizPreparation subject={subject} areas={preparationAreas(preparationWorkspace, subject)} workspace={workspace} saving={saving || launching || workspace.quizRuns.length >= 200} onStart={(concept, allQuestions) => void startPreparation(concept, allQuestions)} onOpenNote={onOpenNote} /><section className="quiz-panel"><div className="quiz-config"><label className="field"><span>Fachthema für den Test</span><select aria-label="Fachthema für den Test" value={subject} onChange={e => { setSubject(e.target.value); setJournal(false); }}>{subjects.map(s => <option key={s}>{s}</option>)}</select></label><label className="field"><span>Modus</span><select aria-label="Modus" value={mode} onChange={e => setMode(e.target.value as QuizRun["mode"])}><option value="practice">Adaptiv üben</option><option value="exam">Prüfungssimulation</option></select></label><label className="field"><span>Aufgabenanzahl</span><select aria-label="Aufgabenanzahl" value={count} onChange={e => setCount(Number(e.target.value))}>{[2, 3, 6, 10, 20].map(n => <option key={n} value={n}>{n}</option>)}</select></label>{mode === "exam" && <label className="field"><span>Zeitlimit</span><select aria-label="Zeitlimit" value={minutes} onChange={e => setMinutes(Number(e.target.value))}><option value={0}>Ohne Zeitlimit</option>{[5, 10, 20, 30].map(n => <option key={n} value={n}>{n} Minuten</option>)}</select></label>}</div><p>{mode === "practice" ? "Direkte Erklärungen nach jeder Antwort. Schwächere Bereiche kommen zuerst. Nach zwei richtigen Antworten auf der aktuellen Stufe steigt das Niveau; bei einem Fehler geht es eine Stufe zurück. Die nächste Runde berücksichtigt deinen gespeicherten Lernstand." : "Zufällige Aufgaben aus dem gewählten Fachthema. Bis zur Abgabe bleiben die Lösungen verborgen; gespeicherte Antworten kannst du über die Aufgabennummern ändern."}</p><p>{pool.length ? `${selectQuestions(scopedQuestions, workspace.quizRuns, subject, mode, count).length} unterschiedliche Aufgaben aus ${pool.length} verfügbaren Aufgaben.` : "Füge Beispiele oder eigene Testaufgaben hinzu, um zu starten."} {workspace.quizRuns.length >= 200 && "Die Grenze von 200 gespeicherten Runden ist erreicht."}</p><Button disabled={saving || launching || !pool.length || workspace.quizRuns.length >= 200} onClick={async () => {
     const startedAt = new Date().toISOString();
     const run: QuizRun = { id: crypto.randomUUID(), subject, mode, ...(collection ? { collectionId: collection.id } : {}), startedAt, deadlineAt: mode === "exam" && minutes ? new Date(Date.parse(startedAt) + minutes * 60000).toISOString() : null, finishedAt: null, questions: selectQuestions(scopedQuestions, workspace.quizRuns, subject, mode, count).map(question => withLearningNotes(question)), answers: [] };
     await persistRun(run, "Testrunde gestartet");

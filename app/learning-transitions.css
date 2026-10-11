@@ -1,0 +1,22 @@
+/* Keep the scene free of transforms: mobile learning controls are fixed to the viewport. */
+.workspace-content.learning-scene { animation: learning-scene-enter 220ms ease-out; }
+.learning-transition { display: grid; justify-items: center; align-content: center; gap: 22px; min-height: 360px; padding: 40px 24px; border: 1px solid #e4eaf3; border-radius: 20px; background: linear-gradient(145deg, #fff, #f7faff); color: #253653; text-align: center; animation: learning-scene-enter 180ms ease-out; }
+.learning-transition-icon { display: grid; place-items: center; width: 66px; height: 66px; border: 1px solid #dce7fb; border-radius: 21px; color: #376bba; background: #eef4ff; animation: learning-breathe 1800ms ease-in-out infinite; }
+.learning-transition h2 { margin: 0; font-size: 1.25rem; line-height: 1.4; font-weight: 600; letter-spacing: -.25px; }
+.learning-transition p { max-width: 460px; margin: 10px 0 0; font-size: .875rem; line-height: 1.75; color: #5e6c82; }
+.learning-transition-track { width: 120px; height: 4px; overflow: hidden; border-radius: 10px; background: #dfe8f8; }
+.learning-transition-track span { display: block; width: 46%; height: 100%; border-radius: inherit; background: #5f87ca; animation: learning-progress-travel 1300ms ease-in-out infinite; }
+.learning-transition-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 12px; }
+.learning-transition-actions button { min-height: 44px; white-space: normal; height: auto; }
+.learning-transition.is-error .learning-transition-icon { color: #a04d4b; background: #fff4f2; border-color: #f0dad6; animation: none; }
+.learning-scene .tutor-primary-action { transition: background-color 160ms ease, box-shadow 160ms ease, transform 160ms ease; }
+.learning-scene .tutor-primary-action:active:not(:disabled) { transform: scale(.98); }
+.learning-scene .tutor-guided-step, .learning-scene .tutor-guided-progress, .learning-scene .tutor-guided-outlook { animation: learning-scene-enter 280ms ease-out both; }
+.learning-scene .tutor-guided-progress { animation-delay: 40ms; }
+.learning-scene .tutor-guided-outlook { animation-delay: 70ms; }
+.learning-scene [data-slot="progress-indicator"] { transition: transform 320ms cubic-bezier(.22, 1, .36, 1); }
+@keyframes learning-scene-enter { from { opacity: 0; } to { opacity: 1; } }
+@keyframes learning-breathe { 0%, 100% { box-shadow: 0 0 0 0 #c8d9f500; } 50% { box-shadow: 0 0 0 10px #c8d9f52e; } }
+@keyframes learning-progress-travel { 0% { transform: translateX(-110%); } 100% { transform: translateX(320%); } }
+@media (max-width: 480px) { .learning-transition { min-height: 330px; padding: 32px 19px; border-radius: 16px; }.learning-transition h2 { font-size: 1.125rem; }.learning-transition-actions { width: 100%; flex-direction: column; } }
+@media (prefers-reduced-motion: reduce) { .learning-scene, .learning-scene *, .learning-transition, .learning-transition * { animation: none !important; transition: none !important; }.learning-transition-track span { width: 100%; opacity: .6; } }

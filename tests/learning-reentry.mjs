@@ -158,8 +158,7 @@ try {
   run = (await snapshot()).workspace.quizRuns[0];
   const second = run.questions[1];
   await page.getByRole("checkbox", { name: second.options[1].text, exact: true }).check();
-  await uiSave(() => click("Bestätigen"), workspace => workspace.quizRuns[0].answers.length === 2);
-  await uiSave(() => click("Runde abschließen"), workspace => !!workspace.quizRuns[0].finishedAt);
+  await uiSave(() => click("Bestätigen"), workspace => workspace.quizRuns[0].answers.length === 2 && !!workspace.quizRuns[0].finishedAt);
   await expect(page.locator(".quiz-result-summary")).toContainText("0 von 2 richtig");
   await click("Zum Lernüberblick");
   await expect(hub()).toContainText("1 / 3");
@@ -177,10 +176,10 @@ try {
   for (let index = 0; index < run.questions.length; index++) {
     const item = run.questions[index];
     await page.getByRole("checkbox", { name: item.options.find(option => item.correctOptionIds.includes(option.id)).text, exact: true }).check();
-    await uiSave(() => click("Bestätigen"), workspace => workspace.quizRuns[1].answers.length === index + 1);
+    await uiSave(() => click("Bestätigen"), workspace => workspace.quizRuns[1].answers.length === index + 1 && (index < run.questions.length - 1 || !!workspace.quizRuns[1].finishedAt));
     if (index < run.questions.length - 1) await click("Nächste Aufgabe");
   }
-  await uiSave(() => click("Runde abschließen"), workspace => !!workspace.quizRuns[1].finishedAt);
+  await expect(page.locator(".quiz-result-summary")).toContainText("2 von 2 richtig");
   await click("Zum Lernüberblick");
   await expect(hub()).toContainText("+100 Prozentpunkte");
   await expect(button("Nächste Einheit starten", hub())).toBeVisible();
