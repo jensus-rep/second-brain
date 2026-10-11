@@ -18,7 +18,7 @@ export type LearningAction = ActionScope & (
   | { kind: "review-concept"; subject: string; concept: string; noteIds: string[] }
   | { kind: "review-cards"; mode: "due" | "all" }
   | { kind: "preparation"; subject: string; concept: string }
-  | { kind: "checkpoint"; subject: string; questionCount: number }
+  | { kind: "checkpoint"; subject: string; questionCount: number; questionIds?: string[]; cardCheckpoint?: { sessionId: string; reviewedAt: string } }
   | { kind: "open-collection" }
 );
 export type LearningRecommendation = {

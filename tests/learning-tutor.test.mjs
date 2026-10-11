@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { emptyWorkspace, workspaceSchema, tutorPlanSchema, cardReviewDaySchema } from "../lib/brain/model.ts";
-import { tutorInsights, tutorDate, recordCardReview } from "../lib/brain/learning-tutor.ts";
+import { emptyWorkspace, workspaceSchema, tutorPlanSchema, cardReviewDaySchema, cardReviewEventSchema, tutorCheckpointDecisionSchema, quizRunSchema } from "../lib/brain/model.ts";
+import { tutorInsights, tutorDate, recordCardReview, tutorCardCheckpoint, recordTutorCheckpoint, tutorCardContentFingerprint } from "../lib/brain/learning-tutor.ts";
 import { recommendLearning } from "../lib/brain/learning-resume.ts";
 import { compactQuizRuns, ARCHIVED_TEXT, ARCHIVED_EXPLANATION } from "../lib/brain/quiz.ts";
 
@@ -285,4 +285,248 @@ test("future imported answers cannot claim current understanding or streaks", ()
   const result = insights(workspace([q], { quizRuns: [practice] }));
   assert.equal(result.coverage.covered, 0);
   assert.equal(result.continuity.weeklyActiveDays, 0);
+});
+
+const adaptiveFixture = () => {
+  const notes = Array.from({ length: 10 }, (_, index) => ({
+    id: `n${index + 1}`, title: `Gedanke ${index + 1}`, summary: "", content: "Erklärung", topicId: null,
+    tags: [], relatedIds: [], favorite: false, archived: false, createdAt: timestamp, updatedAt: timestamp,
+  }));
+  const cards = notes.map((note, index) => ({
+    id: `c${index + 1}`, question: `Kartenfrage ${index + 1}`, answer: `Kartenantwort ${index + 1}`,
+    noteId: note.id, dueAt: timestamp, intervalDays: 0, reviews: 0,
+  }));
+  const questions = notes.map((note, index) => question(`q${index + 1}`, { noteIds: [note.id], concept: note.title }));
+  return workspace(questions, {
+    notes, cards, learningCollections: [collection("adaptive", questions.map(q => q.id), { noteIds: notes.map(note => note.id), cardIds: cards.map(card => card.id) })],
+    learningFocus: { collectionId: "adaptive", subject, updatedAt: timestamp },
+  });
+};
+const rateCards = (data, indexes = [1, 2, 3, 4, 5], overrides = {}) => indexes.reduce((current, card, index) => recordCardReview(current, {
+  collectionId: "adaptive", sessionId: "card-session", cardId: `c${card}`, known: card !== 5, ...overrides,
+}, new Date(Date.parse(timestamp) + card * 60_000 + index)), data);
+const pendingCheckpoint = data => tutorCardCheckpoint(data, "card-session", now);
+
+test("individual review events are additive, bounded and validate durable decision markers", () => {
+  const data = rateCards(adaptiveFixture());
+  const parsed = workspaceSchema.parse(JSON.parse(JSON.stringify(data)));
+  assert.deepEqual(parsed, data);
+  assert.equal(Object.hasOwn(workspaceSchema.parse(workspace()), "cardReviewEvents"), false);
+  assert.equal(Object.hasOwn(workspaceSchema.parse(workspace()), "tutorCheckpointDecisions"), false);
+  const event = data.cardReviewEvents[0];
+  assert.equal(cardReviewEventSchema.safeParse(event).success, true);
+  for (const invalid of [{ cardId: "missing id" }, { sessionId: "" }, { known: "yes" }, { reviewedAt: "yesterday" }, { contentFingerprint: "12345678" }, { contentFingerprint: "g".repeat(16) }]) {
+    assert.equal(cardReviewEventSchema.safeParse({ ...event, ...invalid }).success, false, JSON.stringify(invalid));
+  }
+  assert.equal(workspaceSchema.safeParse({ ...data, cardReviewEvents: [event, event] }).success, false);
+  const historical = { ...event, cardId: "deleted-card", noteId: "deleted-note", collectionId: "deleted-collection" };
+  assert.equal(workspaceSchema.safeParse(workspace([], { cardReviewEvents: [historical] })).success, true, "Historical references remain portable after source deletion");
+  const decision = { sessionId: event.sessionId, reviewedAt: event.reviewedAt, decision: "later", decidedAt: new Date(now).toISOString() };
+  assert.equal(tutorCheckpointDecisionSchema.safeParse(decision).success, true);
+  for (const invalid of [{ decision: "never" }, { reviewedAt: "today" }, { decidedAt: "2026-10-09T00:00:00.000Z" }]) {
+    assert.equal(tutorCheckpointDecisionSchema.safeParse({ ...decision, ...invalid }).success, false);
+  }
+  assert.equal(workspaceSchema.safeParse({ ...data, tutorCheckpointDecisions: [decision, decision] }).success, false);
+  assert.equal(workspaceSchema.safeParse({ ...data, cardReviewEvents: Array.from({ length: 1501 }, (_, index) => ({ ...event, sessionId: `s${index}` })) }).success, false);
+  assert.equal(workspaceSchema.safeParse({ ...data, tutorCheckpointDecisions: Array.from({ length: 301 }, (_, index) => ({ ...decision, sessionId: `s${index}` })) }).success, false);
+});
+
+test("rating snapshots use the actual current card without inferring events from legacy totals", () => {
+  const data = adaptiveFixture(), before = structuredClone(data);
+  const rated = recordCardReview(data, { collectionId: "adaptive", cardId: "c1", sessionId: "saved", known: false, noteId: "invented-note" }, new Date(timestamp));
+  assert.deepEqual(data, before);
+  assert.equal(rated.cardReviewEvents[0].noteId, "n1");
+  assert.equal(rated.cardReviewEvents[0].known, false);
+  assert.match(rated.cardReviewEvents[0].contentFingerprint, /^[a-f0-9]{16}$/);
+  assert.equal(recordCardReview(data, { collectionId: "adaptive", known: true }, new Date(timestamp)).cardReviewEvents, undefined);
+  assert.equal(recordCardReview(data, { collectionId: "adaptive", cardId: "deleted", sessionId: "saved", known: true }, new Date(timestamp)).cardReviewEvents, undefined);
+  assert.equal(recordCardReview(data, { collectionId: "adaptive", cardId: "c1", known: true }, new Date(timestamp)).cardReviewEvents, undefined);
+  const legacy = { ...data, cards: data.cards.map(card => ({ ...card, reviews: 100 })), cardReviewDays: [{ date: "2026-10-10", collectionId: "adaptive", reviewed: 500, known: 400 }] };
+  assert.equal(pendingCheckpoint(legacy), null);
+});
+
+test("the fifth actual linked card rating offers a short checkpoint and prioritizes uncertainty", () => {
+  const data = rateCards(adaptiveFixture(), [1, 2, 3, 4]);
+  assert.equal(pendingCheckpoint(data), null);
+  const fifth = rateCards(data, [5]);
+  const checkpoint = pendingCheckpoint(fifth);
+  assert.deepEqual(checkpoint.action.questionIds, ["q5", "q1", "q2"]);
+  assert.deepEqual([checkpoint.reviewedCount, checkpoint.knownCount, checkpoint.action.questionCount], [5, 4, 3]);
+  assert.equal(checkpoint.action.collectionId, "adaptive");
+  assert.equal(checkpoint.action.subject, subject);
+  assert.equal(checkpoint.reviewedAt, fifth.cardReviewEvents.at(-1).reviewedAt);
+  assert.deepEqual(checkpoint.action.cardCheckpoint, { sessionId: "card-session", reviewedAt: checkpoint.reviewedAt });
+  assert.deepEqual(checkpoint.concepts, ["Gedanke 5", "Gedanke 1", "Gedanke 2"]);
+  assert.equal(fifth.tutorCheckpointDecisions, undefined, "An offer itself saves no acceptance or dismissal");
+});
+
+test("checkpoints require current explicit note links and current tasks from the same collection", () => {
+  const data = rateCards(adaptiveFixture());
+  const extra = question("foreign", { noteIds: ["n5"] });
+  const withForeign = { ...data, quizQuestions: [...data.quizQuestions, extra], learningCollections: [...data.learningCollections, collection("other", [extra.id])] };
+  assert.equal(pendingCheckpoint(withForeign).action.questionIds.includes("foreign"), false);
+  const noExplicitLinks = { ...data, quizQuestions: data.quizQuestions.map(q => ({ ...q, noteIds: [] })) };
+  assert.equal(pendingCheckpoint(noExplicitLinks), null, "Titles and concepts never infer a reviewed source");
+  const onlyUnreviewed = { ...data, learningCollections: [collection("adaptive", ["q6"], { noteIds: data.notes.map(note => note.id), cardIds: data.cards.map(card => card.id) })] };
+  assert.equal(pendingCheckpoint(onlyUnreviewed), null);
+  for (const ids of [["q5"], ["q3", "q5"]]) {
+    const small = { ...data, learningCollections: [{ ...data.learningCollections[0], questionIds: ids }] };
+    assert.equal(pendingCheckpoint(small).action.questionCount, ids.length);
+    assert.equal(pendingCheckpoint(small).action.questionIds.length, ids.length);
+  }
+});
+
+test("mixed subject checkpoints prefer an eligible focus and otherwise choose one uncertain subject", () => {
+  const data = rateCards(adaptiveFixture());
+  const other = "Softwareentwicklung";
+  const mixed = { ...data, quizQuestions: data.quizQuestions.map(q => ["q4", "q5"].includes(q.id) ? { ...q, subject: other } : q) };
+  const focused = pendingCheckpoint(mixed);
+  assert.equal(focused.action.subject, subject);
+  assert.deepEqual(focused.action.questionIds, ["q1", "q2", "q3"]);
+  const unfocused = pendingCheckpoint({ ...mixed, learningFocus: { ...mixed.learningFocus, subject: "Fachthema ohne Aufgaben" } });
+  assert.equal(unfocused.action.subject, other);
+  assert.deepEqual(unfocused.action.questionIds, ["q5", "q4"]);
+  const foreignFocus = pendingCheckpoint({ ...mixed, learningFocus: { ...mixed.learningFocus, collectionId: "other", subject } });
+  assert.equal(foreignFocus.action.subject, other, "A different collection's subject focus cannot shape this checkpoint");
+});
+
+test("card checkpoints cover several reviewed concepts and rotate toward less-used matching tasks", () => {
+  const data = rateCards(adaptiveFixture());
+  const unknownFresh = question("unknown-fresh", { concept: "Gedanke 5", noteIds: ["n5"], difficulty: 2 });
+  const unknownUsed = question("unknown-used", { concept: "Gedanke 5", noteIds: ["n5"], difficulty: 1 });
+  const knownFresh = question("known-fresh", { concept: "Gedanke 1", noteIds: ["n1"], difficulty: 3 });
+  const unreviewed = question("unreviewed", { concept: "Gedanke 5", noteIds: ["n6"], difficulty: 1 });
+  const pool = [...data.quizQuestions, unknownUsed, unknownFresh, knownFresh, unreviewed];
+  const available = {
+    ...data, quizQuestions: pool,
+    learningCollections: [{ ...data.learningCollections[0], questionIds: pool.map(q => q.id) }],
+    quizRuns: [
+      run("used-before", [data.quizQuestions[4], unknownUsed, data.quizQuestions[0]], "2026-10-09T10:00:00.000Z", { collectionId: "adaptive" }),
+      run("foreign-use", [unknownFresh, knownFresh], "2026-10-09T10:00:00.000Z", { collectionId: "other" }),
+      run("future-use", [unknownFresh, knownFresh], "2026-10-11T10:00:00.000Z", { collectionId: "adaptive" }),
+    ],
+  };
+  const checkpoint = pendingCheckpoint(available);
+  assert.deepEqual(checkpoint.action.questionIds, ["unknown-fresh", "known-fresh", "q2"]);
+  assert.equal(checkpoint.concepts.length, 3, "Several tasks in the uncertain concept cannot crowd out the other reviewed concepts");
+  const selected = checkpoint.action.questionIds.map(id => pool.find(q => q.id === id));
+  assert.deepEqual(selected.map(q => q.noteIds), [["n5"], ["n1"], ["n2"]]);
+  assert.equal(workspaceSchema.safeParse(available).success, true);
+});
+
+test("uncertain notes remain preferred within a shared concept and spare slots use the remaining matches", () => {
+  const data = rateCards(adaptiveFixture());
+  const uncertain = { ...data.quizQuestions[4], concept: "Gemeinsamer Bereich" };
+  const known = { ...data.quizQuestions[0], concept: "Gemeinsamer Bereich" };
+  const knownExtra = question("known-extra", { concept: "Gemeinsamer Bereich", noteIds: ["n2"] });
+  const pool = [known, knownExtra, uncertain];
+  const available = { ...data, quizQuestions: pool, learningCollections: [{ ...data.learningCollections[0], questionIds: pool.map(q => q.id) }], quizRuns: [
+    run("uncertain-used", [uncertain], "2026-10-09T10:00:00.000Z", { collectionId: "adaptive" }),
+  ] };
+  const checkpoint = pendingCheckpoint(available);
+  assert.equal(checkpoint.action.questionIds[0], uncertain.id, "A known, unused question cannot replace the uncertain reviewed note");
+  assert.equal(checkpoint.action.questionCount, 3, "Matching known tasks fill the remaining slots when only one uncertain task exists");
+  assert.equal(new Set(checkpoint.action.questionIds).size, 3);
+  assert.deepEqual(checkpoint.concepts, ["Gemeinsamer Bereich"]);
+});
+
+test("editing, relinking, removing or unassigning a source invalidates its reviewed evidence", () => {
+  const data = rateCards(adaptiveFixture());
+  const changed = [
+    { cards: data.cards.filter(card => card.id !== "c1") },
+    { notes: data.notes.filter(note => note.id !== "n1") },
+    { cards: data.cards.map(card => card.id === "c1" ? { ...card, question: "Ein anderer Gedanke" } : card) },
+    { cards: data.cards.map(card => card.id === "c1" ? { ...card, answer: "Eine andere Erklärung" } : card) },
+    { cards: data.cards.map(card => card.id === "c1" ? { ...card, noteId: "n6" } : card) },
+    { cards: data.cards.map(card => card.id === "c1" ? { ...card, noteId: null } : card) },
+    { learningCollections: [] },
+    { learningCollections: [{ ...data.learningCollections[0], noteIds: data.notes.filter(note => note.id !== "n1").map(note => note.id), cardIds: data.cards.filter(card => card.id !== "c1").map(card => card.id) }] },
+  ];
+  for (const edit of changed) assert.equal(pendingCheckpoint({ ...data, ...edit }), null, JSON.stringify(edit));
+  const rescheduled = { ...data, cards: data.cards.map(card => ({ ...card, dueAt: "2026-10-11T12:00:00.000Z", reviews: 4, intervalDays: 1 })) };
+  assert.equal(pendingCheckpoint(rescheduled).reviewedCount, 5, "Scheduling changes retain unchanged content evidence");
+  assert.notEqual(tutorCardContentFingerprint({ question: "a\nb", answer: "c" }), tutorCardContentFingerprint({ question: "a", answer: "b\nc" }), "Word boundaries remain explicit");
+});
+
+test("future, expired, duplicate and cross-session or cross-collection events cannot reach the threshold", () => {
+  const data = rateCards(adaptiveFixture());
+  const alter = transform => ({ ...data, cardReviewEvents: data.cardReviewEvents.map((event, index) => index === 0 ? transform(event) : event) });
+  assert.equal(pendingCheckpoint(alter(event => ({ ...event, reviewedAt: "2026-10-11T10:00:00.000Z" }))), null);
+  assert.equal(pendingCheckpoint(alter(event => ({ ...event, reviewedAt: "2026-10-09T11:59:59.000Z" }))), null);
+  assert.equal(pendingCheckpoint(alter(event => ({ ...event, sessionId: "different-session" }))), null);
+  assert.equal(pendingCheckpoint(alter(event => ({ ...event, collectionId: "different-collection" }))), null);
+  assert.equal(pendingCheckpoint({ ...data, cardReviewEvents: [...data.cardReviewEvents.slice(0, 4), data.cardReviewEvents[0]] }), null);
+  assert.equal(pendingCheckpoint({ ...data, quizRuns: [run("active", [question()], timestamp, { finishedAt: null })] }), null);
+  assert.equal(pendingCheckpoint({ ...data, cardReviewEvents: data.cardReviewEvents.map(event => ({ ...event, noteId: null })) }), null);
+  assert.equal(pendingCheckpoint({ ...data, cardReviewEvents: data.cardReviewEvents.map(event => ({ ...event, collectionId: "deleted-collection" })) }), null);
+});
+
+test("the overview finds only a recent card session from the current learning focus", () => {
+  const data = rateCards(adaptiveFixture());
+  assert.deepEqual(tutorCardCheckpoint(data, undefined, now), pendingCheckpoint(data));
+  assert.equal(tutorCardCheckpoint({ ...data, learningFocus: { ...data.learningFocus, collectionId: "other" } }, undefined, now), null);
+  const nextSession = { id: "next-session", collectionId: "adaptive", mode: "all", queue: [], index: 0, startedAt: timestamp, updatedAt: timestamp };
+  assert.equal(tutorCardCheckpoint({ ...data, flashcardSession: nextSession }, undefined, now), null, "A newly started session never inherits older session ratings");
+  assert.equal(tutorCardCheckpoint({ ...data, flashcardSession: { ...nextSession, id: "card-session" } }, undefined, now).sessionId, "card-session");
+  assert.equal(tutorCardCheckpoint(data, undefined, now + 86400000), null);
+});
+
+test("a durable later decision waits for five new ratings after reload and stale offers save nothing", () => {
+  const data = rateCards(adaptiveFixture());
+  const checkpoint = pendingCheckpoint(data), decisionTime = new Date("2026-10-10T10:06:00.000Z");
+  const deferred = recordTutorCheckpoint(data, checkpoint, "later", decisionTime);
+  assert.equal(pendingCheckpoint(deferred), null);
+  const loaded = workspaceSchema.parse(JSON.parse(JSON.stringify(deferred)));
+  assert.equal(pendingCheckpoint(loaded), null);
+  assert.deepEqual(loaded.tutorCheckpointDecisions, [{ sessionId: "card-session", reviewedAt: checkpoint.reviewedAt, decision: "later", decidedAt: decisionTime.toISOString() }]);
+  const fourMore = rateCards(loaded, [6, 7, 8, 9]);
+  assert.equal(pendingCheckpoint(fourMore), null);
+  const fiveMore = rateCards(fourMore, [10]);
+  const next = pendingCheckpoint(fiveMore);
+  assert.equal(next.reviewedCount, 5);
+  assert.notEqual(next.reviewedAt, checkpoint.reviewedAt);
+  assert.equal(recordTutorCheckpoint(fiveMore, checkpoint, "later", new Date(now)), fiveMore, "A stale checkpoint cannot consume new ratings");
+  const nextDeferred = recordTutorCheckpoint(fiveMore, next, "later", new Date(now));
+  assert.equal(nextDeferred.tutorCheckpointDecisions.length, 1, "Only the latest cooldown per session is retained");
+  assert.equal(pendingCheckpoint(nextDeferred), null);
+});
+
+test("a started checkpoint and its saved quiz marker survive reload without reopening the same offer", () => {
+  const data = rateCards(adaptiveFixture()), checkpoint = pendingCheckpoint(data);
+  const accepted = recordTutorCheckpoint(data, checkpoint, "started", new Date(now));
+  const selected = checkpoint.action.questionIds.map(id => data.quizQuestions.find(q => q.id === id));
+  const exam = run("checkpoint", selected, new Date(now).toISOString(), { mode: "exam", collectionId: "adaptive", cardCheckpoint: checkpoint.action.cardCheckpoint, finishedAt: null, answers: [] });
+  const loaded = workspaceSchema.parse(JSON.parse(JSON.stringify({ ...accepted, quizRuns: [exam] })));
+  assert.deepEqual(loaded.quizRuns[0].cardCheckpoint, checkpoint.action.cardCheckpoint);
+  assert.equal(pendingCheckpoint(loaded), null);
+  assert.equal(pendingCheckpoint({ ...loaded, quizRuns: [{ ...exam, finishedAt: new Date(now + 60_000).toISOString() }] }), null);
+  for (const changed of [{ mode: "practice" }, { startedAt: "2026-10-09T00:00:00.000Z" }]) {
+    assert.equal(quizRunSchema.safeParse({ ...exam, ...changed }).success, false);
+  }
+});
+
+test("an explicit whole-stock card session remains global while missing scopes and changed focus stay unavailable", () => {
+  const data = adaptiveFixture();
+  const global = rateCards({ ...data, learningFocus: { ...data.learningFocus, collectionId: null } }, [1, 2, 3, 4, 5], { collectionId: null });
+  const checkpoint = pendingCheckpoint(global);
+  assert.equal(checkpoint.action.collectionId, null);
+  assert.equal(checkpoint.reviewedCount, 5);
+  assert.deepEqual(tutorCardCheckpoint(global, undefined, now), checkpoint);
+  assert.equal(tutorCardCheckpoint({ ...global, learningFocus: data.learningFocus }, undefined, now), null, "Completed global ratings are not attributed to a new focused collection");
+  assert.equal(tutorCardCheckpoint({ ...global, learningFocus: undefined }, undefined, now), null, "A missing overview scope cannot borrow a completed session");
+  const selected = checkpoint.action.questionIds.map(id => global.quizQuestions.find(q => q.id === id));
+  const exam = run("global-checkpoint", selected, new Date(now).toISOString(), { mode: "exam", cardCheckpoint: checkpoint.action.cardCheckpoint });
+  assert.equal(quizRunSchema.safeParse(exam).success, true);
+  assert.equal(workspaceSchema.safeParse(global).success, true);
+});
+
+test("the event log retains 1500 actual ratings while keeping the newest source snapshot", () => {
+  const data = rateCards(adaptiveFixture(), [1]), event = data.cardReviewEvents[0];
+  const full = { ...data, cardReviewEvents: Array.from({ length: 1500 }, (_, index) => ({ ...event, sessionId: `past${index}` })) };
+  const updated = rateCards(full, [2]);
+  assert.equal(updated.cardReviewEvents.length, 1500);
+  assert.equal(updated.cardReviewEvents[0].sessionId, "past1");
+  assert.equal(updated.cardReviewEvents.at(-1).cardId, "c2");
+  assert.equal(full.cardReviewEvents[0].sessionId, "past0");
+  assert.equal(workspaceSchema.safeParse(updated).success, true);
 });

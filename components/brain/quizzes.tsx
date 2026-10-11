@@ -14,14 +14,15 @@ import { quizQuestionSchema, type LearningReminder, type QuizQuestion, type Quiz
 import type { SaveWorkspace } from "@/lib/brain/use-brain";
 import { withLearningNotes } from "@/lib/brain/quiz-content";
 import { preparationAreas, selectPreparationQuestions } from "@/lib/brain/quiz-preparation";
-import { recommendLearningAfterRun, runMatchesLearningCollection, selectCheckpointQuestions } from "@/lib/brain/learning-resume";
+import { recommendLearningAfterRun, runMatchesLearningCollection, selectCheckpointQuestions, type LearningAction } from "@/lib/brain/learning-resume";
+import { recordTutorCheckpoint, tutorCardCheckpoint } from "@/lib/brain/learning-tutor";
 import { addToLearningCollection, collectionItems, learningCollections } from "@/lib/brain/learning-collections";
 import { QuizResultSummary } from "./quiz-result";
 import { QuizPreparation } from "./quiz-preparation";
 import { QuizLearningMaterial } from "./quiz-learning-material";
 
-type Props = { workspace: Workspace; save: SaveWorkspace; saving: boolean; onOpenNote?: (id: string) => void };
-export type QuizLaunchRequest = { id: string; subject: string; concept?: string; mode: "preparation" | "checkpoint" | "practice"; collectionId?: string };
+type Props = { workspace: Workspace; save: SaveWorkspace; saving: boolean; onOpenNote?: (id: string) => void; onLearningAction?: (action: LearningAction) => void };
+export type QuizLaunchRequest = { id: string; subject: string; concept?: string; mode: "preparation" | "checkpoint" | "practice"; collectionId?: string; questionCount?: number; questionIds?: string[]; cardCheckpoint?: QuizRun["cardCheckpoint"] };
 
 function withQuizFocus(workspace: Workspace, run: QuizRun, updatedAt = new Date().toISOString(), collectionId?: string): Workspace {
   const collection = collectionId ? learningCollections(workspace).find(item => item.id === collectionId && runMatchesLearningCollection(run, item)) : undefined;
@@ -254,7 +255,7 @@ function QuizSession({ run, workspace, save, saving, onOpenNote, onBackToOvervie
   </section>;
 }
 
-export function Quizzes({ workspace, save, saving, onStudyChange, onOpenNote, collectionId = "", onCollectionChange, launchRequest, onLaunchConsumed, resultRequest, onResultRequestConsumed, onBackToOverview, onPendingChange }: Props & { onStudyChange?: (studying: boolean) => void; collectionId?: string; onCollectionChange?: (id: string) => void; launchRequest?: QuizLaunchRequest; onLaunchConsumed?: () => void; resultRequest?: { id: string; runId: string; collectionId?: string }; onResultRequestConsumed?: () => void; onBackToOverview?: () => void; onPendingChange?: (pending: boolean) => void }) {
+export function Quizzes({ workspace, save, saving, onStudyChange, onOpenNote, collectionId = "", onCollectionChange, launchRequest, onLaunchConsumed, resultRequest, onResultRequestConsumed, onBackToOverview, onPendingChange, onLearningAction }: Props & { onStudyChange?: (studying: boolean) => void; collectionId?: string; onCollectionChange?: (id: string) => void; launchRequest?: QuizLaunchRequest; onLaunchConsumed?: () => void; resultRequest?: { id: string; runId: string; collectionId?: string }; onResultRequestConsumed?: () => void; onBackToOverview?: () => void; onPendingChange?: (pending: boolean) => void }) {
   const requestedResult = resultRequest ? workspace.quizRuns.find(run => run.id === resultRequest.runId && run.finishedAt) : undefined;
   const requestedResultCollectionId = requestedResult ? matchingQuizCollection(workspace, requestedResult, resultRequest?.collectionId ?? collectionId)?.id ?? "" : "";
   const [subjectChoice, setSubject] = useState(() => requestedResult?.subject ?? launchRequest?.subject ?? workspace.learningFocus?.subject ?? workspace.quizQuestions[0]?.subject ?? "Projektmanagement");
@@ -317,7 +318,17 @@ export function Quizzes({ workspace, save, saving, onStudyChange, onOpenNote, co
     return save(current => {
       if (current.quizRuns.some(item => !item.finishedAt)) throw new Error("Bitte die laufende Testrunde zuerst beenden.");
       if (current.quizRuns.length >= 200) throw new Error("Die Grenze von 200 gespeicherten Runden ist erreicht.");
-      return { ...withQuizFocus(current, run, run.startedAt), quizRuns: [...current.quizRuns, run] };
+      let updated = current;
+      if (run.cardCheckpoint) {
+        const fresh = tutorCardCheckpoint(current, run.cardCheckpoint.sessionId);
+        if (!fresh || fresh.reviewedAt !== run.cardCheckpoint.reviewedAt || fresh.action.subject !== run.subject || fresh.action.collectionId !== (run.collectionId ?? null) || JSON.stringify(fresh.action.questionIds) !== JSON.stringify(run.questions.map(question => question.id))) {
+          throw new Error("Der Lernimpuls hat sich geändert. Öffne deinen aktuellen Lernstand und wähle ihn erneut.");
+        }
+        const currentQuestions = new Map(current.quizQuestions.map(question => [question.id, withLearningNotes(question)]));
+        if (run.questions.some(question => JSON.stringify(currentQuestions.get(question.id)) !== JSON.stringify(question))) throw new Error("Die Testaufgaben haben sich geändert. Bitte starte den Lernimpuls erneut.");
+        updated = recordTutorCheckpoint(current, run.cardCheckpoint, "started");
+      }
+      return { ...withQuizFocus(updated, run, run.startedAt), quizRuns: [...updated.quizRuns, run] };
     }, message);
   }
   async function attemptLaunch(request: QuizLaunchRequest) {
@@ -333,16 +344,19 @@ export function Quizzes({ workspace, save, saving, onStudyChange, onOpenNote, co
       const requestedCollection = collections.find(item => item.id === requestedCollectionId);
       if (requestedCollectionId && !requestedCollection) throw new Error("Die gewählte Lernsammlung ist nicht mehr verfügbar. Wähle im Lernüberblick eine andere Sammlung.");
       const questionsInScope = requestedCollection ? collectionItems(workspace, requestedCollection).questions : workspace.quizQuestions;
+      const requestedIds = request.questionIds;
+      if (requestedIds && (!request.cardCheckpoint || requestedIds.length > 3 || new Set(requestedIds).size !== requestedIds.length || requestedIds.some(id => !questionsInScope.some(question => question.id === id && question.subject === request.subject)))) throw new Error("Die Aufgaben für diesen Lernimpuls sind nicht mehr verfügbar.");
       const questions = request.mode === "preparation"
         ? request.concept ? selectPreparationQuestions(questionsInScope, runsForCollection(workspace, requestedCollection?.id), request.subject, request.concept) : []
         : request.mode === "checkpoint"
-          ? selectCheckpointQuestions(questionsInScope, workspace.quizRuns, request.subject).map(question => withLearningNotes(question))
+          ? (requestedIds ? requestedIds.map(id => questionsInScope.find(question => question.id === id)!) : selectCheckpointQuestions(questionsInScope, workspace.quizRuns, request.subject, request.questionCount)).map(question => withLearningNotes(question))
           : selectQuestions(questionsInScope, workspace.quizRuns, request.subject, "practice", 6).map(question => withLearningNotes(question));
       if (!questions.length) throw new Error("Für diese Einheit sind keine passenden Testaufgaben verfügbar. Wähle im Lernüberblick einen anderen Lernschritt.");
       const run: QuizRun = {
         id: crypto.randomUUID(), subject: request.subject, mode: request.mode === "checkpoint" ? "exam" : "practice",
         ...(request.mode === "preparation" ? { preparationConcept: request.concept } : {}),
         ...(requestedCollection ? { collectionId: requestedCollection.id } : {}),
+        ...(request.cardCheckpoint ? { cardCheckpoint: request.cardCheckpoint } : {}),
         startedAt: new Date().toISOString(), deadlineAt: null, finishedAt: null, questions, answers: [],
       };
       if (await persistRun(run, request.mode === "checkpoint" ? "Abschlusstest gestartet" : "Lerneinheit gestartet")) {
@@ -379,6 +393,9 @@ export function Quizzes({ workspace, save, saving, onStudyChange, onOpenNote, co
       ? matchingQuizCollection(workspace, result, resultRequest.collectionId ?? collectionId)
       : collections.find(item => item.id === (result.collectionId ?? collectionId) && runMatchesLearningCollection(result, item));
     const continuation = recommendLearningAfterRun(workspace, result, resultCollection?.id);
+    const cardSession = workspace.flashcardSession;
+    const resumeCards: LearningAction | null = onLearningAction && cardSession && result.cardCheckpoint?.sessionId === cardSession.id && cardSession.index < cardSession.queue.length
+      ? { kind: "resume-cards", collectionId: cardSession.collectionId, sessionId: cardSession.id, remaining: cardSession.queue.length - cardSession.index } : null;
     const continueLabel = continuation?.reason === "repair" ? "Unsicheren Bereich festigen"
       : continuation?.reason === "coverage" ? "Nächsten Lernbereich starten"
       : continuation?.reason === "application" ? continuation.questions.some(question => question.difficulty > 1) ? "Anwendung weiter üben" : "Wissen weiter festigen" : "Wissen im Kurztest prüfen";
@@ -403,7 +420,10 @@ export function Quizzes({ workspace, save, saving, onStudyChange, onOpenNote, co
     function openTestOverview() { setSubject(result!.subject); onCollectionChange?.(resultCollection?.id ?? ""); setResultId(null); }
     return <div className="quizzes">
       {launchNotice}
-      <QuizResultSummary key={result.id} run={result} questions={shown} nextStep={continuation && <>
+      <QuizResultSummary key={result.id} run={result} questions={shown} nextStep={resumeCards ? <>
+        <h3>Weiter mit deinen Karten</h3><p>Dein Kurztest ist ausgewertet. Deine Kartenrunde wartet an der gespeicherten Stelle auf dich.</p>
+        <Button disabled={saving || continuing} onClick={() => onLearningAction?.(resumeCards)}>Mit deinen Karten weiterlernen<ArrowRight size={16} /></Button>
+      </> : continuation && <>
         <h3>{continuation.reason === "repair" ? "Dein nächster Lernschritt" : "Wissen weiter festigen"}</h3>
         <p>{continuation.description}</p>
         {continuation.progress.total > 0 && <p className="quiz-result-path-progress">{continuation.title}: {continuation.progress.covered} von {continuation.progress.total} Lernbereichen bearbeitet · {continuation.progress.secure} in allen vorhandenen Aufgaben richtig beantwortet.</p>}

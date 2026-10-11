@@ -13,9 +13,11 @@ import { collectionItems, learningCollections } from "@/lib/brain/learning-colle
 import { recommendLearning, type LearningAction } from "@/lib/brain/learning-resume";
 import { tutorDate, tutorInsights, type TutorQuizResult } from "@/lib/brain/learning-tutor";
 import { ARCHIVED_TEXT } from "@/lib/brain/quiz";
+import { TutorCardPrompt, sameTutorAction, useTutorRuntime } from "./tutor-guidance";
 
 type Props = {
   workspace: Workspace;
+  revision?: number;
   save: SaveWorkspace;
   saving: boolean;
   now: number;
@@ -146,18 +148,23 @@ function TutorPlanForm({ plan, save, saving }: { plan: TutorPlan | null | undefi
   </form>;
 }
 
-export function LearningTutor({ workspace, save, saving, now, onAction, onOpenNote, onOpenCollection, onOpenCollections, onViewResult }: Props) {
+export function LearningTutor({ workspace, revision = -1, save, saving, now, onAction, onOpenNote, onOpenCollection, onOpenCollections, onViewResult }: Props) {
   const recommendation = recommendLearning(workspace, now);
   const insights = tutorInsights(workspace, recommendation, now);
-  const { primaryAction, cards, areas, weaknesses } = recommendation;
-  const primaryLabel = primaryAction?.kind === "review-cards" && primaryAction.mode === "all" ? "Alle Karten üben" : primaryAction ? actionLabels[primaryAction.kind] : "Dein erster Lernschritt";
+  const { primaryAction: defaultPrimaryAction, cards, areas, weaknesses } = recommendation;
   const collections = learningCollections(workspace);
   const selectedCollection = collections.find(collection => collection.id === recommendation.collectionId);
-  const resumable = primaryAction?.kind === "resume-quiz" || primaryAction?.kind === "resume-cards";
+  const resumable = defaultPrimaryAction?.kind === "resume-quiz" || defaultPrimaryAction?.kind === "resume-cards";
   const collectionValue = recommendation.collectionId && selectedCollection ? recommendation.collectionId : resumable && !selectedCollection ? "::saved" : "::all";
   const scopedQuestions = selectedCollection ? collectionItems(workspace, selectedCollection).questions : workspace.quizQuestions;
   const checkpointCount = scopedQuestions.filter(question => question.subject === recommendation.subject).length;
   const checkpointAction: LearningAction | null = recommendation.subject && checkpointCount ? { kind: "checkpoint", collectionId: recommendation.collectionId, subject: recommendation.subject, questionCount: Math.min(6, checkpointCount) } : null;
+  const runtime = useTutorRuntime(revision, "overview", undefined, !saving);
+  const allowedActions: (LearningAction | null)[] = [defaultPrimaryAction, ...(!resumable ? [checkpointAction, cards.due ? { kind: "review-cards" as const, collectionId: recommendation.collectionId, mode: "due" as const } : null] : [])];
+  const runtimeAction = runtime?.action ? allowedActions.find(action => action && sameTutorAction(action, runtime.action)) : null;
+  const refined = runtimeAction && runtime ? { ...runtime, action: runtimeAction } : null;
+  const primaryAction = refined?.action ?? defaultPrimaryAction;
+  const primaryLabel = primaryAction?.kind === "review-cards" && primaryAction.mode === "all" ? "Alle Karten üben" : primaryAction ? actionLabels[primaryAction.kind] : "Dein erster Lernschritt";
   const [focusError, setFocusError] = useState("");
   const [activeTab, setActiveTab] = useState("today");
   async function changeFocus(collectionId: string | null, subject: string | null) {
@@ -165,7 +172,7 @@ export function LearningTutor({ workspace, save, saving, now, onAction, onOpenNo
     const saved = await save(current => ({ ...current, learningFocus: { collectionId, subject, updatedAt: new Date().toISOString() } }), "Lernfokus gespeichert");
     if (!saved) setFocusError("Der Lernfokus konnte nicht gespeichert werden. Der bisherige Fokus bleibt aktiv.");
   }
-  const actionDescription = !primaryAction ? "Wähle eine Lernsammlung mit Testaufgaben oder Lernkarten. Sobald Inhalte vorhanden sind, findest du hier deinen ersten Schritt."
+  const actionDescription = refined?.message ?? (!primaryAction ? "Wähle eine Lernsammlung mit Testaufgaben oder Lernkarten. Sobald Inhalte vorhanden sind, findest du hier deinen ersten Schritt."
     : primaryAction.kind === "resume-quiz" ? "Deine Antworten sind gespeichert. Setze die offene Einheit an der letzten Stelle fort."
     : primaryAction.kind === "resume-cards" ? `Deine Kartenrunde wartet auf dich. Noch ${primaryAction.remaining} ${primaryAction.remaining === 1 ? "Karte" : "Karten"}, dann ist diese Einheit abgeschlossen.`
     : primaryAction.kind === "review-concept" ? `Bei „${primaryAction.concept}“ sind noch Antworten falsch. Greife die Erklärung auf und übe die offenen Aufgaben erneut.`
@@ -174,7 +181,7 @@ export function LearningTutor({ workspace, save, saving, now, onAction, onOpenNo
       ? `Festige „${primaryAction.concept}“ mit weiteren Aufgaben. Eine bearbeitete Einheit bedeutet noch nicht, dass alle Aufgaben richtig beantwortet sind.`
       : `Beginne mit „${primaryAction.concept}“. Eine kurze Einheit bringt dich gezielt in deine Vorbereitung.`
     : primaryAction.kind === "checkpoint" ? `Prüfe deinen Lernstand mit bis zu ${primaryAction.questionCount} gemischten Aufgaben. Die Auswertung erscheint nach der Abgabe.`
-    : "Öffne deine Sammlung und orientiere dich an den verknüpften Notizen und Lernpfaden.";
+    : "Öffne deine Sammlung und orientiere dich an den verknüpften Notizen und Lernpfaden.");
   const latestResult = insights.history[0];
   const scopedResultIds = new Set(insights.history.map(result => result.runId));
   const hasArchivedWording = workspace.quizRuns.some(run => scopedResultIds.has(run.id) && run.questions.some(question => question.prompt === ARCHIVED_TEXT));
@@ -193,13 +200,14 @@ export function LearningTutor({ workspace, save, saving, now, onAction, onOpenNo
       }}><option value="::all">Gesamter Lernbestand</option>{collectionValue === "::saved" && <option value="::saved">Gespeicherte Lerneinheit</option>}{collections.map(collection => <option key={collection.id} value={collection.id}>{collection.title}</option>)}</select></label>
       {recommendation.subjects.length > 1 && <label className="field"><span>Fachthema</span><select aria-label="Fachthema im Lernfokus" disabled={saving || resumable} value={recommendation.subject ?? recommendation.subjects[0]} onChange={event => void changeFocus(recommendation.collectionId, event.target.value)}>{recommendation.subjects.map(subject => <option key={subject}>{subject}</option>)}</select></label>}
     </div>
-    {resumable && <p className="tutor-context-hint">Setze deine offene Einheit fort, bevor du den Lernfokus wechselst oder eine neue Runde startest.</p>}
+    {resumable && <p className="tutor-context-hint">Deine offene Einheit bleibt gespeichert. Setze sie fort, bevor du den Lernfokus wechselst.</p>}
     {focusError && <p className="tutor-form-status is-error" role="alert">{focusError}</p>}
     <Tabs value={activeTab} onValueChange={setActiveTab} className="tutor-tabs">
       <TabsList aria-label="Tutor-Bereiche"><TabsTrigger value="today">Heute</TabsTrigger><TabsTrigger value="preparation">Vorbereitung</TabsTrigger><TabsTrigger value="results">Auswertung</TabsTrigger></TabsList>
       <TabsContent value="today" forceMount hidden={activeTab !== "today"} className="tutor-tab-content">
-        <div className="tutor-next-step"><div><span className="eyebrow">{resumable ? "HIER GEHT ES WEITER" : "DEIN NÄCHSTER SCHRITT"}</span><h3>{primaryLabel}</h3><p>{actionDescription}</p>{primaryAction ? <Button className="tutor-primary-action" disabled={saving} onClick={() => onAction(primaryAction)}><Play size={17} />{primaryLabel}<ArrowRight size={16} /></Button> : onOpenCollections && <Button className="tutor-primary-action" onClick={onOpenCollections}><BookOpen size={17} />Lernsammlung anlegen<ArrowRight size={16} /></Button>}</div><div className="tutor-next-visual" aria-hidden="true"><span className="tutor-visual-orbit"><Target size={42} /></span><span>Ein Schritt nach dem anderen.</span></div></div>
+        <div className="tutor-next-step"><div><span className="eyebrow">{resumable ? "HIER GEHT ES WEITER" : "DEIN NÄCHSTER SCHRITT"}</span><h3>{primaryLabel}</h3><p>{actionDescription}</p>{refined && <span className="tutor-runtime-label">KI-Lernimpuls</span>}{primaryAction ? <Button className="tutor-primary-action" disabled={saving} onClick={() => onAction(primaryAction)}><Play size={17} />{primaryLabel}<ArrowRight size={16} /></Button> : onOpenCollections && <Button className="tutor-primary-action" onClick={onOpenCollections}><BookOpen size={17} />Lernsammlung anlegen<ArrowRight size={16} /></Button>}</div><div className="tutor-next-visual" aria-hidden="true"><span className="tutor-visual-orbit"><Target size={42} /></span><span>Ein Schritt nach dem anderen.</span></div></div>
         {selectedCollection && <Button className="tutor-mobile-collection" variant="ghost" onClick={() => onOpenCollection(selectedCollection.id)}>Sammlung ansehen<ArrowRight size={15} /></Button>}
+        <TutorCardPrompt workspace={workspace} revision={revision} save={save} saving={saving} now={now} onAction={onAction} />
         {(checkpointAction || cards.total > 0) && <div className="tutor-entry-grid" aria-label="Weitere Einstiege">
           {checkpointAction && <article className="tutor-entry-card"><ClipboardCheck size={22} aria-hidden="true" /><div><h3>Ein kurzer Lernstandcheck</h3><p>Bis zu {Math.min(6, checkpointCount)} Aufgaben aus deinem Fachthema, mit Auswertung nach der Abgabe.</p></div><Button variant="outline" disabled={saving || resumable} onClick={() => onAction(checkpointAction)}>Kurztest starten<ArrowRight size={15} /></Button></article>}
           {cards.total > 0 && <article className="tutor-entry-card"><Layers3 size={22} aria-hidden="true" /><div><h3>Wissen wieder abrufen</h3><p>{cards.due > 0 ? `${cards.due} fällige ${cards.due === 1 ? "Karte wartet" : "Karten warten"} in deinem Lernfokus.` : "Aktuell ist keine Karte fällig. Bei Bedarf kannst du alle Karten gezielt üben."}</p></div><Button variant="outline" disabled={saving || resumable} onClick={() => onAction({ kind: "review-cards", collectionId: recommendation.collectionId, mode: cards.due ? "due" : "all" })}>{cards.due ? "Fällige Karten wiederholen" : "Alle Karten üben"}<ArrowRight size={15} /></Button></article>}

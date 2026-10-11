@@ -1,6 +1,6 @@
-import type { CardReviewDay, QuizRun, Workspace } from "./model.ts";
+import type { CardReviewDay, CardReviewEvent, Flashcard, QuizRun, Workspace } from "./model.ts";
 import { collectionItems, learningCollections } from "./learning-collections.ts";
-import { comparableLearningRuns, runMatchesLearningCollection, type LearningRecommendation } from "./learning-resume.ts";
+import { comparableLearningRuns, runMatchesLearningCollection, selectCheckpointQuestions, type LearningAction, type LearningRecommendation } from "./learning-resume.ts";
 import { latestQuestionResults } from "./quiz-preparation.ts";
 import { ARCHIVED_TEXT, isCorrect } from "./quiz.ts";
 
@@ -26,6 +26,10 @@ export type TutorInsights = {
     weeklyRemaining: number; weeklyPercent: number;
   } | null;
 };
+export type TutorCardCheckpoint = {
+  sessionId: string; reviewedAt: string; reviewedCount: number; knownCount: number; concepts: string[];
+  action: Extract<LearningAction, { kind: "checkpoint" }>;
+};
 
 const dayMilliseconds = 86_400_000;
 const berlinFormatter = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Berlin", year: "numeric", month: "2-digit", day: "2-digit" });
@@ -42,7 +46,7 @@ const calendarDate = (day: number) => new Date(day * dayMilliseconds).toISOStrin
 
 // Call inside the same workspace update that schedules the reviewed card. The
 // bucket records self-assessment, independently of objective quiz grading.
-export function recordCardReview(workspace: Workspace, review: { collectionId: string | null; known: boolean }, now = new Date()): Workspace {
+export function recordCardReview(workspace: Workspace, review: { collectionId: string | null; known: boolean; cardId?: string; sessionId?: string }, now = new Date()): Workspace {
   const date = tutorDate(now);
   const existing = workspace.cardReviewDays ?? [];
   const index = existing.findIndex(day => day.date === date && day.collectionId === review.collectionId);
@@ -50,7 +54,102 @@ export function recordCardReview(workspace: Workspace, review: { collectionId: s
     ? { date, collectionId: review.collectionId, reviewed: 1, known: review.known ? 1 : 0 }
     : { ...existing[index], reviewed: existing[index].reviewed + 1, known: existing[index].known + (review.known ? 1 : 0) };
   const updated = index < 0 ? [...existing, day] : existing.map((item, current) => current === index ? day : item);
-  return { ...workspace, cardReviewDays: updated.sort((a, b) => a.date.localeCompare(b.date)).slice(-3000) };
+  const result = { ...workspace, cardReviewDays: updated.sort((a, b) => a.date.localeCompare(b.date)).slice(-3000) };
+  const card = review.cardId ? workspace.cards.find(item => item.id === review.cardId) : undefined;
+  // Old callers keep their daily totals. They cannot invent the source or
+  // session of an individual rating from a legacy review counter.
+  if (!card || !review.sessionId) return result;
+  const event: CardReviewEvent = {
+    cardId: card.id, sessionId: review.sessionId, collectionId: review.collectionId,
+    noteId: card.noteId, known: review.known, reviewedAt: now.toISOString(), contentFingerprint: tutorCardContentFingerprint(card),
+  };
+  const events = workspace.cardReviewEvents ?? [];
+  const duplicate = events.some(item => item.sessionId === event.sessionId && item.cardId === event.cardId && item.reviewedAt === event.reviewedAt);
+  return { ...result, cardReviewEvents: duplicate ? events : [...events, event].slice(-1500) };
+}
+
+// Two deterministic 32-bit fingerprints detect ordinary wording edits in the
+// browser and server alike. This is change detection, not a security hash.
+// JSON preserves the boundary between question and answer even with newlines.
+export function tutorCardContentFingerprint(card: Pick<Flashcard, "question" | "answer">): string {
+  const text = JSON.stringify([card.question, card.answer]);
+  let first = 2166136261, second = 3339675911;
+  for (let index = 0; index < text.length; index++) {
+    first = Math.imul(first ^ text.charCodeAt(index), 16777619);
+    second = Math.imul(second ^ text.charCodeAt(index), 2246822519);
+  }
+  return (first >>> 0).toString(16).padStart(8, "0") + (second >>> 0).toString(16).padStart(8, "0");
+}
+
+export function tutorCardCheckpoint(workspace: Workspace, sessionId?: string | null, now = Date.now()): TutorCardCheckpoint | null {
+  if (!Number.isFinite(now) || workspace.quizRuns.some(run => !run.finishedAt)) return null;
+  const allEvents = workspace.cardReviewEvents ?? [];
+  const recent = allEvents.filter(event => Date.parse(event.reviewedAt) <= now && Date.parse(event.reviewedAt) >= now - dayMilliseconds)
+    .sort((a, b) => Date.parse(a.reviewedAt) - Date.parse(b.reviewedAt));
+  const currentSession = workspace.flashcardSession;
+  const requestedSessionId = sessionId ?? currentSession?.id ?? recent.filter(event => event.collectionId === workspace.learningFocus?.collectionId).at(-1)?.sessionId;
+  if (!requestedSessionId) return null;
+  const sessionEvents = recent.filter(event => event.sessionId === requestedSessionId);
+  const collectionId = currentSession?.id === requestedSessionId ? currentSession.collectionId : sessionEvents.at(-1)?.collectionId;
+  if (collectionId === undefined) return null;
+  const collection = collectionId === null ? null : learningCollections(workspace).find(item => item.id === collectionId);
+  if (collectionId !== null && !collection) return null;
+  const contents = collection ? collectionItems(workspace, collection) : { cards: workspace.cards, questions: workspace.quizQuestions };
+  const cards = new Map(contents.cards.map(card => [card.id, card]));
+  const notes = new Set(workspace.notes.map(note => note.id));
+  const seen = new Set<string>();
+  const valid = sessionEvents.filter(event => {
+    const key = JSON.stringify([event.cardId, event.reviewedAt]);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    const card = cards.get(event.cardId);
+    return event.collectionId === collectionId && !!event.noteId && notes.has(event.noteId) &&
+      !!card && card.noteId === event.noteId && tutorCardContentFingerprint(card) === event.contentFingerprint;
+  });
+  const decision = (workspace.tutorCheckpointDecisions ?? []).filter(item => item.sessionId === requestedSessionId &&
+    Date.parse(item.decidedAt) <= now && Date.parse(item.reviewedAt) <= Date.parse(item.decidedAt))
+    .sort((a, b) => Date.parse(b.decidedAt) - Date.parse(a.decidedAt))[0];
+  // The durable marker stays meaningful if its old card is subsequently edited
+  // or the bounded event log rotates. Another offer needs five new ratings.
+  const unconsumed = valid.filter(event => !decision || Date.parse(event.reviewedAt) > Date.parse(decision.reviewedAt));
+  if (unconsumed.length < 5) return null;
+  const byNote = new Map<string, CardReviewEvent>();
+  for (const event of unconsumed) byNote.set(event.noteId!, event);
+  const eligible = contents.questions.filter(question => question.noteIds?.some(noteId => byNote.has(noteId)));
+  if (!eligible.length) return null;
+  const subjects = [...new Set(eligible.map(question => question.subject))];
+  const uncertainty = (question: typeof eligible[number]) => question.noteIds?.some(noteId => byNote.get(noteId)?.known === false) ? 0 : 1;
+  const focusSubject = workspace.learningFocus?.collectionId === collectionId ? workspace.learningFocus.subject : null;
+  const subject = focusSubject && subjects.includes(focusSubject) ? focusSubject : subjects.sort((a, b) => {
+    const uncertain = (value: string) => eligible.filter(question => question.subject === value && uncertainty(question) === 0).length;
+    return uncertain(b) - uncertain(a) || eligible.filter(question => question.subject === b).length - eligible.filter(question => question.subject === a).length || a.localeCompare(b);
+  })[0];
+  const pool = eligible.filter(question => question.subject === subject)
+    .sort((a, b) => uncertainty(a) - uncertainty(b) || a.difficulty - b.difficulty || a.id.localeCompare(b.id));
+  const history = workspace.quizRuns.filter(run => run.subject === subject && (!collection || runMatchesLearningCollection(run, collection)) &&
+    Date.parse(run.startedAt) <= now && (!run.finishedAt || Date.parse(run.finishedAt) <= now))
+    .map(run => ({ ...run, answers: run.answers.filter(answer => Date.parse(answer.answeredAt) <= now) }));
+  // Cover several reviewed concepts before repeating one. Within each concept,
+  // rotate through uncertain-note tasks first, then favor less-used questions.
+  const uncertainConcepts = new Set(pool.filter(question => uncertainty(question) === 0).map(question => question.concept));
+  const preferred = pool.filter(question => !uncertainConcepts.has(question.concept) || uncertainty(question) === 0);
+  const selected = selectCheckpointQuestions(preferred, history, subject, 3);
+  if (selected.length < 3) selected.push(...selectCheckpointQuestions(pool.filter(question => !selected.some(item => item.id === question.id)), history, subject, 3 - selected.length));
+  selected.sort((a, b) => uncertainty(a) - uncertainty(b));
+  const reviewedAt = sessionEvents.filter(event => event.collectionId === collectionId).at(-1)!.reviewedAt;
+  return {
+    sessionId: requestedSessionId, reviewedAt, reviewedCount: unconsumed.length,
+    knownCount: unconsumed.filter(event => event.known).length, concepts: [...new Set(selected.map(question => question.concept))],
+    action: { kind: "checkpoint", collectionId, subject, questionCount: selected.length,
+      questionIds: selected.map(question => question.id), cardCheckpoint: { sessionId: requestedSessionId, reviewedAt } },
+  };
+}
+
+export function recordTutorCheckpoint(workspace: Workspace, checkpoint: Pick<TutorCardCheckpoint, "sessionId" | "reviewedAt">, decision: "later" | "started", now = new Date()): Workspace {
+  const current = tutorCardCheckpoint(workspace, checkpoint.sessionId, now.getTime());
+  if (!current || current.reviewedAt !== checkpoint.reviewedAt) return workspace;
+  const updated = { sessionId: checkpoint.sessionId, reviewedAt: checkpoint.reviewedAt, decision, decidedAt: now.toISOString() };
+  return { ...workspace, tutorCheckpointDecisions: [...(workspace.tutorCheckpointDecisions ?? []).filter(item => item.sessionId !== checkpoint.sessionId), updated].slice(-300) };
 }
 
 const score = (run: QuizRun) => {

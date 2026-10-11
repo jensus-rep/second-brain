@@ -41,10 +41,14 @@ export const quizRunSchema = z.object({
   id, subject: title, mode: z.enum(["practice", "exam"]), startedAt: z.string().datetime(),
   preparationConcept: title.optional(),
   collectionId: id.optional(),
+  cardCheckpoint: z.object({ sessionId: id, reviewedAt: z.string().datetime() }).optional(),
   deadlineAt: z.string().datetime().nullable(), finishedAt: z.string().datetime().nullable(),
   questions: z.array(quizQuestionSchema).min(1).max(30),
   answers: z.array(z.object({ questionId: id, selectedOptionIds: z.array(id).min(1).max(6), answeredAt: z.string().datetime(), reflection: z.string().max(1500) })).max(30),
 }).superRefine((run, ctx) => {
+  if (run.cardCheckpoint && (run.mode !== "exam" || Date.parse(run.cardCheckpoint.reviewedAt) > Date.parse(run.startedAt))) {
+    ctx.addIssue({ code: "custom", path: ["cardCheckpoint"], message: "Ein Kartentest braucht einen Testmodus und bereits gespeicherte Bewertungen." });
+  }
   if (run.preparationConcept && (run.mode !== "practice" || run.questions.some(question => question.subject !== run.subject || question.concept !== run.preparationConcept))) {
     ctx.addIssue({ code: "custom", message: "Eine Vorbereitungseinheit muss zu ihrem Fachthema und Lernbereich gehören." });
   }
@@ -72,6 +76,19 @@ export const cardReviewDaySchema = z.object({
   reviewed: z.number().int().min(0), known: z.number().int().min(0),
 }).superRefine((day, ctx) => {
   if (day.known > day.reviewed) ctx.addIssue({ code: "custom", path: ["known"], message: "Die sicheren Selbsteinschätzungen dürfen die Wiederholungen nicht übersteigen." });
+});
+export const cardReviewEventSchema = z.object({
+  cardId: id, sessionId: id, collectionId: id.nullable(), noteId: id.nullable(),
+  known: z.boolean(), reviewedAt: z.string().datetime(),
+  contentFingerprint: z.string().regex(/^[a-f0-9]{16}$/),
+});
+export const tutorCheckpointDecisionSchema = z.object({
+  sessionId: id, reviewedAt: z.string().datetime(),
+  decision: z.enum(["later", "started"]), decidedAt: z.string().datetime(),
+}).superRefine((decision, ctx) => {
+  if (Date.parse(decision.decidedAt) < Date.parse(decision.reviewedAt)) {
+    ctx.addIssue({ code: "custom", path: ["decidedAt"], message: "Die Entscheidung muss nach der Kartenbewertung liegen." });
+  }
 });
 export const flashcardSessionSchema = z.object({
   id, collectionId: id.nullable(), mode: z.enum(["due", "all"]),
@@ -109,6 +126,8 @@ export const workspaceSchema = z.object({
   flashcardSession: flashcardSessionSchema.nullable().optional(),
   tutorPlan: tutorPlanSchema.optional(),
   cardReviewDays: z.array(cardReviewDaySchema).max(3000).optional(),
+  cardReviewEvents: z.array(cardReviewEventSchema).max(1500).optional(),
+  tutorCheckpointDecisions: z.array(tutorCheckpointDecisionSchema).max(300).optional(),
 }).superRefine((data, ctx) => {
   const issue = (message: string) => ctx.addIssue({ code: "custom", message });
   for (const list of [data.notes, data.topics, data.paths, data.cards, data.quizQuestions, data.quizRuns, data.learningReminders, data.learningCollections]) {
@@ -118,6 +137,12 @@ export const workspaceSchema = z.object({
   const reviewKeys = (data.cardReviewDays ?? []).map(day => JSON.stringify([day.date, day.collectionId]));
   if (new Set(reviewKeys).size !== reviewKeys.length) issue("Kartenwiederholungen pro Tag und Lernsammlung müssen eindeutig sein.");
   const notes = new Set(data.notes.map(n => n.id));
+  // Historical evidence may outlive its sources; the tutor checks current
+  // membership, links and wording before using it for a recommendation.
+  const eventKeys = (data.cardReviewEvents ?? []).map(event => JSON.stringify([event.sessionId, event.cardId, event.reviewedAt]));
+  if (new Set(eventKeys).size !== eventKeys.length) issue("Einzelne Kartenbewertungen müssen eindeutig sein.");
+  const decisionSessions = (data.tutorCheckpointDecisions ?? []).map(decision => decision.sessionId);
+  if (new Set(decisionSessions).size !== decisionSessions.length) issue("Pro Kartenrunde wird nur die letzte Testentscheidung gespeichert.");
   const topics = new Set(data.topics.map(t => t.id));
   const topicsById = new Map(data.topics.map(topic => [topic.id, topic]));
   for (const [index, topic] of data.topics.entries()) {
@@ -173,6 +198,8 @@ export type LearningFocus = z.infer<typeof learningFocusSchema>;
 export type FlashcardSession = z.infer<typeof flashcardSessionSchema>;
 export type TutorPlan = z.infer<typeof tutorPlanSchema>;
 export type CardReviewDay = z.infer<typeof cardReviewDaySchema>;
+export type CardReviewEvent = z.infer<typeof cardReviewEventSchema>;
+export type TutorCheckpointDecision = z.infer<typeof tutorCheckpointDecisionSchema>;
 export type Workspace = z.infer<typeof workspaceSchema>;
 export type QuizQuestion = z.infer<typeof quizQuestionSchema>;
 export type QuizRun = z.infer<typeof quizRunSchema>;

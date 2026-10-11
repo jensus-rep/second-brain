@@ -49,6 +49,7 @@ Eine private, deutschsprachige Second-Brain-Web-App. Wissen wird als Markdown mi
 | Lernkarten und Lernansicht | components/brain/flashcards.tsx |
 | Lernsammlungen, Zuordnung und Kartenprioritäten | components/brain/learning-collections.tsx, lib/brain/learning-collections.ts |
 | Tests, Fehlerjournal und Erinnerungen | components/brain/quizzes.tsx, lib/brain/quiz.ts, quiz-examples.ts |
+| Adaptive Tutorvorschläge und optionaler Azure-OpenAI-Aufruf | lib/brain/learning-tutor.ts, lib/server/tutor-runtime.ts, app/api/tutor/route.ts |
 | Bildsicherungen und Import | lib/brain/backup.ts, components/brain/transfer-dialog.tsx |
 | Design-Tokens, Layout, responsive Gestaltung | app/globals.css |
 | Bibliotheks- und Lesegestaltung | app/reading-workspace.css |
@@ -133,6 +134,31 @@ Der persönliche Lernplan speichert ein Lernziel, ein optionales Zieldatum und e
 Lernplan (`tutorPlan`) und Tageszähler der Kartenbewertungen (`cardReviewDays`, höchstens 3.000 Einträge aus Datum und Sammlung) werden im versionierten Workspace auf dem Server und in Sicherungen gespeichert. Kartenbewertung, Wiederholungstermin und Tageszähler werden atomar gespeichert. Bestehende Sicherungen bleiben ohne diese optionalen Felder gültig. Frühere Kartenwiederholungszähler enthalten keine Bewertungsdaten oder Zeitpunkte und werden deshalb nicht als vergangene Tagesaktivität ausgegeben; die Testaktivität verwendet die vorhandenen gespeicherten Antworten.
 
 `npm run test:tutor` prüft gegen einen lokalen Entwicklungsserver die Planung einschließlich Speicherfehlern, direkte Lernstarts, Wiedereinstieg, Auswertungen, Sammlungsumfang und Darstellung bei 320, 390 und 1.440 Pixeln. Vor Schreibzugriffen bestätigt es den Bestand in der über `BRAIN_TEST_SQLITE_PATH` gewählten SQLite-Datei; `BRAIN_TEST_URL` muss localhost sein. Anschließend wird der Ausgangsbestand wiederhergestellt.
+
+Nach fünf gespeicherten Kartenbewertungen kann der Tutor einen freiwilligen Kurztest mit bis zu drei vorhandenen Aufgaben anbieten. Die Aufgaben müssen ausdrücklich auf die Quellnotizen der gerade geübten Karten verweisen und zum gleichen Lernumfang gehören: der gewählten Sammlung oder dem gesamten Lernbestand. Der Test deckt möglichst mehrere wiederholte Lernbereiche ab; unsicher bewertete Inhalte und seltener verwendete Aufgaben erhalten Vorrang. Ohne passende Verknüpfungen wird kein Test erfunden. „Weiter mit Karten“ stellt das Angebot zurück und speichert die Entscheidung; ein weiteres Angebot benötigt fünf neue Bewertungen. Ein laufender Test wird zuerst fortgesetzt. Die Kartenrunde bleibt beim Wechsel erhalten. Nach dem Kurztest führt „Mit deinen Karten weiterlernen“ direkt zur nächsten gespeicherten Karte.
+
+Die optionalen Felder `cardReviewEvents` und `tutorCheckpointDecisions` speichern die dazu benötigten Bewertungen und Entscheidungen im versionierten Workspace und in Sicherungen. Der Ereignisverlauf enthält höchstens 1.500 Bewertungen; jede Bewertung hält Karten-ID, Sitzung, Sammlung, Quellnotiz, Zeitpunkt, Selbsteinschätzung und einen Fingerabdruck des Wortlauts fest. Ein Testvorschlag verwendet nur Bewertungen der letzten 24 Stunden für unveränderte Karten. Alte Sicherungen erhalten keine erfundenen Einzelbewertungen.
+
+`npm run test:tutor-adaptive` prüft den Kartentest, atomaren Teststart, Speicherfehler, genaue Fortsetzung, gespeicherte Zurückstellung, alte Sicherungen sowie aktuelle und verspätete KI-Antworten. Der Lauf verwendet dieselben localhost- und SQLite-Prüfungen wie die bestehenden Tutor-Browsertests und stellt den Ausgangsbestand wieder her.
+
+### Optional: Azure OpenAI für den Tutor
+
+Die normalen Vorschläge funktionieren ohne LLM. Azure OpenAI bleibt standardmäßig deaktiviert. Eine optionale Laufzeitkomponente kann einen nächsten Schritt aus einer kleinen, serverseitig geprüften Auswahl wählen und die Einladung formulieren. Im Überblick erhält sie Fachthema, Lernbereiche, Zähler zu beantworteten Aufgaben und höchstens drei letzte Testergebnisse des aktuellen Fokus. Jedes Ergebnis enthält ausschließlich die Anzahl richtiger und vorhandener Aufgaben sowie eine Veränderung in Prozentpunkten, wenn eine tatsächlich vergleichbare Runde vorliegt. Hinzu kommen die Anzahl aktiver Lerntage dieser Woche und die aktuelle Lernserie für den gesamten Bestand. Bei einem Kartentest bleibt die Evidenz auf die Anzahl und Selbsteinschätzung der gerade bewerteten Karten und ihre verknüpften Lernbereiche begrenzt. Beide Kontexte können die zeitlichen Planangaben enthalten: Wochenziel, Zieldatum und verbleibende Kalender- bzw. Lerntage; die Berechnung verwendet Europe/Berlin. Vollständige Notizen, Aufgaben, Antworten, persönliche Lernzieltexte, Kontodaten und interne Inhalts-IDs werden nicht übermittelt. Bezeichnungen von Lernsammlungen und Lernbereichen können dennoch persönliche Angaben enthalten; bei Aktivierung geht dieser Überblick an die konfigurierte Azure-OpenAI-Ressource.
+
+Für eine ausdrückliche Aktivierung diese App-Einstellungen der Web App setzen:
+
+| Einstellung | Wert / Zweck |
+| --- | --- |
+| `NEWHOPE_TUTOR_LLM_ENABLED` | Nur der exakte Wert `true` aktiviert externe Tutoraufrufe; weglassen oder `false` deaktiviert sie. |
+| `AZURE_OPENAI_ENDPOINT` | HTTPS-Ressourcenadresse, z. B. `https://<ressource>.openai.azure.com`. Auch Azure-Hosts unter `services.ai.azure.com` oder `cognitiveservices.azure.com` sind möglich. |
+| `AZURE_OPENAI_API_KEY` | Schlüssel der Ressource; ausschließlich als geheime Servereinstellung hinterlegen. |
+| `AZURE_OPENAI_TUTOR_DEPLOYMENT` | Name des vorhandenen Deployments: `gpt-6.1-sol`. Das Deployment muss die Responses API und strukturierte Ausgaben unterstützen. |
+
+Der Server verwendet `POST /openai/v1/responses` mit `api-key`, `store: false`, höchstens 1.024 Ausgabetokens und einem strikten JSON-Schema. Er akzeptiert ausschließlich einen vorhandenen Kandidaten und einen kurzen Text bis 420 Zeichen. Das LLM hat keine Werkzeuge, erzeugt keine neuen Testfragen und schreibt keine Daten. Die Lernstandrevision wird vor und nach dem Aufruf geprüft; ein inzwischen geänderter Stand ergibt `409`. `/api/tutor` verlangt eine Browser-Session und den gleichen Ursprung. Persönliche Zugangsschlüssel gelten dort nicht.
+
+Gleiche Anfragen eines Kontos werden zusammengefasst und bis zu zwei Minuten zwischengespeichert. Pro Konto ist höchstens ein neuer Aufruf in 30 Sekunden und sind zwölf Aufrufe pro Stunde erlaubt; pro Serverprozess laufen höchstens acht Aufrufe gleichzeitig. Der begrenzte Cache enthält höchstens 500 Konten mit jeweils acht Ergebnissen. Diese Grenzen gelten pro Prozess und beginnen bei einem Neustart neu; für mehrere App-Service-Instanzen sollte zusätzlich ein Azure-Budget bzw. eine zentrale Begrenzung verwendet werden. Fehler, Ablehnung, ungültige Ausgabe oder eine Antwortzeit über 4,5 Sekunden führen zum normalen Regelvorschlag. Das Lernen wartet im Browser nicht auf Azure OpenAI.
+
+Die Implementierung folgt der [offiziellen Azure-Dokumentation zur Responses API](https://learn.microsoft.com/en-us/rest/api/microsoft-foundry/azureopenai/responses) und den [OpenAI Docs zu strukturierten Ausgaben](https://developers.openai.com/api/docs/guides/structured-outputs?api-mode=responses). `node --experimental-strip-types --test tests/tutor-runtime.test.mjs` prüft die Anbindung ausschließlich mit simulierten Antworten, einschließlich Datenschutzumfang, Revisionen, Zeitlimit, Ablehnung, Cache und Kostenbegrenzung. Dabei erfolgen keine echten LLM-Aufrufe.
 
 ## Lernen mit Tests
 

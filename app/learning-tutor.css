@@ -128,3 +128,20 @@
 @media (max-width: 767px) { .tutor-overview-link, .tutor-overview-link button { width: 100%; } }
 @media (max-width: 767px) { .tutor-learning-curve .tutor-chart-desktop { display: none; }.tutor-learning-curve .tutor-chart-mobile { display: block; max-width: 420px; margin: 0 auto; }.tutor-chart-mobile text { font-size: 16px; }.tutor-learning-curve .tutor-chart-mobile .tutor-chart-value { font-size: 15px; } }
 @media (max-width: 480px) { .learning-tutor { gap: 16px; }.tutor-focus-title p { display: none; }.tutor-focus-header > button { display: none; }.tutor-tabs { gap: 18px; }.tutor-next-step { padding: 18px; }.learning-tutor .tutor-mobile-collection { display: inline-flex; justify-self: start; margin-top: -13px; }.tutor-focus-controls { gap: 11px; } }
+.tutor-card-prompt { display: flex; gap: 16px; align-items: flex-start; background: #f1f6fc; border: 1px solid #d4e1f1; border-radius: 18px; padding: 22px; margin: 18px 0; text-align: left; }
+.tutor-prompt-icon { flex: 0 0 42px; height: 42px; display: grid; place-items: center; background: white; border-radius: 13px; color: #476b9d; }
+.tutor-prompt-content { flex: 1; min-width: 0; }
+.tutor-card-prompt h3 { color: #263d5d; font-size: 1.05rem; line-height: 1.45; margin: 6px 0 8px; }
+.tutor-card-prompt p { color: #4a5e79; font-size: .875rem; line-height: 1.7; margin: 7px 0; overflow-wrap: anywhere; }
+.tutor-card-prompt .tutor-prompt-context, .tutor-card-prompt .tutor-prompt-hint { font-size: .8125rem; }
+.tutor-prompt-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.tutor-prompt-actions > button { min-height: 44px; height: auto; white-space: normal; }
+.tutor-runtime-label { display: flex; align-items: center; gap: 5px; font-size: .75rem; color: #647894; margin-top: 10px; }
+.study-finished .tutor-card-prompt { width: min(100%, 640px); }
+@media (max-width: 600px) {
+  .tutor-card-prompt { gap: 10px; padding: 16px; border-radius: 14px; }
+  .tutor-prompt-icon { flex-basis: 30px; height: 30px; border-radius: 9px; }
+  .tutor-prompt-icon > svg { width: 19px; }
+  .tutor-prompt-actions { flex-direction: column; }
+  .tutor-prompt-actions > button { width: 100%; }
+}
