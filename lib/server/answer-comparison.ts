@@ -95,7 +95,11 @@ async function generateComparison(config: TutorLlmConfig, input: AnswerCompariso
       return answerComparisonResultSchema.parse({ ...fallback, ...selected, source: "llm" });
     })();
     return await Promise.race([operation, deadline]);
-  } catch { return fallback; }
+  } catch (error) {
+    // Only the failure class is logged; card text and learner answers stay out of the logs.
+    console.warn("Answer comparison LLM fallback", error instanceof Error ? error.name + ": " + error.message.slice(0, 120) : "unknown");
+    return fallback;
+  }
   finally { if (timer) clearTimeout(timer); }
 }
 
@@ -142,7 +146,7 @@ export function createAnswerComparisonRuntime(dependencies: AnswerComparisonDepe
           activeCalls++;
           const currentState = state;
           const operation = generateComparison(config, input, card, fallback, dependencies.fetch ?? fetch,
-            Math.min(5_000, Math.max(1, dependencies.timeoutMs ?? 4_500))).then(value => {
+            Math.min(15_000, Math.max(1, dependencies.timeoutMs ?? 10_000))).then(value => {
             currentState.cache.set(key, { until: now() + 120_000, result: value });
             while (currentState.cache.size > 20) currentState.cache.delete(currentState.cache.keys().next().value!);
             return value;

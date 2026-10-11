@@ -24,7 +24,7 @@ export function useTutorRuntime(revision: number, context: "overview" | "cards",
     if (!active || revision < 0) return;
     const controller = new AbortController();
     let disposed = false;
-    const timeout = window.setTimeout(() => controller.abort(), 6500);
+    const timeout = window.setTimeout(() => controller.abort(), 13000);
     void fetch("/api/tutor", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: requestKey,
       signal: controller.signal, cache: "no-store",

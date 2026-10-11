@@ -173,7 +173,11 @@ async function generateSuggestion(config: TutorLlmConfig, plan: TutorPlan, fetch
       return { ...plan.fallback, source: "llm" as const, message: selected.message, action: candidate.action };
     })();
     return await Promise.race([operation, deadline]);
-  } catch { return plan.fallback; }
+  } catch (error) {
+    // Only the failure class is logged; prompts and provider text stay out of the logs.
+    console.warn("Tutor LLM fallback", error instanceof Error ? error.name + ": " + error.message.slice(0, 120) : "unknown");
+    return plan.fallback;
+  }
   finally { if (timer) clearTimeout(timer); }
 }
 
@@ -224,7 +228,8 @@ export function createTutorRuntime(dependencies: TutorRuntimeDependencies) {
           state.lastCall = time;
           activeCalls++;
           const currentState = state;
-          const operation = generateSuggestion(config, plan, dependencies.fetch ?? fetch, Math.min(5_000, Math.max(1, dependencies.timeoutMs ?? 4_500)))
+          // Measured provider latency is 3–7 s; shorter limits silently degrade to rules.
+          const operation = generateSuggestion(config, plan, dependencies.fetch ?? fetch, Math.min(15_000, Math.max(1, dependencies.timeoutMs ?? 10_000)))
             .then(response => {
               currentState.cache.set(key, { until: now() + 120_000, response });
               while (currentState.cache.size > 8) currentState.cache.delete(currentState.cache.keys().next().value!);

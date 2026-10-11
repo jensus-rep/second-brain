@@ -21,7 +21,7 @@ export function useAnswerComparison({ revision, sessionId, cardId, question, ans
     const controller = new AbortController();
     let disposed = false;
     const fallback = referenceAnswerComparison({ revision, cardId, response: ownResponse }, answer);
-    const timeout = window.setTimeout(() => controller.abort(), 12000);
+    const timeout = window.setTimeout(() => controller.abort(), 13000);
     async function compare() {
       let result = fallback;
       try {
