@@ -8,8 +8,96 @@ import {
   priorityDescriptions, priorityLabels, removeFlashcard,
 } from "../lib/brain/learning-collections.ts";
 import { curatedLearningCollections } from "../lib/brain/curated-learning-collections.ts";
+import { collectionTopicNavigation } from "../lib/brain/collection-topics.ts";
+import { applyTopicStructure, proposeTopicStructure } from "../lib/brain/curated-topic-structure.ts";
 
 const timestamp = "2026-10-10T08:00:00.000Z";
+
+test("collection navigation exposes immediate children, direct notes and collection-scoped counts", () => {
+  const topics = [
+    { id: "ai", title: "Künstliche Intelligenz", description: "", color: "green" },
+    { id: "ml", title: "Machine Learning", description: "", color: "green", parentId: "ai" },
+    ...["supervised", "unsupervised", "self-supervised", "reinforcement"].map(id => ({ id, title: id, description: "", color: "green", parentId: "ml" })),
+    { id: "other", title: "Weiteres Thema", description: "", color: "blue" },
+    { id: "regression", title: "Regression", description: "", color: "green", parentId: "supervised" },
+    { id: "classification", title: "Klassifikation", description: "", color: "green", parentId: "supervised" },
+    { id: "excluded-branch", title: "Außerhalb der Auswahl", description: "", color: "green", parentId: "ml" },
+  ];
+  const notes = [note("intro", "ai"), note("ml-intro", "ml"), ...topics.slice(2, 6).map(topic => note(topic.id + "-note", topic.id)), note("excluded", "supervised"), note("outside", "other"), note("excluded-detail", "excluded-branch")];
+  const data = workspace({ topics, notes, cards: [], quizQuestions: [], paths: [] });
+  const selected = collection("ai-learning", { noteIds: notes.slice(0, 6).map(note => note.id), questionIds: [], cardIds: [], pathIds: [] });
+  const before = structuredClone(data);
+  const entry = collectionTopicNavigation(data, selected);
+  assert.equal(entry.current.id, "ai");
+  assert.deepEqual(entry.branches.map(branch => [branch.topic.id, branch.noteCount, branch.childCount]), [["ml", 5, 4]]);
+  assert.deepEqual(entry.directNotes.map(note => note.id), ["intro"]);
+  const ml = collectionTopicNavigation(data, selected, "ml");
+  assert.deepEqual(ml.branches.map(branch => branch.topic.id), ["supervised", "unsupervised", "self-supervised", "reinforcement"]);
+  assert.deepEqual(ml.path.map(topic => topic.id), ["ai", "ml"]);
+  assert.deepEqual(ml.directNotes.map(note => note.id), ["ml-intro"]);
+  assert.equal(collectionTopicNavigation(data, selected, "supervised").scopedNotes.length, 1);
+  assert.deepEqual(collectionTopicNavigation(data, selected, "supervised").branches.map(branch => [branch.topic.id, branch.noteCount]), [["regression", 0], ["classification", 0]]);
+  assert.equal(collectionTopicNavigation(data, selected, "regression").current.id, "regression");
+  assert.equal(collectionTopicNavigation(data, selected, "regression").scopedNotes.length, 0);
+  assert.equal(entry.topics.some(topic => topic.id === "excluded-branch"), false);
+  assert.equal(collectionTopicNavigation(data, selected, "outside").current.id, "ai");
+  assert.deepEqual(data, before);
+});
+
+test("multiple collection roots and unassigned notes remain reachable", () => {
+  const data = workspace({ notes: [note(), note("second", "fixture-topic-2"), note("unassigned", null)] });
+  const selected = collection("multi", { noteIds: data.notes.map(note => note.id) });
+  const entry = collectionTopicNavigation(data, selected);
+  assert.equal(entry.current, undefined);
+  assert.equal(entry.branches.length, 2);
+  assert.deepEqual(entry.directNotes.map(note => note.id), ["unassigned"]);
+  assert.deepEqual(collectionTopicNavigation(data, selected, "::unassigned").scopedNotes.map(note => note.id), ["unassigned"]);
+});
+
+test("topic fallback collections combine a subject's descendants under its existing root", () => {
+  withProposals([], {}, () => {
+    const topics = [{ id: "root", title: "Fachthema", description: "", color: "blue" }, { id: "child", title: "Unterthema", description: "", color: "blue", parentId: "root" }];
+    const data = workspace({ topics, notes: [note("one", "root"), note("two", "child")], cards: [], quizQuestions: [], paths: [] });
+    const values = learningCollections(data);
+    assert.equal(values.length, 1);
+    assert.equal(values[0].title, "Fachthema");
+    assert.deepEqual(values[0].noteIds, ["one", "two"]);
+    const partial = { ...data, learningCollections: [collection("partial", { title: "Fachthema", noteIds: ["one"], cardIds: [], questionIds: [], pathIds: [] })] };
+    const complete = learningCollections(partial).find(item => item.id !== "partial");
+    assert.equal(complete.title, "Fachthema – gesamter Themenbestand");
+    assert.deepEqual(complete.noteIds, ["one", "two"]);
+  });
+});
+
+test("curated structure orders PM approaches and ML paradigms while preserving all IDs and progress", () => {
+  const ids = ["agpm1-topic", "pm-klassisch", "agile-umsetzung", "pm-hybrid", "pm-agil-frameworks", "pm-scrum", "ki", "ki-machine-learning", "ki-ml-supervised", "ki-ml-unsupervised", "ki-ml-self-supervised", "ki-ml-reinforcement"];
+  const data = workspace({ topics: ids.map(id => ({ id, title: id, description: "", color: "blue" })), notes: [note("agpm1-note-projektauftrag", "agpm1-topic"), note("agpm1-note-risiko", "pm-klassisch")], cards: [], quizQuestions: [], paths: [], completedStepIds: [] });
+  const before = structuredClone(data);
+  const proposal = proposeTopicStructure(data);
+  assert.ok(proposal);
+  assert.deepEqual(data, before, "Preview never mutates the workspace");
+  const result = applyTopicStructure(data);
+  assert.deepEqual(result.topics.filter(topic => topic.parentId === "agpm1-topic").map(topic => topic.id), ["pm-grundlagen", "agile-umsetzung", "pm-klassisch", "pm-hybrid"]);
+  assert.equal(result.topics.find(topic => topic.id === "pm-scrum").parentId, "pm-agil-frameworks");
+  assert.equal(result.topics.find(topic => topic.id === "ki-machine-learning").parentId, "ki");
+  assert.equal(result.topics.filter(topic => topic.parentId === "ki-machine-learning").length, 4);
+  assert.ok(result.notes.every(note => note.topicId === "pm-grundlagen"));
+  assert.deepEqual(result.notes.map(note => note.id), data.notes.map(note => note.id));
+  for (const key of ["cards", "quizQuestions", "paths", "completedStepIds", "learningCollections"]) assert.deepEqual(result[key], data[key]);
+  assert.equal(proposeTopicStructure(result), null, "Applying is idempotent");
+  const manual = { ...result, notes: result.notes.map(note => ({ ...note, topicId: "agpm1-topic" })) };
+  assert.equal(proposeTopicStructure(manual), null, "Later manual note assignments are respected");
+});
+
+test("curated structure respects explicit parents, incomplete imports and cycles", () => {
+  const topic = (id, parentId) => ({ id, title: id, description: "", color: "blue", ...(parentId !== undefined ? { parentId } : {}) });
+  const data = workspace({ topics: [topic("ki"), topic("ki-machine-learning", null), topic("ki-ml-supervised", "ki")], notes: [], cards: [], quizQuestions: [], paths: [] });
+  assert.equal(proposeTopicStructure(data), null);
+  assert.equal(proposeTopicStructure({ ...data, topics: [topic("ki-machine-learning")] }), null);
+  assert.equal(proposeTopicStructure({ ...data, topics: [topic("ki", "ki-machine-learning"), topic("ki-machine-learning")] }), null);
+  const unrelated = workspace();
+  assert.equal(applyTopicStructure(unrelated), unrelated);
+});
 const note = (id = "fixture-note-1", topicId = "fixture-topic-1", overrides = {}) => ({
   id, topicId, title: "Anforderungen und Nachweise", summary: "Ergebnisse überprüfbar machen.", content: "Vereinbarte Kriterien schaffen Orientierung.",
   tags: [], relatedIds: [], favorite: false, archived: false, createdAt: timestamp, updatedAt: timestamp, ...overrides,

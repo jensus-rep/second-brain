@@ -46,7 +46,7 @@ const calendarDate = (day: number) => new Date(day * dayMilliseconds).toISOStrin
 
 // Call inside the same workspace update that schedules the reviewed card. The
 // bucket records self-assessment, independently of objective quiz grading.
-export function recordCardReview(workspace: Workspace, review: { collectionId: string | null; known: boolean; cardId?: string; sessionId?: string }, now = new Date()): Workspace {
+export function recordCardReview(workspace: Workspace, review: { collectionId: string | null; known: boolean; cardId?: string; sessionId?: string; response?: string }, now = new Date()): Workspace {
   const date = tutorDate(now);
   const existing = workspace.cardReviewDays ?? [];
   const index = existing.findIndex(day => day.date === date && day.collectionId === review.collectionId);
@@ -62,6 +62,7 @@ export function recordCardReview(workspace: Workspace, review: { collectionId: s
   const event: CardReviewEvent = {
     cardId: card.id, sessionId: review.sessionId, collectionId: review.collectionId,
     noteId: card.noteId, known: review.known, reviewedAt: now.toISOString(), contentFingerprint: tutorCardContentFingerprint(card),
+    ...(review.response?.trim() ? { response: review.response.trim().slice(0, 1500) } : {}),
   };
   const events = workspace.cardReviewEvents ?? [];
   const duplicate = events.some(item => item.sessionId === event.sessionId && item.cardId === event.cardId && item.reviewedAt === event.reviewedAt);

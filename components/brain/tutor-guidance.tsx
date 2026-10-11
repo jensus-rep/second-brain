@@ -77,7 +77,7 @@ export function TutorCardPrompt({ workspace, revision, save, saving, sessionId, 
     <div className="tutor-prompt-content"><span className="eyebrow">EIN KURZER IMPULS</span><h3>Kurz prüfen, was hängen geblieben ist?</h3>
       <p>{runtimeMessage ?? `Du hast ${checkpoint.reviewedCount} Karten bewertet. ${count === 1 ? "Eine passende Frage prüft" : `${count} passende Fragen prüfen`}, was du von den gerade wiederholten Inhalten abrufen kannst.`}</p>
       <p className="tutor-prompt-context">{checkpoint.concepts.join(" · ")} · {count === 1 ? "etwa 1 Minute" : "etwa 2–3 Minuten"}</p>
-      <p className="tutor-prompt-hint">Deine Kartenposition bleibt gespeichert. Danach kannst du direkt weiterlernen.</p>
+      <p className="tutor-prompt-hint">{workspace.flashcardSession?.id === checkpoint.sessionId ? "Deine Kartenposition bleibt gespeichert. Danach kannst du direkt weiterlernen." : "Deine Kartenrunde ist abgeschlossen. Nach dem Test kannst du im Tutor weiterlernen."}</p>
       <div className="tutor-prompt-actions"><Button disabled={saving || pending} onClick={() => onAction(checkpoint.action)}>{count} {count === 1 ? "Frage" : "Fragen"} einschieben<ArrowRight size={16} /></Button><Button variant="ghost" disabled={saving || pending} onClick={() => void later()}>Weiter mit Karten</Button></div>
       {runtimeMessage && <span className="tutor-runtime-label"><Sparkles size={12} aria-hidden="true" />KI-Lernimpuls</span>}
       {error && <p role="alert" className="tutor-form-status is-error">{error}</p>}

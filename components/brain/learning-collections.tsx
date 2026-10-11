@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, BookOpen, ClipboardCheck, FolderOpen, Layers3, Pencil, Play, Plus, Save } from "lucide-react";
+import { ArrowLeft, ArrowRight, ClipboardCheck, FolderOpen, Layers3, Pencil, Play, Plus, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -12,6 +12,8 @@ import { collectionItems, flashcardPriority, learningCollections, priorityDescri
 import { flattenTopics, getTopicDescendantIds, getTopicPathLabel } from "@/lib/brain/topics";
 import { withLearningNotes } from "@/lib/brain/quiz-content";
 import type { SaveWorkspace } from "@/lib/brain/use-brain";
+import { CollectionTopicBrowser } from "./collection-topic-browser";
+import { TopicStructureSetup } from "./topic-structure-setup";
 
 type Props = {
   workspace: Workspace;
@@ -95,10 +97,6 @@ export function LearningCollectionsOverview({ workspace, save, saving, collectio
   const displayedEntries = compact ? entries.slice(0, 4) : entries;
   const selected = collections.find(collection => collection.id === collectionId);
   const items = entries.find(entry => entry.collection.id === collectionId)?.contents ?? null;
-  const noteTopicIds = new Set(items?.notes.flatMap(note => note.topicId ? [note.topicId] : []) ?? []);
-  const topicOptions = flattenTopics(workspace.topics).filter(({ topic }) => [...getTopicDescendantIds(workspace.topics, topic.id)].some(id => noteTopicIds.has(id)));
-  const activeTopicFilter = items && (topicOptions.some(({ topic }) => topic.id === topicFilter) || topicFilter === "::unassigned" && items.notes.some(note => !note.topicId)) ? topicFilter : "";
-  const selectedTopicIds = activeTopicFilter && activeTopicFilter !== "::unassigned" ? getTopicDescendantIds(workspace.topics, activeTopicFilter) : null;
   const coveredNotes = new Set(entries.flatMap(entry => entry.contents.notes.map(note => note.id)));
   const coveredCards = new Set(entries.flatMap(entry => entry.contents.cards.map(card => card.id)));
   const remainingNotes = workspace.notes.filter(note => !note.archived && !coveredNotes.has(note.id)).length;
@@ -116,6 +114,7 @@ export function LearningCollectionsOverview({ workspace, save, saving, collectio
   const choose = (id: string) => { setTopicFilter(""); onCollectionChange(id); if (compact) onOpenCollection?.(id); };
   const newCollection = () => setEditing({ id: crypto.randomUUID(), title: "", description: "", noteIds: [], questionIds: [], cardIds: [], pathIds: [] });
   return <section className="learning-collections" aria-label="Lernsammlungen">
+    {!compact && <TopicStructureSetup workspace={workspace} save={save} saving={saving} />}
     {(compact || !selected) && <><div className="section-heading"><div><h2 ref={overviewHeading} tabIndex={-1}>Deine Lernsammlungen</h2><p>Bündle Wissen und Übungen aus mehreren Themen für ein gemeinsames Lernziel.</p></div><Button variant="outline" size="sm" disabled={saving || workspace.learningCollections.length >= 100} onClick={newCollection}><Plus size={15} />Neue Lernsammlung</Button></div>
     <div className="collection-cards">{displayedEntries.map(({ collection, contents }) => {
       return <button type="button" className={`collection-card${selected?.id === collection.id ? " is-selected" : ""}`} key={collection.id} onClick={() => choose(collection.id)} aria-pressed={selected?.id === collection.id}>
@@ -137,9 +136,7 @@ export function LearningCollectionsOverview({ workspace, save, saving, collectio
         {!workspace.learningCollections.some(collection => collection.id === selected.id) && <Button variant="ghost" disabled={saving || workspace.learningCollections.length >= 100} onClick={() => void save(current => ({ ...current, learningCollections: [...current.learningCollections.filter(collection => collection.id !== selected.id), selected] }), "Lernsammlung gespeichert")}><Save size={15} />Sammlung speichern</Button>}
       </div>
       <dl className="collection-inventory">{[["Notizen", items.notes.length], ["Lernkarten", items.cards.length], ["Testaufgaben", items.questions.length], ["Lernpfade", items.paths.length]].map(([label, count]) => <div key={label}><dt>{label}</dt><dd>{count}</dd></div>)}</dl>
-      <div className="collection-content-heading"><h3><BookOpen size={16} />Wissen in dieser Sammlung</h3><label className="field"><span>Fachthema mit Unterthemen</span><select aria-label="Inhalte der Lernsammlung nach Thema" value={activeTopicFilter} onChange={event => setTopicFilter(event.target.value)}><option value="">Alle {topicOptions.length} Fachthemen</option>{topicOptions.map(({ topic, depth }) => <option key={topic.id} value={topic.id}>{`${"— ".repeat(depth)}${topic.title}`}</option>)}{items.notes.some(note => !note.topicId) && <option value="::unassigned">Ohne Thema</option>}</select></label></div>
-      <div className="collection-note-list">{items.notes.filter(note => !activeTopicFilter || (activeTopicFilter === "::unassigned" ? !note.topicId : !!note.topicId && selectedTopicIds?.has(note.topicId))).map(note => <article key={note.id}><button type="button" onClick={() => onOpenNote(note.id)}><strong>{note.title}</strong><span>{note.topicId ? getTopicPathLabel(workspace.topics, note.topicId) : "Ohne Thema"}{note.archived ? " · Archiviert" : ""}</span></button><p>{items.cards.filter(card => card.noteId === note.id).length} Lernkarten · {items.questions.filter(question => withLearningNotes(question).noteIds?.includes(note.id)).length} verknüpfte Testaufgaben</p></article>)}</div>
-      {!items.notes.length && <p className="collection-empty">Diese Sammlung enthält noch keine Wissensnotizen. Über „Sammlung bearbeiten“ kannst du passende Grundlagen ergänzen.</p>}
+      <CollectionTopicBrowser key={selected.id} workspace={workspace} collection={selected} topicId={topicFilter} onTopicChange={setTopicFilter} onOpenNote={onOpenNote} />
       {!!items.paths.length && <div className="collection-paths"><h3>Passende Lernpfade</h3>{items.paths.map(path => <Button key={path.id} variant="outline" size="sm" onClick={() => onOpenPath(path.id)}>{path.title}</Button>)}</div>}
       <div className="collection-priorities"><h4>Drei Stufen für deine Lernkarten</h4><div>{([1, 2, 3] as const).map(priority => <article key={priority}><span>STUFE {priority}</span><h5>{priorityLabels[priority]} <strong>{items.cards.filter(card => flashcardPriority(card) === priority).length}</strong></h5><p>{priorityDescriptions[priority]}</p></article>)}</div><p className="small-note">{items.cards.filter(card => flashcardPriority(card) === null).length} Karten sind noch nicht eingestuft.{suggestions.length > 0 && ` Für ${suggestions.length} Karten ist eine fachlich vorbereitete Einstufung vorgeschlagen. Du kannst sie beim Bearbeiten ändern.`}</p>{suggestions.length > 0 && <Button size="sm" variant="outline" disabled={saving} onClick={() => void save(current => {
         const ids = new Set(collectionItems(current, selected).cards.map(card => card.id));

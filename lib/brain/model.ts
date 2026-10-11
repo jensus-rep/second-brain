@@ -3,6 +3,10 @@ import { getTopicAncestors } from "./topics.ts";
 
 const id = z.string().min(1).max(100).regex(/^[a-zA-Z0-9_-]+$/);
 const title = z.string().trim().min(1, "Bitte einen Titel eingeben.").max(160);
+const calendarDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => {
+  const timestamp = Date.parse(value + "T00:00:00.000Z");
+  return value.slice(0, 4) !== "0000" && Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) === value;
+}, "Bitte ein gültiges Kalenderdatum angeben.");
 export const topicSchema = z.object({ id, title, description: z.string().max(600), color: z.enum(["blue", "purple", "orange", "green"]), parentId: id.nullable().optional() });
 export const noteSchema = z.object({
   id, title, summary: z.string().max(600), content: z.string().max(80000),
@@ -42,12 +46,20 @@ export const quizRunSchema = z.object({
   preparationConcept: title.optional(),
   collectionId: id.optional(),
   cardCheckpoint: z.object({ sessionId: id, reviewedAt: z.string().datetime() }).optional(),
+  tutorWeekStartedOn: calendarDate.optional(),
+  tutorWeekCheckpoint: z.object({ startedOn: calendarDate, stage: z.enum(["baseline", "midpoint", "final"]) }).optional(),
   deadlineAt: z.string().datetime().nullable(), finishedAt: z.string().datetime().nullable(),
   questions: z.array(quizQuestionSchema).min(1).max(30),
   answers: z.array(z.object({ questionId: id, selectedOptionIds: z.array(id).min(1).max(6), answeredAt: z.string().datetime(), reflection: z.string().max(1500) })).max(30),
 }).superRefine((run, ctx) => {
   if (run.cardCheckpoint && (run.mode !== "exam" || Date.parse(run.cardCheckpoint.reviewedAt) > Date.parse(run.startedAt))) {
     ctx.addIssue({ code: "custom", path: ["cardCheckpoint"], message: "Ein Kartentest braucht einen Testmodus und bereits gespeicherte Bewertungen." });
+  }
+  if (run.tutorWeekCheckpoint && (run.mode !== "exam" || run.cardCheckpoint || run.questions.length > 6 || run.questions.some(question => question.subject !== run.subject))) {
+    ctx.addIssue({ code: "custom", message: "Ein Wochentest braucht einen eigenen Testmodus." });
+  }
+  if (run.tutorWeekStartedOn && (run.mode !== "practice" || !run.preparationConcept || run.tutorWeekCheckpoint)) {
+    ctx.addIssue({ code: "custom", message: "Eine Wocheneinheit braucht einen passenden Lernbereich." });
   }
   if (run.preparationConcept && (run.mode !== "practice" || run.questions.some(question => question.subject !== run.subject || question.concept !== run.preparationConcept))) {
     ctx.addIssue({ code: "custom", message: "Eine Vorbereitungseinheit muss zu ihrem Fachthema und Lernbereich gehören." });
@@ -63,13 +75,17 @@ export const learningReminderSchema = z.object({ id, subject: title, dueAt: z.st
 export const learningFocusSchema = z.object({
   collectionId: id.nullable(), subject: title.nullable(), updatedAt: z.string().datetime(),
 });
-const calendarDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => {
-  const timestamp = Date.parse(value + "T00:00:00.000Z");
-  return value.slice(0, 4) !== "0000" && Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) === value;
-}, "Bitte ein gültiges Kalenderdatum angeben.");
 export const tutorPlanSchema = z.object({
   goal: z.string().trim().max(300), targetDate: calendarDate.nullable(),
   weeklyDays: z.number().int().min(1).max(7), updatedAt: z.string().datetime(),
+});
+export const tutorWeekSchema = z.object({
+  startedOn: calendarDate, collectionId: id.nullable(), subject: title,
+  checkpointQuestionIds: z.array(id).min(1).max(6),
+}).superRefine((week, ctx) => {
+  if (new Set(week.checkpointQuestionIds).size !== week.checkpointQuestionIds.length) {
+    ctx.addIssue({ code: "custom", message: "Die Aufgaben des Wochentests müssen eindeutig sein." });
+  }
 });
 export const cardReviewDaySchema = z.object({
   date: calendarDate, collectionId: id.nullable(),
@@ -81,6 +97,7 @@ export const cardReviewEventSchema = z.object({
   cardId: id, sessionId: id, collectionId: id.nullable(), noteId: id.nullable(),
   known: z.boolean(), reviewedAt: z.string().datetime(),
   contentFingerprint: z.string().regex(/^[a-f0-9]{16}$/),
+  response: z.string().max(1500).optional(),
 });
 export const tutorCheckpointDecisionSchema = z.object({
   sessionId: id, reviewedAt: z.string().datetime(),
@@ -125,6 +142,7 @@ export const workspaceSchema = z.object({
   learningFocus: learningFocusSchema.nullable().optional(),
   flashcardSession: flashcardSessionSchema.nullable().optional(),
   tutorPlan: tutorPlanSchema.optional(),
+  tutorWeek: tutorWeekSchema.optional(),
   cardReviewDays: z.array(cardReviewDaySchema).max(3000).optional(),
   cardReviewEvents: z.array(cardReviewEventSchema).max(1500).optional(),
   tutorCheckpointDecisions: z.array(tutorCheckpointDecisionSchema).max(300).optional(),
@@ -197,6 +215,7 @@ export type LearningCollection = z.infer<typeof learningCollectionSchema>;
 export type LearningFocus = z.infer<typeof learningFocusSchema>;
 export type FlashcardSession = z.infer<typeof flashcardSessionSchema>;
 export type TutorPlan = z.infer<typeof tutorPlanSchema>;
+export type TutorWeek = z.infer<typeof tutorWeekSchema>;
 export type CardReviewDay = z.infer<typeof cardReviewDaySchema>;
 export type CardReviewEvent = z.infer<typeof cardReviewEventSchema>;
 export type TutorCheckpointDecision = z.infer<typeof tutorCheckpointDecisionSchema>;

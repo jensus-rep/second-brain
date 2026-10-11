@@ -22,7 +22,7 @@ import { QuizPreparation } from "./quiz-preparation";
 import { QuizLearningMaterial } from "./quiz-learning-material";
 
 type Props = { workspace: Workspace; save: SaveWorkspace; saving: boolean; onOpenNote?: (id: string) => void; onLearningAction?: (action: LearningAction) => void };
-export type QuizLaunchRequest = { id: string; subject: string; concept?: string; mode: "preparation" | "checkpoint" | "practice"; collectionId?: string; questionCount?: number; questionIds?: string[]; cardCheckpoint?: QuizRun["cardCheckpoint"] };
+export type QuizLaunchRequest = { id: string; subject: string; concept?: string; mode: "preparation" | "checkpoint" | "practice"; collectionId?: string; questionCount?: number; questionIds?: string[]; cardCheckpoint?: QuizRun["cardCheckpoint"]; tutorWeekCheckpoint?: QuizRun["tutorWeekCheckpoint"]; tutorWeekStartedOn?: string };
 
 function withQuizFocus(workspace: Workspace, run: QuizRun, updatedAt = new Date().toISOString(), collectionId?: string): Workspace {
   const collection = collectionId ? learningCollections(workspace).find(item => item.id === collectionId && runMatchesLearningCollection(run, item)) : undefined;
@@ -319,6 +319,16 @@ export function Quizzes({ workspace, save, saving, onStudyChange, onOpenNote, co
       if (current.quizRuns.some(item => !item.finishedAt)) throw new Error("Bitte die laufende Testrunde zuerst beenden.");
       if (current.quizRuns.length >= 200) throw new Error("Die Grenze von 200 gespeicherten Runden ist erreicht.");
       let updated = current;
+      if (run.tutorWeekStartedOn && (current.tutorWeek?.startedOn !== run.tutorWeekStartedOn || current.tutorWeek.subject !== run.subject || current.tutorWeek.collectionId !== (run.collectionId ?? null))) throw new Error("Die Lernwoche wurde inzwischen geändert. Öffne den aktuellen Tutor.");
+      if (run.tutorWeekCheckpoint) {
+        const week = current.tutorWeek;
+        if (!week || week.startedOn !== run.tutorWeekCheckpoint.startedOn || week.subject !== run.subject || week.collectionId !== (run.collectionId ?? null)) throw new Error("Die Lernwoche wurde inzwischen geändert. Öffne den aktuellen Tutor.");
+        if (run.tutorWeekCheckpoint.stage !== "midpoint" && JSON.stringify(week.checkpointQuestionIds) !== JSON.stringify(run.questions.map(question => question.id))) throw new Error("Die Aufgaben für den Wochentest wurden inzwischen geändert.");
+        const collection = week.collectionId ? learningCollections(current).find(item => item.id === week.collectionId) : null;
+        if (week.collectionId && !collection) throw new Error("Die Lernsammlung ist nicht mehr verfügbar.");
+        const bank = collection ? collectionItems(current, collection).questions : current.quizQuestions;
+        if (run.questions.some(question => !bank.some(item => item.subject === run.subject && JSON.stringify(withLearningNotes(item)) === JSON.stringify(question)))) throw new Error("Die Testaufgaben haben sich geändert. Starte den Test im Tutor erneut.");
+      }
       if (run.cardCheckpoint) {
         const fresh = tutorCardCheckpoint(current, run.cardCheckpoint.sessionId);
         if (!fresh || fresh.reviewedAt !== run.cardCheckpoint.reviewedAt || fresh.action.subject !== run.subject || fresh.action.collectionId !== (run.collectionId ?? null) || JSON.stringify(fresh.action.questionIds) !== JSON.stringify(run.questions.map(question => question.id))) {
@@ -345,7 +355,7 @@ export function Quizzes({ workspace, save, saving, onStudyChange, onOpenNote, co
       if (requestedCollectionId && !requestedCollection) throw new Error("Die gewählte Lernsammlung ist nicht mehr verfügbar. Wähle im Lernüberblick eine andere Sammlung.");
       const questionsInScope = requestedCollection ? collectionItems(workspace, requestedCollection).questions : workspace.quizQuestions;
       const requestedIds = request.questionIds;
-      if (requestedIds && (!request.cardCheckpoint || requestedIds.length > 3 || new Set(requestedIds).size !== requestedIds.length || requestedIds.some(id => !questionsInScope.some(question => question.id === id && question.subject === request.subject)))) throw new Error("Die Aufgaben für diesen Lernimpuls sind nicht mehr verfügbar.");
+      if (requestedIds && (!(request.cardCheckpoint || request.tutorWeekCheckpoint) || request.mode !== "checkpoint" || !requestedIds.length || requestedIds.length > (request.cardCheckpoint ? 3 : 6) || new Set(requestedIds).size !== requestedIds.length || requestedIds.some(id => !questionsInScope.some(question => question.id === id && question.subject === request.subject)))) throw new Error("Die Aufgaben für diesen Lernimpuls sind nicht mehr verfügbar.");
       const questions = request.mode === "preparation"
         ? request.concept ? selectPreparationQuestions(questionsInScope, runsForCollection(workspace, requestedCollection?.id), request.subject, request.concept) : []
         : request.mode === "checkpoint"
@@ -357,6 +367,8 @@ export function Quizzes({ workspace, save, saving, onStudyChange, onOpenNote, co
         ...(request.mode === "preparation" ? { preparationConcept: request.concept } : {}),
         ...(requestedCollection ? { collectionId: requestedCollection.id } : {}),
         ...(request.cardCheckpoint ? { cardCheckpoint: request.cardCheckpoint } : {}),
+        ...(request.tutorWeekStartedOn ? { tutorWeekStartedOn: request.tutorWeekStartedOn } : {}),
+        ...(request.tutorWeekCheckpoint ? { tutorWeekCheckpoint: request.tutorWeekCheckpoint } : {}),
         startedAt: new Date().toISOString(), deadlineAt: null, finishedAt: null, questions, answers: [],
       };
       if (await persistRun(run, request.mode === "checkpoint" ? "Abschlusstest gestartet" : "Lerneinheit gestartet")) {

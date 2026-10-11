@@ -76,7 +76,9 @@ export function compactQuizRuns(workspace: Workspace, previous?: Workspace, keep
       }
       if (older.has(run)) {
         if (!archived(q)) q = { ...q, options: q.options.map(o => ({ ...o, feedback: "" })), explanation: ARCHIVED_EXPLANATION, source: "" };
-        if (!wordingArchived(q) && sameWording(q, bank.get(q.id))) q = { ...q, prompt: ARCHIVED_TEXT, options: q.options.map(o => ({ ...o, text: ARCHIVED_TEXT })) };
+        // A learning week needs the original tasks for coverage and its final
+        // comparison even after the usual five full rounds have rotated out.
+        if (!run.tutorWeekCheckpoint && !run.tutorWeekStartedOn && !wordingArchived(q) && sameWording(q, bank.get(q.id))) q = { ...q, prompt: ARCHIVED_TEXT, options: q.options.map(o => ({ ...o, text: ARCHIVED_TEXT })) };
       }
       if (q !== original) runChanged = true;
       return q;

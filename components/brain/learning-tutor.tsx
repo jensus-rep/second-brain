@@ -14,6 +14,8 @@ import { recommendLearning, type LearningAction } from "@/lib/brain/learning-res
 import { tutorDate, tutorInsights, type TutorQuizResult } from "@/lib/brain/learning-tutor";
 import { ARCHIVED_TEXT } from "@/lib/brain/quiz";
 import { TutorCardPrompt, sameTutorAction, useTutorRuntime } from "./tutor-guidance";
+import { TutorWeek } from "./tutor-week";
+import { tutorWeekInsights } from "@/lib/brain/tutor-week";
 
 type Props = {
   workspace: Workspace;
@@ -151,6 +153,7 @@ function TutorPlanForm({ plan, save, saving }: { plan: TutorPlan | null | undefi
 export function LearningTutor({ workspace, revision = -1, save, saving, now, onAction, onOpenNote, onOpenCollection, onOpenCollections, onViewResult }: Props) {
   const recommendation = recommendLearning(workspace, now);
   const insights = tutorInsights(workspace, recommendation, now);
+  const hasWeek = !!tutorWeekInsights(workspace, recommendation, now);
   const { primaryAction: defaultPrimaryAction, cards, areas, weaknesses } = recommendation;
   const collections = learningCollections(workspace);
   const selectedCollection = collections.find(collection => collection.id === recommendation.collectionId);
@@ -205,10 +208,11 @@ export function LearningTutor({ workspace, revision = -1, save, saving, now, onA
     <Tabs value={activeTab} onValueChange={setActiveTab} className="tutor-tabs">
       <TabsList aria-label="Tutor-Bereiche"><TabsTrigger value="today">Heute</TabsTrigger><TabsTrigger value="preparation">Vorbereitung</TabsTrigger><TabsTrigger value="results">Auswertung</TabsTrigger></TabsList>
       <TabsContent value="today" forceMount hidden={activeTab !== "today"} className="tutor-tab-content">
-        <div className="tutor-next-step"><div><span className="eyebrow">{resumable ? "HIER GEHT ES WEITER" : "DEIN NÄCHSTER SCHRITT"}</span><h3>{primaryLabel}</h3><p>{actionDescription}</p>{refined && <span className="tutor-runtime-label">KI-Lernimpuls</span>}{primaryAction ? <Button className="tutor-primary-action" disabled={saving} onClick={() => onAction(primaryAction)}><Play size={17} />{primaryLabel}<ArrowRight size={16} /></Button> : onOpenCollections && <Button className="tutor-primary-action" onClick={onOpenCollections}><BookOpen size={17} />Lernsammlung anlegen<ArrowRight size={16} /></Button>}</div><div className="tutor-next-visual" aria-hidden="true"><span className="tutor-visual-orbit"><Target size={42} /></span><span>Ein Schritt nach dem anderen.</span></div></div>
+        {(!hasWeek || resumable) && <div className="tutor-next-step"><div><span className="eyebrow">{resumable ? "HIER GEHT ES WEITER" : "DEIN NÄCHSTER SCHRITT"}</span><h3>{primaryLabel}</h3><p>{actionDescription}</p>{refined && <span className="tutor-runtime-label">KI-Lernimpuls</span>}{primaryAction ? <Button className="tutor-primary-action" disabled={saving} onClick={() => onAction(primaryAction)}><Play size={17} />{primaryLabel}<ArrowRight size={16} /></Button> : onOpenCollections && <Button className="tutor-primary-action" onClick={onOpenCollections}><BookOpen size={17} />Lernsammlung anlegen<ArrowRight size={16} /></Button>}</div><div className="tutor-next-visual" aria-hidden="true"><span className="tutor-visual-orbit"><Target size={42} /></span><span>Ein Schritt nach dem anderen.</span></div></div>}
         {selectedCollection && <Button className="tutor-mobile-collection" variant="ghost" onClick={() => onOpenCollection(selectedCollection.id)}>Sammlung ansehen<ArrowRight size={15} /></Button>}
+        <TutorWeek workspace={workspace} recommendation={recommendation} save={save} saving={saving} now={now} onAction={onAction} onOpenNote={onOpenNote} onViewResult={onViewResult} />
         <TutorCardPrompt workspace={workspace} revision={revision} save={save} saving={saving} now={now} onAction={onAction} />
-        {(checkpointAction || cards.total > 0) && <div className="tutor-entry-grid" aria-label="Weitere Einstiege">
+        {!hasWeek && (checkpointAction || cards.total > 0) && <div className="tutor-entry-grid" aria-label="Weitere Einstiege">
           {checkpointAction && <article className="tutor-entry-card"><ClipboardCheck size={22} aria-hidden="true" /><div><h3>Ein kurzer Lernstandcheck</h3><p>Bis zu {Math.min(6, checkpointCount)} Aufgaben aus deinem Fachthema, mit Auswertung nach der Abgabe.</p></div><Button variant="outline" disabled={saving || resumable} onClick={() => onAction(checkpointAction)}>Kurztest starten<ArrowRight size={15} /></Button></article>}
           {cards.total > 0 && <article className="tutor-entry-card"><Layers3 size={22} aria-hidden="true" /><div><h3>Wissen wieder abrufen</h3><p>{cards.due > 0 ? `${cards.due} fällige ${cards.due === 1 ? "Karte wartet" : "Karten warten"} in deinem Lernfokus.` : "Aktuell ist keine Karte fällig. Bei Bedarf kannst du alle Karten gezielt üben."}</p></div><Button variant="outline" disabled={saving || resumable} onClick={() => onAction({ kind: "review-cards", collectionId: recommendation.collectionId, mode: cards.due ? "due" : "all" })}>{cards.due ? "Fällige Karten wiederholen" : "Alle Karten üben"}<ArrowRight size={15} /></Button></article>}
         </div>}

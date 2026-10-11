@@ -49,6 +49,37 @@
 .collection-content-heading select { min-width: 0; max-width: 100%; width: 100%; min-height: 44px; border: 1px solid #d8e2ef; border-radius: 8px; padding: 9px 11px; color: #435d83; background: #fcfdff; font-size: 13px; }
 .collection-content-heading select:focus-visible { outline: 2px solid #416ed2; outline-offset: 2px; }
 .collection-note-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; }
+.collection-topic-breadcrumb { margin: 0 0 20px; }
+.collection-topic-breadcrumb li { min-width: 0; max-width: 100%; }
+.collection-topic-breadcrumb button { min-height: 44px; text-align: left; color: #4168aa; overflow-wrap: anywhere; }
+.collection-topic-breadcrumb [aria-current="page"] { color: #3e5681; overflow-wrap: anywhere; }
+.collection-level-heading p { color: #66788f; font-size: 13px; line-height: 1.7; margin: -7px 0 14px; }
+.collection-topic-group + .collection-topic-group { margin-top: 24px; padding-top: 20px; border-top: 1px solid #e5eaf3; }
+.collection-topic-branches { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.collection-topic-branch-card { display: flex; flex-direction: column; gap: 10px; min-width: 0; text-align: left; padding: 17px; border: 1px solid #dce5f0; border-radius: 11px; background: #f9fbff; }
+.collection-topic-branch-card:hover { border-color: #799bf2; background: #f2f6ff; }
+.collection-topic-branch-card:focus-visible { outline: 2px solid #416ed2; outline-offset: 3px; }
+.collection-branch-title { display: flex; align-items: center; gap: 9px; color: #42618c; font-size: 14px; line-height: 1.6; }
+.collection-branch-title strong { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.collection-branch-title svg { flex-shrink: 0; }
+.collection-branch-description { color: #66788f; font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.collection-topic-branch-card small { margin-top: auto; color: #687b97; font-size: 12px; line-height: 1.6; }
+.collection-note-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin: 24px 0 12px; }
+.collection-note-heading h4 { margin: 0; }
+.collection-note-heading h4 span { font-weight: 400; }
+.collection-note-heading button { min-height: 44px; max-width: 100%; white-space: normal; height: auto; }
+.collection-unassigned-link { margin-top: 12px; }
+.collection-structure-hint { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 16px; margin-bottom: 20px; background: #f2f6fd; border: 1px solid #dce5f0; border-radius: 11px; color: #42618c; }
+.collection-structure-hint > svg { flex-shrink: 0; }
+.collection-structure-hint > div { flex: 1 1 230px; min-width: 0; }
+.collection-structure-hint strong { font-size: 14px; }
+.collection-structure-hint p { font-size: 12px; line-height: 1.7; color: #66788f; margin-top: 4px; }
+.collection-structure-hint button { min-height: 44px; max-width: 100%; height: auto; white-space: normal; }
+.topic-structure-dialog { width: min(760px, calc(100vw - 32px)); max-width: 760px; max-height: calc(100dvh - 32px); overflow-y: auto; }
+.topic-structure-changes { display: grid; gap: 10px; max-height: 45dvh; overflow-y: auto; min-width: 0; }
+.topic-structure-changes h3 { font-size: 14px; font-weight: 600; color: #42618c; }
+.topic-structure-changes article { display: grid; gap: 4px; padding: 12px; border: 1px solid #dce5f0; border-radius: 8px; min-width: 0; font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.topic-structure-changes span { color: #66788f; }
 .collection-note-list article { border: 1px solid #e4eaf2; padding: 16px; border-radius: 10px; min-width: 0; }
 .collection-note-list button { display: block; width: 100%; min-height: 44px; text-align: left; cursor: pointer; }
 .collection-note-list button:hover strong { color: #315eba; }
@@ -81,7 +112,7 @@
 .collection-note-group + .collection-note-group { border-top: 1px solid #e5eaf3; padding-top: 13px; }
 .collection-picker p, .collection-editor-count { color: #74839a; font-size: 12px; line-height: 1.8; margin: 10px 0; }
 @media(max-width:767px) {
-  .collection-cards, .collection-note-list { grid-template-columns: minmax(0, 1fr); }
+  .collection-cards, .collection-note-list, .collection-topic-branches { grid-template-columns: minmax(0, 1fr); }
   .collection-card, .collection-detail { padding: 18px; }
   .collection-detail-heading h2 { font-size: 23px; }
   .collection-detail-heading > div { flex-basis: 100%; }

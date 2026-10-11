@@ -166,7 +166,9 @@ try {
   const detail = page.getByRole("article", { name: `Lernsammlung ${primary.title}`, exact: true });
   await expect(detail).toBeVisible();
   for (const [name, count] of [["Notizen", 2], ["Lernkarten", 7], ["Testaufgaben", 2], ["Lernpfade", 1]]) await expect(detail.locator(".collection-inventory > div").filter({ has: page.getByText(name, { exact: true }) }).locator("dd")).toHaveText(String(count));
-  await expect(detail.getByLabel("Inhalte der Lernsammlung nach Thema").locator("option")).toHaveText(["Alle 2 Fachthemen", topics[0].title, topics[1].title]);
+  await expect(detail.getByLabel("Inhalte der Lernsammlung nach Thema").locator("option")).toHaveText(["Sammlungsübersicht", topics[0].title, topics[1].title]);
+  await expect(detail.locator(".collection-topic-branch-card")).toHaveCount(2);
+  await detail.getByRole("button", { name: "Alle 2 Einträge anzeigen", exact: true }).click();
   await expect(detail.locator(".collection-note-list article")).toHaveCount(2);
   await expect(detail.locator(".collection-priorities")).toContainText("1 Karten sind noch nicht eingestuft.");
   const baseline = (await snapshot()).workspace;
@@ -424,7 +426,7 @@ try {
   await editor.getByRole("checkbox", { name: notes[0].title, exact: true }).uncheck();
   await saveUi(() => click("Sammlung speichern", editor), workspace => workspace.learningCollections.find(item => item.id === primary.id)?.noteIds.length === 1);
   await expect(editor).toHaveCount(0);
-  await expect(detail.getByLabel("Inhalte der Lernsammlung nach Thema", { exact: true })).toHaveValue("");
+  await expect(detail.getByLabel("Inhalte der Lernsammlung nach Thema", { exact: true })).toHaveValue(topics[1].id);
   await expect(detail.locator(".collection-note-list > article")).toHaveCount(1);
   await expect(detail.locator(".collection-note-list button strong")).toHaveText(notes[1].title);
   await page.screenshot({ path: `${output}/learning-collections-creation-filter-reset.png`, fullPage: true, animations: "disabled" });

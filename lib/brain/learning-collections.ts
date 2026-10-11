@@ -1,5 +1,6 @@
 import type { Flashcard, FlashcardPriority, LearningCollection, LearningPath, Note, QuizQuestion, Topic, Workspace } from "./model.ts";
 import { curatedLearningCollections } from "./curated-learning-collections.ts";
+import { flattenTopics, getTopicDescendantIds } from "./topics.ts";
 
 export const priorityLabels: Record<FlashcardPriority, string> = {
   1: "Kernwissen", 2: "Vertiefung", 3: "Ergänzung",
@@ -104,11 +105,13 @@ export function learningCollections(workspace: Workspace): LearningCollection[] 
       noteIds: resolveIds(workspace.notes, linkedNoteIds).map(note => note.id), questionIds: questions.map(question => question.id), cardIds: [], pathIds: [],
     });
   }
-  for (const topic of workspace.topics) {
-    const notes = workspace.notes.filter(note => note.topicId === topic.id);
+  for (const { topic } of flattenTopics(workspace.topics).filter(entry => entry.depth === 0)) {
+    const scope = getTopicDescendantIds(workspace.topics, topic.id);
+    const notes = workspace.notes.filter(note => !!note.topicId && scope.has(note.topicId));
     if (!notes.some(note => !coveredNotes.has(note.id))) continue;
     const noteIds = notes.map(note => note.id);
-    add({ id: fallbackId("learning-topic", topic.id), title: topic.title, description: topic.description, noteIds, questionIds: [], cardIds: [], pathIds: [] });
+    const title = collections.some(collection => collection.title === topic.title) ? topic.title + " – gesamter Themenbestand" : topic.title;
+    add({ id: fallbackId("learning-topic", topic.id), title, description: topic.description, noteIds, questionIds: [], cardIds: [], pathIds: [] });
   }
   const remainingNotes = workspace.notes.filter(note => !coveredNotes.has(note.id)).map(note => note.id);
   const remainingQuestions = workspace.quizQuestions.filter(question => !coveredQuestions.has(question.id)).map(question => question.id);

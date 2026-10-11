@@ -100,14 +100,16 @@ export function FlashcardEditor({ card, workspace, save, saving, onClose, collec
   </>;
 }
 
-export function Flashcards({ workspace, revision = -1, save, saving, onEdit, onStudyChange, collectionId, onCollectionChange, onOpenNote, onBackToCollection, onBackToTutor, onLearningAction, startRequest, startMode = "due", resumeRequest, onResumeRequestConsumed }: {
+export function Flashcards({ workspace, revision = -1, save, saving, onEdit, onStudyChange, collectionId, onCollectionChange, onOpenNote, onBackToCollection, onBackToTutor, onLearningAction, startRequest, startMode = "due", startCardIds, resumeRequest, onResumeRequestConsumed }: {
   workspace: Workspace; save: SaveWorkspace; saving: boolean; onEdit: (card: Flashcard) => void; onStudyChange: (studying: boolean) => void;
   revision?: number; onLearningAction?: (action: LearningAction) => void;
-  collectionId?: string; onCollectionChange?: (id: string) => void; onOpenNote?: (id: string) => void; onBackToCollection?: () => void; onBackToTutor?: () => void; startRequest?: number; startMode?: "due" | "all"; resumeRequest?: number; onResumeRequestConsumed?: () => void;
+  collectionId?: string; onCollectionChange?: (id: string) => void; onOpenNote?: (id: string) => void; onBackToCollection?: () => void; onBackToTutor?: () => void; startRequest?: number; startMode?: "due" | "all"; startCardIds?: string[]; resumeRequest?: number; onResumeRequestConsumed?: () => void;
 }) {
   const [queue, setQueue] = useState<{ id: string; reviews: number; dueAt: string }[] | null>(null);
   const [index, setIndex] = useState(0);
   const [revealed, setRevealed] = useState(false);
+  const [response, setResponse] = useState("");
+  const [startError, setStartError] = useState("");
   const [pendingReview, setPendingReview] = useState(false);
   const [pendingStart, setPendingStart] = useState(false);
   const [replacement, setReplacement] = useState<{ cards: Flashcard[]; mode: "due" | "all"; collectionId: string | null; previousSession: FlashcardSession } | null>(null);
@@ -194,6 +196,7 @@ export function Flashcards({ workspace, revision = -1, save, saving, onEdit, onS
       setQueue(session.queue);
       setIndex(0);
       setRevealed(false);
+      setResponse("");
       setStudyMode(mode);
       setReplacement(null);
     }
@@ -223,6 +226,7 @@ export function Flashcards({ workspace, revision = -1, save, saving, onEdit, onS
       setQueue(stored.queue);
       setIndex(nextIndex);
       setRevealed(false);
+      setResponse("");
       setStudyMode(stored.mode);
     }
     onResumeRequestConsumed?.();
@@ -232,12 +236,24 @@ export function Flashcards({ workspace, revision = -1, save, saving, onEdit, onS
   useEffect(() => {
     if (!startRequest || consumedStartRequest.current === startRequest || saving || startingRef.current) return;
     consumedStartRequest.current = startRequest;
-    setTopicSelection({ collectionId: activeCollectionId, value: "" });
-    setPriorityFilter("all");
-    setFilter("");
-    const collectionDue = collectionCards.filter(card => Date.parse(card.dueAt) <= clock).sort((a, b) => a.dueAt.localeCompare(b.dueAt) || a.id.localeCompare(b.id));
-    void start(startMode === "all" ? collectionCards : collectionDue.length ? collectionDue : collectionCards, startMode === "all" ? "all" : collectionDue.length ? "due" : "all");
-  }, [startRequest, startMode, activeCollectionId, collectionCards, clock, start, saving]);
+    queueMicrotask(() => {
+      setTopicSelection({ collectionId: activeCollectionId, value: "" });
+      setPriorityFilter("all");
+      setFilter("");
+      setStartError("");
+      if (startCardIds) {
+        const selected = startCardIds.map(id => collectionCards.find(card => card.id === id));
+        if (!selected.length || new Set(startCardIds).size !== startCardIds.length || selected.some(card => !card) || collectionId && !selectedCollection) {
+          setStartError("Die Karten für diese Einheit sind nicht mehr vollständig verfügbar. Wähle die Einheit im Tutor erneut aus.");
+          return;
+        }
+        void start(selected as Flashcard[], "all");
+        return;
+      }
+      const collectionDue = collectionCards.filter(card => Date.parse(card.dueAt) <= clock).sort((a, b) => a.dueAt.localeCompare(b.dueAt) || a.id.localeCompare(b.id));
+      void start(startMode === "all" ? collectionCards : collectionDue.length ? collectionDue : collectionCards, startMode === "all" ? "all" : collectionDue.length ? "due" : "all");
+    });
+  }, [startRequest, startMode, startCardIds, collectionId, selectedCollection, activeCollectionId, collectionCards, clock, start, saving]);
   useEffect(() => {
     if (!resumeRequest || consumedResumeRequest.current === resumeRequest || saving || startingRef.current) return;
     consumedResumeRequest.current = resumeRequest;
@@ -274,7 +290,7 @@ export function Flashcards({ workspace, revision = -1, save, saving, onEdit, onS
       if (!sameSession(w.flashcardSession, session)) throw new Error("Die Lernrunde wurde inzwischen geändert. Bitte lade den aktuellen Lernstand neu.");
       return { ...w, flashcardSession: advanced };
     }, "");
-    if (ok) { setCurrentSession(advanced); setIndex(nextIndex); setRevealed(false); }
+    if (ok) { setCurrentSession(advanced); setIndex(nextIndex); setRevealed(false); setResponse(""); }
     setPendingReview(false);
     ratingRef.current = false;
   }
@@ -295,10 +311,10 @@ export function Flashcards({ workspace, revision = -1, save, saving, onEdit, onS
       const currentCard = sessionCards(w, session).find(c => c.id === entry.id);
       if (!currentCard || currentCard.reviews !== entry.reviews || currentCard.dueAt !== entry.dueAt) throw new Error("Diese Karte wurde inzwischen geändert. Bitte lade den aktuellen Lernstand neu.");
       const focusCollectionId = collections.some(item => item.collection.id === session.collectionId) ? session.collectionId : null;
-      const recorded = recordCardReview(w, { collectionId: session.collectionId, known, cardId: card.id, sessionId: session.id }, reviewTime);
+      const recorded = recordCardReview(w, { collectionId: session.collectionId, known, cardId: card.id, sessionId: session.id, response }, reviewTime);
       return { ...recorded, cards: recorded.cards.map(c => c.id === card.id ? reviewCard(c, known, reviewTime) : c), flashcardSession: advanced, learningFocus: { collectionId: focusCollectionId, subject: w.learningFocus?.collectionId === focusCollectionId ? w.learningFocus.subject : null, updatedAt } };
     }, "");
-    if (ok) setCurrentSession(advanced);
+    if (ok) { setCurrentSession(advanced); setResponse(""); }
     if (!ok) { setIndex(ratedIndex); setRevealed(true); }
     setClock(Date.now());
     setPendingReview(false);
@@ -318,12 +334,14 @@ export function Flashcards({ workspace, revision = -1, save, saving, onEdit, onS
       {tutorPrompt}
       <CardContext note={linked} topicTitle={linked?.topicId ? getTopicPathLabel(workspace.topics, linked.topicId) : "Ohne Thema"} collectionTitles={memberships.get(card.id) ?? []} priority={priorities.get(card.id) ?? null} suggested={card.priority === undefined && priorities.get(card.id) != null} onOpenNote={onOpenNote} />
       <article className={"study-card " + (revealed ? "revealed" : "")}><div className="study-label"><Layers3 size={17} />ERINNERN STATT NACHLESEN</div><div className="study-question"><Markdown content={card.question} /></div>
+        <label className="field study-recall"><span>Deine Antwort in eigenen Worten (optional)</span><Textarea aria-label="Deine Antwort in eigenen Worten" value={response} maxLength={1500} rows={3} disabled={saving || pendingReview || revealed} placeholder="Erkläre den Gedanken oder nenne ein Praxisbeispiel, bevor du die Antwort aufdeckst." onChange={event => setResponse(event.target.value)} /><small>{revealed ? "Vergleiche deine Erklärung mit der Antwort. Deine Einschätzung wird zusammen mit deinem Text gespeichert." : "Erst selbst formulieren, dann vergleichen. Der Tutor bewertet deinen Text nicht automatisch."}</small></label>
         {revealed ? <div ref={answerRef} tabIndex={-1} className="study-answer" aria-label="Antwort"><span className="eyebrow">DIE ANTWORT</span><Markdown content={card.answer} /></div> : <div className="study-pause"><span>Ein kurzer Moment zum Nachdenken.</span><div className="study-session-controls study-reveal-controls" role="group" aria-label="Aktionen für die Lernkarte"><Button ref={revealRef} className="reveal-button" onClick={() => { setRevealed(true); requestAnimationFrame(() => answerRef.current?.focus()); }}>Antwort aufdecken</Button>{mobileEnd}</div></div>}
       </article>
       {revealed && <div className="study-rating study-session-controls" role="group" aria-label="Bewertung der Lernkarte"><div className="study-controls-heading"><p>Wie gut konntest du dich erinnern?</p>{mobileEnd}</div><div className="study-rating-buttons"><Button className="rate-again" variant="outline" disabled={saving || pendingReview} onClick={() => void rate(false)}><RotateCcw size={17} /><span>Noch üben<small>in 10 Minuten</small></span></Button><Button className="rate-known" disabled={saving || pendingReview} onClick={() => void rate(true)}><Check size={17} /><span>Gewusst<small>{reviewCard(card, true).intervalDays === 1 ? "morgen" : "in " + reviewCard(card, true).intervalDays + " Tagen"}</small></span></Button></div></div>}
     </section>;
   }
   return <section className="flashcards-home">
+    {startError && <p role="alert" className="error-banner">{startError}</p>}
     {pausedSession && <section className="flashcard-paused-round" aria-label="Gespeicherte Lernrunde"><div className="flashcard-paused-icon"><Clock3 size={22} /></div><div className="flashcard-paused-copy"><span className="eyebrow">HIER GEHT ES WEITER</span><h2>{pausedTitle}</h2><p>{pausedRemaining ? `${pausedRemaining} ${pausedRemaining === 1 ? "Karte wartet" : "Karten warten"} noch auf dich. Dein Stand bleibt auch nach dem Schließen der App gespeichert.` : "Alle verbleibenden Karten wurden inzwischen wiederholt oder entfernt. Du kannst die gespeicherte Runde abschließen."}</p><span className="flashcard-paused-position">Stand: {pausedSession.index} von {pausedSession.queue.length} · Zuletzt am {reviewDate(pausedSession.updatedAt)}</span></div><div className="flashcard-paused-actions"><Button disabled={saving || pendingStart} onClick={() => void resume()}><Play size={16} />{pausedRemaining ? "Lernrunde fortsetzen" : "Gespeicherte Runde abschließen"}</Button><Button variant="outline" disabled={saving || pendingStart || !visibleCards.length} onClick={() => void start(due.length ? due : visibleCards, due.length ? "due" : "all")}><RotateCcw size={16} />Neue Runde beginnen</Button></div></section>}
     <section className="flashcard-filter-panel flashcard-start-panel" aria-label="Lernkarten auswählen">
       {selectedCollection && onBackToCollection && <Button type="button" variant="ghost" size="sm" className="flashcard-collection-back" onClick={onBackToCollection}><ArrowLeft size={16} />Zur Lernsammlung</Button>}

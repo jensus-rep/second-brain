@@ -16,9 +16,9 @@ export type LearningAction = ActionScope & (
   | { kind: "resume-quiz"; runId: string }
   | { kind: "resume-cards"; sessionId: string; remaining: number }
   | { kind: "review-concept"; subject: string; concept: string; noteIds: string[] }
-  | { kind: "review-cards"; mode: "due" | "all" }
-  | { kind: "preparation"; subject: string; concept: string }
-  | { kind: "checkpoint"; subject: string; questionCount: number; questionIds?: string[]; cardCheckpoint?: { sessionId: string; reviewedAt: string } }
+  | { kind: "review-cards"; mode: "due" | "all"; cardIds?: string[] }
+  | { kind: "preparation"; subject: string; concept: string; tutorWeekStartedOn?: string }
+  | { kind: "checkpoint"; subject: string; questionCount: number; questionIds?: string[]; cardCheckpoint?: { sessionId: string; reviewedAt: string }; tutorWeekCheckpoint?: QuizRun["tutorWeekCheckpoint"] }
   | { kind: "open-collection" }
 );
 export type LearningRecommendation = {
