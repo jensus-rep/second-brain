@@ -13,12 +13,13 @@ export type LearningResult = {
 };
 type ActionScope = { collectionId: string | null };
 export type LearningAction = ActionScope & (
+  | { kind: "tutor-session" }
   | { kind: "resume-quiz"; runId: string }
   | { kind: "resume-cards"; sessionId: string; remaining: number }
   | { kind: "review-concept"; subject: string; concept: string; noteIds: string[] }
   | { kind: "review-cards"; mode: "due" | "all"; cardIds?: string[] }
   | { kind: "preparation"; subject: string; concept: string; tutorWeekStartedOn?: string }
-  | { kind: "checkpoint"; subject: string; questionCount: number; questionIds?: string[]; cardCheckpoint?: { sessionId: string; reviewedAt: string }; tutorWeekCheckpoint?: QuizRun["tutorWeekCheckpoint"] }
+  | { kind: "checkpoint"; subject: string; questionCount: number; questionIds?: string[]; cardCheckpoint?: { sessionId: string; reviewedAt: string }; tutorWeekCheckpoint?: QuizRun["tutorWeekCheckpoint"]; tutorSessionId?: string }
   | { kind: "open-collection" }
 );
 export type LearningRecommendation = {
@@ -114,7 +115,7 @@ function currentWeaknesses(workspace: Workspace, questions: QuizQuestion[], runs
     if (!result || result.correct) continue;
     const key = conceptKey(current.subject, current.concept);
     const previous = concepts.get(key);
-    const noteIds = [...new Set([...(previous?.noteIds ?? []), ...(current.noteIds ?? [])])].filter(id => availableNotes.has(id));
+    const noteIds = [...new Set([...(previous?.noteIds ?? []), ...(withLearningNotes(current).noteIds ?? [])])].filter(id => availableNotes.has(id));
     const newer = !previous || previous.answeredAt <= result.answeredAt;
     concepts.set(key, newer
       ? { subject: current.subject, concept: current.concept, questionId: current.id, answeredAt: result.answeredAt, noteIds }
@@ -167,7 +168,7 @@ export function recommendLearningAfterRun(workspace: Workspace, run: QuizRun, co
   if (next) {
     const reason = weakness || unanswered ? "repair" : uncovered ? "coverage" : "application";
     const selected = selectAdaptivePreparationQuestions(questions, history, next.subject, next.concept);
-    const noteIds = [...new Set(selected.flatMap(question => question.noteIds ?? []))].filter(id => workspace.notes.some(note => note.id === id));
+    const noteIds = [...new Set(selected.flatMap(question => withLearningNotes(question).noteIds ?? []))].filter(id => workspace.notes.some(note => note.id === id));
     const hasApplication = selected.some(question => question.difficulty === 2);
     const hasTransfer = selected.some(question => question.difficulty === 3);
     const advancedTasks = hasApplication && hasTransfer ? "Anwendungs- und Transferaufgaben" : hasTransfer ? "Transferaufgaben" : "Anwendungsaufgaben";
@@ -269,7 +270,7 @@ export function recommendLearning(workspace: Workspace, now = Date.now()): Learn
     ...area, subject: areaSubject,
     // Explicit links stay useful across collection membership changes; inferred
     // note-title matches never create remediation recommendations.
-    noteIds: [...new Set(questions.filter(question => question.subject === areaSubject && question.concept === area.concept).flatMap(question => question.noteIds ?? []))].filter(id => workspace.notes.some(note => note.id === id)),
+    noteIds: [...new Set(questions.filter(question => question.subject === areaSubject && question.concept === area.concept).flatMap(question => withLearningNotes(question).noteIds ?? []))].filter(id => workspace.notes.some(note => note.id === id)),
   })));
   const weaknesses = currentWeaknesses(workspace, questions, runs);
   const due = cards.filter(card => Date.parse(card.dueAt) <= now).length;

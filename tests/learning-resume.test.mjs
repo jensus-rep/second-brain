@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { emptyWorkspace, workspaceSchema, flashcardSessionSchema } from "../lib/brain/model.ts";
 import { comparableLearningRuns, recommendLearning, recommendLearningAfterRun, resumableFlashcardSession, selectCheckpointQuestions } from "../lib/brain/learning-resume.ts";
+import { learningQuestionFingerprint } from "../lib/brain/quiz-content.ts";
+import { projectManagementLearning } from "../lib/brain/project-management-learning.ts";
 
 const subject = "Agiles Projektmanagement";
 const timestamp = "2026-10-10T10:00:00.000Z";
@@ -120,6 +122,34 @@ test("only unresolved latest question answers recommend remediation using explic
   assert.equal(result.primaryAction.kind, "review-concept");
   assert.equal(result.primaryAction.concept, "Entscheidungen");
   assert.deepEqual(result.primaryAction.noteIds, []);
+});
+
+test("audited legacy question links remain available in tutor areas, weaknesses and continuation", () => {
+  const q = question("legacy-audited-project-brief", "Projektstart und Stakeholder", {
+    prompt: "Welche Angaben machen einen Projektauftrag für die Beteiligten überprüfbar?",
+  });
+  const previous = projectManagementLearning.questions[q.id];
+  projectManagementLearning.questions[q.id] = { fingerprint: learningQuestionFingerprint(q), noteIds: ["n1"], visualHints: [] };
+  try {
+    const data = workspace([q]);
+    const before = structuredClone(data);
+    assert.deepEqual(recommendLearning(data, now).areas[0].noteIds, ["n1"]);
+    assert.deepEqual(data, before, "Resolving an audited link never rewrites legacy content.");
+
+    const failedRun = run("legacy-project-brief-test", [q], { answers: [answer(q, false)] });
+    const failed = { ...data, quizRuns: [failedRun] };
+    assert.deepEqual(recommendLearning(failed, now).weaknesses[0].noteIds, ["n1"]);
+    assert.deepEqual(recommendLearning(failed, now).primaryAction.noteIds, ["n1"]);
+    assert.deepEqual(recommendLearningAfterRun(failed, failedRun).noteIds, ["n1"]);
+
+    for (const revised of [{ ...q, prompt: q.prompt + " Geändert." }, { ...q, noteIds: [] }]) {
+      const revisedData = workspace([revised]);
+      assert.deepEqual(recommendLearning(revisedData, now).areas[0].noteIds, [], "Changed wording and explicit author overrides do not inherit audited links.");
+    }
+  } finally {
+    if (previous === undefined) delete projectManagementLearning.questions[q.id];
+    else projectManagementLearning.questions[q.id] = previous;
+  }
 });
 
 test("a correct answer to another task of the same concept never hides an unresolved mistake", () => {

@@ -172,6 +172,79 @@
 .tutor-prompt-actions > button { min-height: 44px; height: auto; white-space: normal; }
 .tutor-runtime-label { display: flex; align-items: center; gap: 5px; font-size: .75rem; color: #647894; margin-top: 10px; }
 .study-finished .tutor-card-prompt { width: min(100%, 640px); }
+.tutor-guided { max-width: 1060px; margin: 0 auto; }
+.tutor-guided-step { display: grid; justify-items: start; gap: 22px; padding: 28px 30px; background: #fbf8f1; border: 1px solid #e7dfd0; border-radius: 16px; min-width: 0; }
+.tutor-guided-step.is-result { background: #f3f8f4; border-color: #d9e6dc; }
+.tutor-guided-intro { min-width: 0; }
+.tutor-guided-intro .eyebrow { color: #7b6b50; }
+.tutor-guided-step.is-result .eyebrow { color: #477059; }
+.tutor-guided-intro h3 { font-size: clamp(1.25rem, 2vw, 1.65rem); color: #263650; line-height: 1.4; margin-top: 7px; }
+.tutor-guided-intro p { max-width: 760px; margin: 10px 0 0; }
+.tutor-guided-route { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; gap: 12px; list-style: none; padding: 0; margin: 0; min-width: 0; }
+.tutor-guided-route li { display: flex; gap: 10px; align-items: center; padding: 13px 12px; border: 1px solid #e3e5e8; background: #fff; border-radius: 10px; min-width: 0; }
+.tutor-guided-route li > div { display: grid; gap: 3px; min-width: 0; }
+.tutor-guided-route strong { font-weight: 600; font-size: .8125rem; color: #3b4d65; overflow-wrap: anywhere; }
+.tutor-guided-route li > div > span { font-size: .75rem; line-height: 1.6; color: #657186; overflow-wrap: anywhere; }
+.tutor-route-mark { flex: 0 0 30px; width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; background: #f2f4f7; color: #61748d; }
+.tutor-guided-route .is-current { background: #edf3ff; border-color: #9fb5da; }
+.tutor-guided-route .is-current .tutor-route-mark { color: #315b9e; background: #dde8fc; }
+.tutor-guided-route .is-done { border-color: #d5e3d9; }
+.tutor-guided-route .is-done .tutor-route-mark { color: #367253; background: #eaf4ed; }
+.tutor-guided-route .is-skipped { border-style: dashed; background: transparent; }
+.learning-tutor .tutor-guided-result { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 18px; margin: 0; }
+.tutor-guided-result strong { color: #31593e; font-size: 1.15rem; }
+.tutor-guided-result span { font-size: .8125rem; }
+.learning-tutor .tutor-guided-next { margin: -6px 0 0; font-size: .8125rem; }
+.tutor-guided-next strong { font-weight: 600; color: #4a5b50; }
+.tutor-guided-progress { display: grid; gap: 12px; padding: 0 3px; }
+.tutor-guided-progress > div:first-child { display: grid; gap: 5px; }
+.tutor-guided-progress strong { font-size: .875rem; font-weight: 600; color: #3b4d65; }
+.tutor-guided-progress span { font-size: .75rem; color: #657186; line-height: 1.7; }
+.tutor-guided-progress [data-slot="progress"] { height: 6px; background: #e8edf4; }
+.tutor-guided-outlook { padding: 1px 3px; }
+.tutor-guided-outlook > span { color: #657186; font-size: .75rem; }
+.learning-tutor .tutor-guided-outlook p { font-size: .8125rem; line-height: 1.8; margin: 4px 0 0; }
+.tutor-guided-outlook strong { font-weight: 500; color: #3e516a; }
+.tutor-guided-details { display: grid; gap: 10px; min-width: 0; }
+.tutor-details { border: 1px solid #e0e5ec; border-radius: 12px; background: #fff; min-width: 0; }
+.learning-tutor .tutor-details-trigger { display: flex; align-items: center; justify-content: space-between; gap: 14px; width: 100%; text-align: left; padding: 16px 20px; border-radius: 11px; background: #fff; }
+.tutor-details-trigger > span { display: grid; gap: 4px; min-width: 0; }
+.tutor-details-trigger strong { font-size: .875rem; font-weight: 600; color: #3e516a; overflow-wrap: anywhere; }
+.tutor-details-trigger > span > span { color: #657186; font-size: .75rem; line-height: 1.6; overflow-wrap: anywhere; }
+.tutor-details-trigger > svg { flex-shrink: 0; color: #6e7e94; transition: transform .16s; }
+.tutor-details-trigger[data-state="open"] > svg { transform: rotate(180deg); }
+.tutor-details-trigger:focus-visible { outline: 2px solid #7495db; outline-offset: 3px; }
+.tutor-details-content { display: grid; gap: 18px; padding: 4px 20px 22px; min-width: 0; }
+.tutor-details-content[data-state="closed"] { display: none; }
+.tutor-details-content > p { margin: 0; }
+.learning-tutor .tutor-feedback-report { max-height: 420px; line-height: 1.7; font-size: .8125rem; background: #fafbfd; }
+.tutor-report-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px; }
+.tutor-report-actions > p { flex: 1 1 270px; }
+.tutor-focus-settings { display: grid; gap: 14px; border-top: 1px solid #e8edf3; padding-top: 20px; }
+.tutor-focus-settings > button { justify-self: start; }
+.tutor-plan-form .field > small { text-align: left; font-size: .75rem; color: #66738a; line-height: 1.7; }
+.tutor-guided-area-list { display: grid; list-style: none; margin: 0; padding: 0; gap: 0; }
+.tutor-guided-area-list li { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 7px 18px; padding: 15px 0; border-top: 1px solid #e8edf3; min-width: 0; }
+.tutor-guided-area-list li > div { min-width: 0; flex: 1 1 270px; }
+.tutor-guided-area-list strong { font-size: .875rem; font-weight: 600; color: #3e516a; overflow-wrap: anywhere; }
+.tutor-guided-area-list .tutor-area-state { display: inline-block; margin-left: 10px; }
+.tutor-guided-area-list .tutor-area-state.is-secure { color: #39755b; background: #eaf5ef; }
+.tutor-guided-area-list .tutor-area-state.is-weak { color: #94652b; background: #fcf2e4; }
+.tutor-guided-area-list p { margin: 5px 0 0; font-size: .75rem; }
+.tutor-guided-area-list button { font-size: .75rem; }
+@media (max-width: 767px) {
+  .tutor-guided-step { padding: 23px; gap: 19px; }
+  .tutor-guided-route { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .tutor-guided-route li { padding: 11px 12px; }
+  .tutor-guided-route li > div { display: flex; align-items: baseline; flex-wrap: wrap; gap: 3px 12px; }
+}
+@media (max-width: 480px) {
+  .tutor-guided-step { padding: 19px 17px; }
+  .learning-tutor .tutor-details-trigger { padding: 14px 16px; }
+  .tutor-details-content { padding: 3px 16px 18px; }
+  .tutor-guided-area-list .tutor-area-state { margin-left: 0; margin-top: 5px; display: table; }
+  .tutor-report-actions > button { width: 100%; }
+}
 @media (max-width: 600px) {
   .tutor-card-prompt { gap: 10px; padding: 16px; border-radius: 14px; }
   .tutor-prompt-icon { flex-basis: 30px; height: 30px; border-radius: 9px; }

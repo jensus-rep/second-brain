@@ -17,7 +17,8 @@ import { flattenTopics, getTopicDescendantIds, getTopicPathLabel } from "@/lib/b
 import { Markdown } from "./markdown";
 import { MediaToolbar } from "./media-toolbar";
 import { TutorCardPrompt } from "./tutor-guidance";
-import type { LearningAction } from "@/lib/brain/learning-resume";
+import { recommendLearning, type LearningAction } from "@/lib/brain/learning-resume";
+import { tutorSessionInsights } from "@/lib/brain/tutor-session";
 
 export function newFlashcard(note?: Note): Flashcard {
   return { id: crypto.randomUUID(), question: note?.title ?? "", answer: note?.summary ?? "", noteId: note?.id ?? null, priority: null, dueAt: new Date().toISOString(), intervalDays: 0, reviews: 0 };
@@ -126,6 +127,7 @@ export function Flashcards({ workspace, revision = -1, save, saving, onEdit, onS
   const [studyMode, setStudyMode] = useState<"due" | "all">("due");
   const consumedStartRequest = useRef<number | undefined>(undefined);
   const consumedResumeRequest = useRef<number | undefined>(undefined);
+  const advancedTutorSession = useRef<string | null>(null);
   const revealRef = useRef<HTMLButtonElement>(null);
   const answerRef = useRef<HTMLDivElement>(null);
   const sessionRef = useRef<HTMLElement>(null);
@@ -165,6 +167,8 @@ export function Flashcards({ workspace, revision = -1, save, saving, onEdit, onS
   const changed = !!(card && entry && (card.reviews !== entry.reviews || card.dueAt !== entry.dueAt));
   const next = [...visibleCards].sort((a, b) => a.dueAt.localeCompare(b.dueAt))[0];
   const studying = queue !== null && (!!card || pendingReview);
+  const guidedSession = studiedSessionId && workspace.tutorSession?.id === studiedSessionId ? workspace.tutorSession : null;
+  const guided = guidedSession ? tutorSessionInsights(workspace, recommendLearning(workspace, clock), clock) : null;
   const hasFilters = !!topicFilter || priorityFilter !== "all" || !!filter.trim();
   const activeFilterCount = Number(!!topicFilter) + Number(priorityFilter !== "all") + Number(!!filter.trim());
   const scopeTitle = queue ? (sessionCollectionId ? collections.find(item => item.collection.id === sessionCollectionId)?.collection.title ?? "Gespeicherte Lernrunde" : "Alle Lernkarten") : selectedCollection?.collection.title ?? "Alle Lernkarten";
@@ -260,6 +264,11 @@ export function Flashcards({ workspace, revision = -1, save, saving, onEdit, onS
     void resume();
   }, [resumeRequest, resume, saving]);
   useEffect(() => { onStudyChange(studying); return () => onStudyChange(false); }, [studying, onStudyChange]);
+  useEffect(() => {
+    if (!queue || card || pendingReview || saving || !guidedSession || guided?.phase !== "quiz" || guided.action?.kind !== "checkpoint" || !onLearningAction || advancedTutorSession.current === guidedSession.id) return;
+    advancedTutorSession.current = guidedSession.id;
+    onLearningAction(guided.action);
+  }, [queue, card, pendingReview, saving, guidedSession, guided, onLearningAction]);
   useEffect(() => { const timer = setInterval(() => setClock(Date.now()), 30000); return () => clearInterval(timer); }, []);
   useEffect(() => {
     if (queue && !revealed) {
@@ -321,10 +330,11 @@ export function Flashcards({ workspace, revision = -1, save, saving, onEdit, onS
     ratingRef.current = false;
   }
   if (queue) {
-    const tutorPrompt = !pendingReview && onLearningAction && studiedSessionId
+    const tutorPrompt = !guidedSession && !pendingReview && onLearningAction && studiedSessionId
       ? <TutorCardPrompt workspace={workspace} revision={revision} save={save} saving={saving} sessionId={studiedSessionId} now={clock} onAction={onLearningAction} /> : null;
     if (!pendingReview && currentSession && !sameSession(workspace.flashcardSession, currentSession)) return <section className="study-finished"><Clock3 size={30} /><h2>Deine Lernrunde hat sich geändert.</h2><p>Der aktuelle Lernstand wurde in einem anderen Fenster gespeichert. Öffne die gespeicherte Runde erneut.</p><Button onClick={pause}>Zur Kartenübersicht</Button></section>;
     if (changed || entry && !card) return <section className="study-finished"><Clock3 size={30} /><h2>{changed ? "Dieser Gedanke wurde schon wiederholt." : "Diese Karte ist nicht mehr verfügbar."}</h2><p>Geänderte oder entfernte Karten werden übersprungen. Der gespeicherte Lernstand bleibt erhalten.</p><div className="study-finished-actions"><Button disabled={saving || pendingReview} onClick={() => void skipUnavailable()}>Mit nächster Karte fortfahren</Button><Button variant="outline" disabled={saving || pendingReview} onClick={pause}>Beenden</Button></div></section>;
+    if (!card && guidedSession) return <section className="study-finished" aria-busy={pendingReview || guided?.phase === "quiz"}><span className="study-complete-icon">{pendingReview || guided?.phase === "quiz" ? <LoaderCircle size={32} className="animate-spin" /> : <Check size={32} />}</span><h2>{pendingReview ? "Dein Fortschritt wird gespeichert …" : guided?.phase === "quiz" ? "Weiter zum Kurztest …" : "Deine Kartenrunde ist gespeichert."}</h2><p>{pendingReview ? "Deine letzte Bewertung wird gespeichert. Danach geht deine Lernrunde weiter." : guided?.phase === "quiz" ? `Jetzt prüfen wir mit ${guidedSession.questionIds.length} Aufgaben, was hängen geblieben ist.` : guided?.description}</p>{onBackToTutor && guided?.phase !== "quiz" && <Button disabled={saving || pendingReview} onClick={onBackToTutor}>Rückmeldung im Tutor ansehen<ArrowRight size={16} /></Button>}</section>;
     if (!card) return <section className="study-finished" aria-busy={pendingReview}><span className="study-complete-icon">{pendingReview ? <LoaderCircle size={32} className="animate-spin" /> : <Check size={32} />}</span><h2>{pendingReview ? "Dein Fortschritt wird gespeichert …" : "Ein Stück Wissen bleibt."}</h2><p>Lernrunde mit {queue.length} {queue.length === 1 ? "Karte" : "Karten"} in „{scopeTitle}“ abgeschlossen. {pendingReview ? "Einen Moment, die letzte Bewertung wird noch gespeichert." : "Dein Fortschritt ist gespeichert."}</p>{tutorPrompt}<div className="study-finished-actions"><Button disabled={pendingReview} onClick={pause}>Zur Kartenübersicht</Button>{onBackToTutor && <Button variant="outline" disabled={saving || pendingReview} onClick={onBackToTutor}>Zum Tutor<ArrowRight size={16} /></Button>}{selectedCollection && onBackToCollection && <Button variant="outline" disabled={saving || pendingReview} onClick={onBackToCollection}><ArrowLeft size={16} />Zur Lernsammlung</Button>}</div></section>;
     const linked = card.noteId ? notesById.get(card.noteId) : undefined;
     const mobileEnd = <Button className="study-mobile-end" variant="ghost" disabled={saving || pendingReview} onClick={pause} title="Lernrunde pausieren; dein Stand bleibt gespeichert"><ArrowLeft size={16} />Beenden</Button>;

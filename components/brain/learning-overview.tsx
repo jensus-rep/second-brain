@@ -19,6 +19,7 @@ type Props = {
   onViewResult: (id: string, collectionId: string | null) => void;
 };
 const actionLabels: Record<LearningAction["kind"], string> = {
+  "tutor-session": "Kurze Lernrunde starten",
   "resume-quiz": "Einheit fortsetzen",
   "resume-cards": "Lernkarten fortsetzen",
   "review-concept": "Schwachstelle üben",

@@ -13,7 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Empty, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 import { Toaster } from "@/components/ui/sonner";
 import { useBrain } from "@/lib/brain/use-brain";
-import { searchNotes, pathProgress, type Note, type Topic, type LearningPath, type Workspace, type Flashcard } from "@/lib/brain/model";
+import { searchNotes, pathProgress, tutorPlanSchema, type Note, type Topic, type LearningPath, type Workspace, type Flashcard } from "@/lib/brain/model";
 import { NoteEditor, TopicEditor, PathEditor } from "./editors";
 import { NoteReader } from "./note-reader";
 import { KnowledgeFilters } from "./knowledge-filters";
@@ -26,7 +26,8 @@ import { LearningOverview } from "./learning-overview";
 import { HomeWorkspace } from "./home-workspace";
 import { NoteRows } from "./note-rows";
 import { LearningTutor } from "./learning-tutor";
-import type { LearningAction } from "@/lib/brain/learning-resume";
+import { recommendLearning, type LearningAction } from "@/lib/brain/learning-resume";
+import { startTutorSession, tutorSessionInsights } from "@/lib/brain/tutor-session";
 import { LearningCollectionsOverview } from "./learning-collections";
 import { firstImage, noteExcerpt } from "@/lib/brain/media";
 import { MobileNavigation, type BrainView } from "./mobile-navigation";
@@ -94,6 +95,7 @@ export function BrainApp() {
   const [view, setView] = useState<View>("home");
   const [studying, setStudying] = useState(false);
   const quizPending = useRef(false);
+  const tutorStarting = useRef(false);
   const [hasQuizPending, setHasQuizPending] = useState(false);
   const onQuizPendingChange = useCallback((pending: boolean) => { quizPending.current = pending; setHasQuizPending(pending); }, []);
   const [learningCollectionId, setLearningCollectionId] = useState("");
@@ -146,15 +148,34 @@ export function BrainApp() {
   function setTopic(id: string) { if (go("library")) setTopicId(id); }
   function openCollection(id: string) { go("collections"); setLearningCollectionId(id); }
   function startCollectionCards(id: string | null, mode: "due" | "all" = "due", cardIds?: string[]) { if (!go("flashcards")) return; setLearningCollectionId(id ?? ""); setCardStartMode(mode); setCardStartIds(cardIds); setCardStartRequest(value => value + 1); }
-  function handleLearningAction(action: LearningAction) {
-    setLearningReturnView(view === "tutor" || view === "flashcards" ? "tutor" : "home");
+  async function handleLearningAction(action: LearningAction) {
+    if (quizPending.current) { toast.info("Speichere zuerst die offenen Antworten in deiner Lernrunde."); return; }
+    setLearningReturnView(view === "tutor" || view === "flashcards" || action.kind === "tutor-session" || action.kind === "checkpoint" && action.tutorSessionId ? "tutor" : "home");
+    if (action.kind === "tutor-session") {
+      if (saving || tutorStarting.current) return;
+      tutorStarting.current = true;
+      const sessionId = crypto.randomUUID();
+      let started: Workspace | null = null;
+      try {
+        const ok = await save(current => {
+          const recommendation = recommendLearning(current, Date.now());
+          if (recommendation.collectionId !== action.collectionId) throw new Error("Dein Lernfokus hat sich geändert. Öffne den aktuellen Tutor.");
+          started = startTutorSession(current, recommendation, sessionId);
+          return started;
+        }, "Lernrunde gestartet");
+        if (!ok || !started) return;
+        const next = tutorSessionInsights(started, recommendLearning(started)).action;
+        if (next) void handleLearningAction(next);
+      } finally { tutorStarting.current = false; }
+      return;
+    }
     if (action.kind === "open-collection") { if (action.collectionId) openCollection(action.collectionId); else go("library"); return; }
     if (action.kind === "review-cards") { startCollectionCards(action.collectionId, action.mode, action.cardIds); return; }
-    if (action.kind === "resume-cards") { go("flashcards"); setLearningCollectionId(action.collectionId ?? ""); setCardResumeRequest(value => value + 1); return; }
-    go("quizzes");
+    if (action.kind === "resume-cards") { if (!go("flashcards")) return; setLearningCollectionId(action.collectionId ?? ""); setCardResumeRequest(value => value + 1); return; }
+    if (!go("quizzes")) return;
     setLearningCollectionId(action.collectionId ?? "");
     if (action.kind === "resume-quiz") return;
-    setQuizLaunchRequest({ id: crypto.randomUUID(), subject: action.subject, collectionId: action.collectionId ?? undefined, mode: action.kind === "checkpoint" ? "checkpoint" : "preparation", ...(action.kind === "checkpoint" ? { questionCount: action.questionCount, questionIds: action.questionIds, cardCheckpoint: action.cardCheckpoint, tutorWeekCheckpoint: action.tutorWeekCheckpoint } : { concept: action.concept, ...(action.kind === "preparation" ? { tutorWeekStartedOn: action.tutorWeekStartedOn } : {}) }) });
+    setQuizLaunchRequest({ id: crypto.randomUUID(), subject: action.subject, collectionId: action.collectionId ?? undefined, mode: action.kind === "checkpoint" ? "checkpoint" : "preparation", ...(action.kind === "checkpoint" ? { questionCount: action.questionCount, questionIds: action.questionIds, cardCheckpoint: action.cardCheckpoint, tutorWeekCheckpoint: action.tutorWeekCheckpoint, tutorSessionId: action.tutorSessionId } : { concept: action.concept, ...(action.kind === "preparation" ? { tutorWeekStartedOn: action.tutorWeekStartedOn } : {}) }) });
   }
   function viewLearningResult(runId: string, collectionId: string | null) { setLearningReturnView(view === "tutor" ? "tutor" : "home"); go("quizzes"); setQuizResultRequest({ id: crypto.randomUUID(), runId, collectionId: collectionId ?? undefined }); }
   function createTopic(parentId: string | null = null) { setEditingTopic({ id: crypto.randomUUID(), title: "", description: "", color: "blue", parentId }); }
@@ -171,17 +192,54 @@ export function BrainApp() {
     if (!context?.registerTool) return;
     const controller = new AbortController();
     const tools = [
+      {
+        name: "get_tutor_state", description: "Read the saved learning plan, available learning areas, actual progress and the tutor's next step to prepare or refine a plan together.",
+        inputSchema: { type: "object", properties: {}, additionalProperties: false }, annotations: { readOnlyHint: true, untrustedContentHint: true },
+        execute() {
+          if (loading || brain.revision < 0) throw new Error("Der Lernstand wird noch geladen.");
+          const recommendation = recommendLearning(w, Date.now());
+          const tutor = tutorSessionInsights(w, recommendation, Date.now());
+          return { revision: brain.revision, focus: { collectionId: recommendation.collectionId, title: recommendation.title, subject: recommendation.subject },
+            plan: w.tutorPlan ?? null, availableConcepts: recommendation.areas.map(area => area.concept),
+            phase: tutor.phase, progress: tutor.progress, cards: tutor.cardProgress, result: tutor.result,
+            untouched: tutor.untouched, weakConcepts: tutor.weakConcepts,
+            next: tutor.next ?? tutor.proposal, feedback: tutor.description };
+        },
+      },
+      {
+        name: "save_tutor_plan", description: "Save an agreed tutor plan for the current learning focus using the revision from get_tutor_state. conceptOrder orders existing learning areas; the tutor interleaves repairs based on results. instructions are context, not executable rules.",
+        inputSchema: { type: "object", properties: {
+          revision: { type: "integer", minimum: 0 }, goal: { type: "string", maxLength: 300 },
+          targetDate: { type: ["string", "null"] }, weeklyDays: { type: "integer", minimum: 1, maximum: 7 },
+          instructions: { type: "string", maxLength: 2000 }, conceptOrder: { type: "array", maxItems: 100, uniqueItems: true, items: { type: "string", minLength: 1, maxLength: 160 } },
+        }, required: ["revision", "goal", "targetDate", "weeklyDays"], additionalProperties: false },
+        annotations: { readOnlyHint: false, destructiveHint: false, untrustedContentHint: false },
+        async execute(input: unknown) {
+          if (!input || typeof input !== "object" || !("revision" in input) || !Number.isSafeInteger(input.revision) || input.revision !== brain.revision) throw new Error("Der Lernstand hat sich geändert. Lies den aktuellen Tutor erneut.");
+          if (loading || saving || quizPending.current) throw new Error("Speichere zuerst deine laufenden Änderungen.");
+          const plan = tutorPlanSchema.parse({ ...input, updatedAt: new Date().toISOString() });
+          const saved = await save(current => {
+            if (JSON.stringify(current) !== JSON.stringify(w)) throw new Error("Der Lernstand hat sich geändert. Lies den aktuellen Tutor erneut.");
+            const available = new Set(recommendLearning(current).areas.map(area => area.concept));
+            if (plan.conceptOrder?.some(concept => !available.has(concept))) throw new Error("Die Themenreihenfolge enthält einen Lernbereich außerhalb des aktuellen Lernfokus.");
+            return { ...current, tutorPlan: plan };
+          }, "Vereinbarter Lernplan gespeichert");
+          if (!saved) throw new Error("Der Lernplan konnte nicht gespeichert werden. Prüfe den Speicherhinweis und lies den aktuellen Tutor erneut.");
+          go("tutor");
+          return { saved: true, revision: brain.revision + 1, plan };
+        },
+      },
       { name: "search_knowledge", description: "Search saved notes by title, content or tags and show the results.", inputSchema: { type: "object", properties: { query: { type: "string", maxLength: 500 } }, required: ["query"], additionalProperties: false }, annotations: { readOnlyHint: true, untrustedContentHint: true }, execute(input: unknown) { if (!input || typeof input !== "object" || !("query" in input) || typeof input.query !== "string" || input.query.length > 500) throw new Error("query must be a string of at most 500 characters"); go("library"); setQuery(input.query); return searchNotes(w.notes.filter(n => !n.archived), input.query, w.topics).map(n => ({ id: n.id, title: n.title, summary: n.summary })); } },
       { name: "start_note_creation", description: "Open an unsaved note draft for the user to review and save.", inputSchema: { type: "object", properties: { title: { type: "string", maxLength: 160 }, content: { type: "string", maxLength: 80000 } }, required: ["title", "content"], additionalProperties: false }, annotations: { readOnlyHint: false, untrustedContentHint: false }, execute(input: unknown) { if (!input || typeof input !== "object" || !("title" in input) || !("content" in input) || typeof input.title !== "string" || typeof input.content !== "string" || input.title.length > 160 || input.content.length > 80000) throw new Error("Invalid note draft"); if (editingNote || editingPath || editingTopic || editingCard) throw new Error("Please finish the open editor first."); setEditingNote({ ...freshNote(), title: input.title, content: input.content }); return { status: "draft_opened", saved: false }; } },
     ];
     for (const tool of tools) { try { void Promise.resolve(context.registerTool(tool, { signal: controller.signal })).catch(() => {}); } catch {} }
     return () => controller.abort();
-  }, [w, topicId, editingNote, editingPath, editingTopic, editingCard]);
+  }, [w, topicId, editingNote, editingPath, editingTopic, editingCard, brain.revision, loading, saving, save]);
 
   return <SidebarProvider style={{ "--sidebar-width": "250px" } as CSSProperties}><Navigation view={view} go={go} workspace={w} topicId={topicId} setTopic={setTopic} newTopic={() => createTopic()} openKeys={() => setShowKeys(true)} onSignOut={() => { if (quizPending.current) toast.info("Speichere zuerst die offenen Antworten in deiner Lernrunde."); else void signOut(); }} /><SidebarInset className={"brain-main" + (studying ? " is-studying" : "")}>
     <header className="topbar"><div className="breadcrumb"><SidebarTrigger className="mobile-toggle" aria-label="Navigation öffnen" /><span>Wissensatelier</span><ChevronRight size={14} /><strong>{topic?.title ?? labels[view]}</strong></div><div className="topbar-right"><span className="save-state"><Check size={14} className={saving ? "pulse" : ""} />{saving ? "Speichert …" : loading ? "Lädt …" : brain.error ? "Bitte prüfen" : hasQuizPending ? "Antworten offen" : "Gespeichert"}</span><Button variant="ghost" size="icon" aria-label="Import & Datensicherung" disabled={hasQuizPending} onClick={() => setShowTransfer(true)}><Download size={18} /></Button></div></header>
     <div className="workspace-content">
-      {!(view === "flashcards" && studying) && <><div className="page-heading"><div><div className="eyebrow">{view === "home" ? "PLATZ FÜR DEINE GEDANKEN" : "DEIN PERSÖNLICHER WISSENSRAUM"}</div><h1>{topic?.title ?? (topicId === UNASSIGNED ? "Ohne Thema" : view === "home" ? "Dein Wissen" : labels[view])}</h1><p>{topic?.description ?? ({ home: "Gedanken festhalten. Zusammenhänge entdecken.", tutor: "Direkt loslernen, deine Vorbereitung planen und deinen Fortschritt verstehen.", library: "Deine Einträge an einem Ort.", topics: "Fachthemen und Unterthemen ordnen dein Wissen. Öffne eine Ebene, um alle zugehörigen Einträge zu sehen.", collections: "Stelle Wissen, Lernkarten und Aufgaben für ein konkretes Lernziel zusammen.", paths: "Aus einzelnen Gedanken wird ein Weg. Lerne in deinem Tempo.", connections: "Entdecke, wie deine Gedanken zusammengehören.", favorites: "Die Gedanken, zu denen du gern zurückkommst.", archive: "Aufbewahrt für später. Hier geht kein Gedanke verloren.", flashcards: "Weniger nachlesen. Mehr im Gedächtnis behalten.", quizzes: "Wissen prüfen, Denkfehler verstehen und gezielt weiterüben." }[view])}</p></div><div className="heading-actions">{topic && <Button variant="outline" onClick={() => setEditingTopic(topic)} aria-label="Thema bearbeiten"><Pencil size={16} /></Button>}{view !== "quizzes" && view !== "collections" && view !== "tutor" && <Button className="primary-action" disabled={loading} onClick={() => view === "flashcards" ? setEditingCard(newFlashcard()) : view === "topics" ? createTopic() : view === "paths" ? setEditingPath({ id: crypto.randomUUID(), title: "", description: "", steps: [] }) : setEditingNote(freshNote())}><Plus size={18} />{view === "flashcards" ? "Neue Lernkarte" : view === "topics" ? "Neues Thema" : view === "paths" ? "Neuer Lernpfad" : "Neue Notiz"}</Button>}</div></div>
+      {!((view === "flashcards" || view === "quizzes") && studying) && <><div className="page-heading"><div><div className="eyebrow">{view === "home" ? "PLATZ FÜR DEINE GEDANKEN" : "DEIN PERSÖNLICHER WISSENSRAUM"}</div><h1>{topic?.title ?? (topicId === UNASSIGNED ? "Ohne Thema" : view === "home" ? "Dein Wissen" : labels[view])}</h1><p>{topic?.description ?? ({ home: "Gedanken festhalten. Zusammenhänge entdecken.", tutor: "Deinen Plan umsetzen, kurz üben und den nächsten Schritt aus deinem Lernstand ableiten.", library: "Deine Einträge an einem Ort.", topics: "Fachthemen und Unterthemen ordnen dein Wissen. Öffne eine Ebene, um alle zugehörigen Einträge zu sehen.", collections: "Stelle Wissen, Lernkarten und Aufgaben für ein konkretes Lernziel zusammen.", paths: "Aus einzelnen Gedanken wird ein Weg. Lerne in deinem Tempo.", connections: "Entdecke, wie deine Gedanken zusammengehören.", favorites: "Die Gedanken, zu denen du gern zurückkommst.", archive: "Aufbewahrt für später. Hier geht kein Gedanke verloren.", flashcards: "Weniger nachlesen. Mehr im Gedächtnis behalten.", quizzes: "Wissen prüfen, Denkfehler verstehen und gezielt weiterüben." }[view])}</p></div><div className="heading-actions">{topic && <Button variant="outline" onClick={() => setEditingTopic(topic)} aria-label="Thema bearbeiten"><Pencil size={16} /></Button>}{view !== "quizzes" && view !== "collections" && view !== "tutor" && <Button className="primary-action" disabled={loading} onClick={() => view === "flashcards" ? setEditingCard(newFlashcard()) : view === "topics" ? createTopic() : view === "paths" ? setEditingPath({ id: crypto.randomUUID(), title: "", description: "", steps: [] }) : setEditingNote(freshNote())}><Plus size={18} />{view === "flashcards" ? "Neue Lernkarte" : view === "topics" ? "Neues Thema" : view === "paths" ? "Neuer Lernpfad" : "Neue Notiz"}</Button>}</div></div>
       {topic && <div className="topic-context">
         <nav className="topic-breadcrumbs" aria-label="Themenpfad"><button onClick={() => go("topics")}>Alle Themen</button>{[...topicAncestors, topic].map(t => <span key={t.id}><ChevronRight size={14} />{t.id === topic.id ? <strong aria-current="page">{t.title}</strong> : <button onClick={() => setTopic(t.id)}>{t.title}</button>}</span>)}</nav>
         <div className="topic-scope-summary"><span>{topicScope.size > 1 ? `Dieses Thema umfasst ${topicScope.size - 1} Unterthemen. Alle zugehörigen Einträge werden gemeinsam angezeigt.` : "Die Einträge sind diesem Thema direkt zugeordnet."}</span><Button variant="ghost" size="sm" onClick={() => createTopic(topic.id)}><Plus size={15} />Unterthema anlegen</Button></div>

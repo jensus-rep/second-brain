@@ -4,6 +4,8 @@ import { emptyWorkspace, workspaceSchema, tutorPlanSchema, cardReviewDaySchema, 
 import { tutorInsights, tutorDate, recordCardReview, tutorCardCheckpoint, recordTutorCheckpoint, tutorCardContentFingerprint } from "../lib/brain/learning-tutor.ts";
 import { recommendLearning } from "../lib/brain/learning-resume.ts";
 import { compactQuizRuns, ARCHIVED_TEXT, ARCHIVED_EXPLANATION } from "../lib/brain/quiz.ts";
+import { learningQuestionFingerprint } from "../lib/brain/quiz-content.ts";
+import { projectManagementLearning } from "../lib/brain/project-management-learning.ts";
 
 const subject = "Projektmanagement";
 const timestamp = "2026-10-10T10:00:00.000Z";
@@ -358,6 +360,35 @@ test("the fifth actual linked card rating offers a short checkpoint and prioriti
   assert.deepEqual(checkpoint.action.cardCheckpoint, { sessionId: "card-session", reviewedAt: checkpoint.reviewedAt });
   assert.deepEqual(checkpoint.concepts, ["Gedanke 5", "Gedanke 1", "Gedanke 2"]);
   assert.equal(fifth.tutorCheckpointDecisions, undefined, "An offer itself saves no acceptance or dismissal");
+});
+
+test("card checkpoints use fingerprint-validated legacy links and preserve explicit source choices", () => {
+  const q = question("legacy-audited-project-checkpoint", {
+    subject: projectManagementLearning.subject, concept: "Projektstart und Stakeholder",
+    prompt: "Welche Angaben machen einen Projektauftrag für die Beteiligten überprüfbar?",
+  });
+  const previous = projectManagementLearning.questions[q.id];
+  projectManagementLearning.questions[q.id] = { fingerprint: learningQuestionFingerprint(q), noteIds: ["n5"], visualHints: [] };
+  try {
+    const fixture = adaptiveFixture();
+    const data = rateCards({
+      ...fixture, quizQuestions: [q],
+      learningFocus: { ...fixture.learningFocus, subject: q.subject },
+      learningCollections: [{ ...fixture.learningCollections[0], questionIds: [q.id] }],
+    });
+    const before = structuredClone(data);
+    const checkpoint = pendingCheckpoint(data);
+    assert.deepEqual(checkpoint.action.questionIds, [q.id]);
+    assert.equal(checkpoint.action.subject, q.subject);
+    assert.equal(checkpoint.action.questionCount, 1);
+    assert.deepEqual(data, before, "The contextual test resolves audited links without editing existing questions.");
+    for (const revised of [{ ...q, prompt: q.prompt + " Geändert." }, { ...q, noteIds: [] }, { ...q, noteIds: ["n10"] }]) {
+      assert.equal(pendingCheckpoint({ ...data, quizQuestions: [revised] }), null, "A changed fingerprint or an explicit unrelated source cannot offer the legacy task.");
+    }
+  } finally {
+    if (previous === undefined) delete projectManagementLearning.questions[q.id];
+    else projectManagementLearning.questions[q.id] = previous;
+  }
 });
 
 test("checkpoints require current explicit note links and current tasks from the same collection", () => {

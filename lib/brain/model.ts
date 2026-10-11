@@ -48,10 +48,14 @@ export const quizRunSchema = z.object({
   cardCheckpoint: z.object({ sessionId: id, reviewedAt: z.string().datetime() }).optional(),
   tutorWeekStartedOn: calendarDate.optional(),
   tutorWeekCheckpoint: z.object({ startedOn: calendarDate, stage: z.enum(["baseline", "midpoint", "final"]) }).optional(),
+  tutorSessionId: id.optional(),
   deadlineAt: z.string().datetime().nullable(), finishedAt: z.string().datetime().nullable(),
   questions: z.array(quizQuestionSchema).min(1).max(30),
   answers: z.array(z.object({ questionId: id, selectedOptionIds: z.array(id).min(1).max(6), answeredAt: z.string().datetime(), reflection: z.string().max(1500) })).max(30),
 }).superRefine((run, ctx) => {
+  if (run.tutorSessionId && (run.mode !== "exam" || run.questions.length > 3 || run.cardCheckpoint || run.tutorWeekCheckpoint || run.preparationConcept || run.questions.some(question => question.subject !== run.subject))) {
+    ctx.addIssue({ code: "custom", path: ["tutorSessionId"], message: "Eine Tutor-Einheit braucht einen eigenen Kurztest mit höchstens drei Aufgaben." });
+  }
   if (run.cardCheckpoint && (run.mode !== "exam" || Date.parse(run.cardCheckpoint.reviewedAt) > Date.parse(run.startedAt))) {
     ctx.addIssue({ code: "custom", path: ["cardCheckpoint"], message: "Ein Kartentest braucht einen Testmodus und bereits gespeicherte Bewertungen." });
   }
@@ -78,13 +82,35 @@ export const learningFocusSchema = z.object({
 export const tutorPlanSchema = z.object({
   goal: z.string().trim().max(300), targetDate: calendarDate.nullable(),
   weeklyDays: z.number().int().min(1).max(7), updatedAt: z.string().datetime(),
+  instructions: z.string().trim().max(2000).optional(),
+  conceptOrder: z.array(title).max(100).optional(),
+}).superRefine((plan, ctx) => {
+  if (plan.conceptOrder && new Set(plan.conceptOrder).size !== plan.conceptOrder.length) {
+    ctx.addIssue({ code: "custom", path: ["conceptOrder"], message: "Jeder Lernbereich darf im Plan nur einmal vorkommen." });
+  }
+});
+export const tutorSessionSchema = z.object({
+  id, collectionId: id.nullable(), subject: title.nullable(), concept: title.nullable(),
+  reason: z.enum(["repair", "foundation", "practice", "refresh"]),
+  cardIds: z.array(id).max(5), questionIds: z.array(id).max(3), startedAt: z.string().datetime(),
+}).superRefine((session, ctx) => {
+  if (!session.cardIds.length && !session.questionIds.length || session.questionIds.length && !session.subject) {
+    ctx.addIssue({ code: "custom", message: "Eine Tutor-Einheit braucht Lernkarten oder passende Testaufgaben." });
+  }
+  if (new Set(session.cardIds).size !== session.cardIds.length || new Set(session.questionIds).size !== session.questionIds.length) {
+    ctx.addIssue({ code: "custom", message: "Die Aufgaben einer Tutor-Einheit müssen eindeutig sein." });
+  }
 });
 export const tutorWeekSchema = z.object({
   startedOn: calendarDate, collectionId: id.nullable(), subject: title,
   checkpointQuestionIds: z.array(id).min(1).max(6),
+  topicOrder: z.array(title).max(100).optional(),
 }).superRefine((week, ctx) => {
   if (new Set(week.checkpointQuestionIds).size !== week.checkpointQuestionIds.length) {
     ctx.addIssue({ code: "custom", message: "Die Aufgaben des Wochentests müssen eindeutig sein." });
+  }
+  if (week.topicOrder && new Set(week.topicOrder).size !== week.topicOrder.length) {
+    ctx.addIssue({ code: "custom", path: ["topicOrder"], message: "Jeder Lernbereich darf in der Lernwoche nur einmal vorkommen." });
   }
 });
 export const cardReviewDaySchema = z.object({
@@ -142,6 +168,7 @@ export const workspaceSchema = z.object({
   learningFocus: learningFocusSchema.nullable().optional(),
   flashcardSession: flashcardSessionSchema.nullable().optional(),
   tutorPlan: tutorPlanSchema.optional(),
+  tutorSession: tutorSessionSchema.optional(),
   tutorWeek: tutorWeekSchema.optional(),
   cardReviewDays: z.array(cardReviewDaySchema).max(3000).optional(),
   cardReviewEvents: z.array(cardReviewEventSchema).max(1500).optional(),
@@ -161,6 +188,18 @@ export const workspaceSchema = z.object({
   if (new Set(eventKeys).size !== eventKeys.length) issue("Einzelne Kartenbewertungen müssen eindeutig sein.");
   const decisionSessions = (data.tutorCheckpointDecisions ?? []).map(decision => decision.sessionId);
   if (new Set(decisionSessions).size !== decisionSessions.length) issue("Pro Kartenrunde wird nur die letzte Testentscheidung gespeichert.");
+  const tutorSession = data.tutorSession;
+  if (tutorSession) {
+    const cards = data.flashcardSession;
+    if (cards?.id === tutorSession.id && (cards.collectionId !== tutorSession.collectionId || JSON.stringify(cards.queue.map(card => card.id)) !== JSON.stringify(tutorSession.cardIds))) {
+      issue("Die gespeicherte Kartenrunde muss zur Tutor-Einheit gehören.");
+    }
+    if (data.quizRuns.some(run => run.tutorSessionId === tutorSession.id && (run.subject !== tutorSession.subject ||
+      (run.collectionId ?? null) !== tutorSession.collectionId || Date.parse(run.startedAt) < Date.parse(tutorSession.startedAt) ||
+      JSON.stringify(run.questions.map(question => question.id)) !== JSON.stringify(tutorSession.questionIds)))) {
+      issue("Der gespeicherte Kurztest muss zur Tutor-Einheit gehören.");
+    }
+  }
   const topics = new Set(data.topics.map(t => t.id));
   const topicsById = new Map(data.topics.map(topic => [topic.id, topic]));
   for (const [index, topic] of data.topics.entries()) {
@@ -215,6 +254,7 @@ export type LearningCollection = z.infer<typeof learningCollectionSchema>;
 export type LearningFocus = z.infer<typeof learningFocusSchema>;
 export type FlashcardSession = z.infer<typeof flashcardSessionSchema>;
 export type TutorPlan = z.infer<typeof tutorPlanSchema>;
+export type TutorSession = z.infer<typeof tutorSessionSchema>;
 export type TutorWeek = z.infer<typeof tutorWeekSchema>;
 export type CardReviewDay = z.infer<typeof cardReviewDaySchema>;
 export type CardReviewEvent = z.infer<typeof cardReviewEventSchema>;

@@ -16,6 +16,7 @@
 # next.js
 /.next/
 /.next-isolated/
+/.next-isolated-tutor/
 /.vinext/
 /out/
 

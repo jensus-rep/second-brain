@@ -87,7 +87,11 @@ async function rate(index, known = true) {
 async function startFixture(workspace = fixture) {
   await write(structuredClone(workspace));
   await reloadTutor();
-  await uiSave(() => click("Fällige Karten wiederholen", page.locator(".learning-tutor")), workspace => workspace.flashcardSession?.index === 0);
+  await expect(page.locator(".learning-tutor").getByRole("region", { name: "Lernimpuls", exact: true })).toHaveCount(0);
+  await expect(page.locator(".learning-tutor .tutor-primary-action")).toHaveCount(1);
+  await click("Lernkarten");
+  await page.getByLabel("Lernsammlung für Lernkarten", { exact: true }).selectOption(collection.id);
+  await uiSave(() => click("Lernrunde starten"), workspace => workspace.flashcardSession?.index === 0 && workspace.flashcardSession.collectionId === collection.id && !workspace.tutorSession);
   await expect(studyQuestion()).toContainText(cards[0].question);
 }
 async function reachImpulse() {
@@ -275,7 +279,9 @@ try {
   assert.equal(offered.workspace.quizRuns.length, 0, "An offer does not start a test automatically.");
   await responsiveImpulse();
   await reloadTutor();
-  await uiSave(() => click("Lernkarten fortsetzen", page.locator(".learning-tutor")), workspace => workspace.flashcardSession?.index === 5);
+  await expect(impulse(), "The Tutor surface keeps one guided action instead of duplicating an optional card impulse.").toHaveCount(0);
+  await expect(page.locator(".learning-tutor .tutor-primary-action")).toHaveCount(1);
+  await uiSave(() => click("Kartenrunde fortsetzen", page.locator(".learning-tutor")), workspace => workspace.flashcardSession?.index === 5);
   await expect(impulse()).toBeVisible();
   await expect(studyQuestion()).toContainText(cards[5].question);
 
@@ -310,7 +316,8 @@ try {
   await expect(impulse()).toHaveCount(0);
   await expect(studyQuestion()).toContainText(cards[5].question);
   await reloadTutor();
-  await uiSave(() => click("Lernkarten fortsetzen", page.locator(".learning-tutor")), workspace => workspace.flashcardSession?.index === 5);
+  await expect(impulse()).toHaveCount(0);
+  await uiSave(() => click("Kartenrunde fortsetzen", page.locator(".learning-tutor")), workspace => workspace.flashcardSession?.index === 5);
   await expect(impulse()).toHaveCount(0);
   for (let index = 5; index < 10; index++) {
     await rate(index);
@@ -327,7 +334,7 @@ try {
   for (const card of legacy.cards.slice(0, 5)) { card.reviews = 100; card.dueAt = "2099-01-01T00:00:00.000Z"; }
   await write(legacy);
   await reloadTutor();
-  await uiSave(() => click("Lernkarten fortsetzen", page.locator(".learning-tutor")), workspace => workspace.flashcardSession?.index === 5);
+  await uiSave(() => click("Kartenrunde fortsetzen", page.locator(".learning-tutor")), workspace => workspace.flashcardSession?.index === 5);
   await expect(impulse()).toHaveCount(0);
   await rate(5);
   await expect(impulse()).toHaveCount(0);

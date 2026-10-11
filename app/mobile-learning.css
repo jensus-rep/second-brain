@@ -87,6 +87,12 @@
     min-height: 44px;
   }
 
+  .quiz-session-end .quiz-actions > [data-slot="button"] {
+    min-height: 44px;
+    height: auto;
+    white-space: normal;
+  }
+
   .quiz-reflection [data-slot="button"],
   .study-finished > [data-slot="button"] {
     min-height: 44px;

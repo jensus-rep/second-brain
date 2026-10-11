@@ -2,6 +2,7 @@ import type { CardReviewDay, CardReviewEvent, Flashcard, QuizRun, Workspace } fr
 import { collectionItems, learningCollections } from "./learning-collections.ts";
 import { comparableLearningRuns, runMatchesLearningCollection, selectCheckpointQuestions, type LearningAction, type LearningRecommendation } from "./learning-resume.ts";
 import { latestQuestionResults } from "./quiz-preparation.ts";
+import { withLearningNotes } from "./quiz-content.ts";
 import { ARCHIVED_TEXT, isCorrect } from "./quiz.ts";
 
 export type TutorQuizResult = {
@@ -116,7 +117,7 @@ export function tutorCardCheckpoint(workspace: Workspace, sessionId?: string | n
   if (unconsumed.length < 5) return null;
   const byNote = new Map<string, CardReviewEvent>();
   for (const event of unconsumed) byNote.set(event.noteId!, event);
-  const eligible = contents.questions.filter(question => question.noteIds?.some(noteId => byNote.has(noteId)));
+  const eligible = contents.questions.map(question => withLearningNotes(question)).filter(question => question.noteIds?.some(noteId => byNote.has(noteId)));
   if (!eligible.length) return null;
   const subjects = [...new Set(eligible.map(question => question.subject))];
   const uncertainty = (question: typeof eligible[number]) => question.noteIds?.some(noteId => byNote.get(noteId)?.known === false) ? 0 : 1;

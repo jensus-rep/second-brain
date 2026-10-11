@@ -4,8 +4,7 @@ import { mkdir, realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
-// Mutations require both a loopback URL and proof that the running API uses the
-// explicitly selected local SQLite file. Never point this suite at Azure.
+// Every mutation needs loopback and proof of the exact local SQLite store.
 const origin = process.env.BRAIN_TEST_URL ?? "http://127.0.0.1:5173";
 if (!["127.0.0.1", "localhost"].includes(new URL(origin).hostname)) throw new Error("Tutor browser tests may only mutate localhost.");
 const api = origin + "/api/brain";
@@ -16,15 +15,22 @@ page.setDefaultTimeout(20000);
 page.setDefaultNavigationTimeout(90000);
 const errors = [];
 page.on("pageerror", error => errors.push(error.message));
-let initial;
+await page.addInitScript(() => {
+  window.__tutorTools = {};
+  Object.defineProperty(document, "modelContext", { configurable: true, value: {
+    registerTool(tool, { signal }) {
+      window.__tutorTools[tool.name] = tool;
+      signal.addEventListener("abort", () => {
+        if (window.__tutorTools[tool.name] === tool) delete window.__tutorTools[tool.name];
+      }, { once: true });
+    },
+  } });
+});
 const tutor = () => page.locator(".learning-tutor");
+const primary = () => tutor().locator(".tutor-primary-action");
 const button = (name, scope = page) => scope.getByRole("button", { name, exact: true }).filter({ visible: true }).first();
+let initial;
 async function click(name, scope = page) { await expect(button(name, scope)).toBeEnabled(); await button(name, scope).click(); }
-async function tab(name) {
-  const target = tutor().getByRole("tab", { name, exact: true });
-  await target.click();
-  await expect(target).toHaveAttribute("aria-selected", "true");
-}
 async function snapshot() {
   const response = await page.request.get(api);
   assert.equal(response.status(), 200);
@@ -35,291 +41,293 @@ async function verifyLocal(current) {
   const db = new DatabaseSync(sqlitePath, { readOnly: true });
   try {
     const row = db.prepare("SELECT body, revision FROM newhope_workspaces WHERE owner_id = ?").get("local_dev");
-    assert.equal(row?.revision, current.revision, "The running API must use the explicitly selected local SQLite database.");
+    assert.equal(row?.revision, current.revision, "The API must use the selected local SQLite file.");
     const stored = JSON.parse(row.body);
     for (const key of ["cards", "quizQuestions", "quizRuns", "learningReminders", "learningCollections"]) stored[key] ??= [];
     assert.deepEqual(stored, current.workspace);
   } finally { db.close(); }
 }
 async function write(workspace) {
-  const current = await snapshot();
-  await verifyLocal(current);
-  const response = await page.request.put(api, { data: { workspace, revision: current.revision } });
+  const before = await snapshot();
+  await verifyLocal(before);
+  const response = await page.request.put(api, { data: { workspace, revision: before.revision } });
   assert.equal(response.status(), 200, await response.text());
-  return response.json();
+  const after = await snapshot();
+  await verifyLocal(after);
+  return after;
 }
-async function reload() {
+async function reloadTutor() {
   const response = await page.goto(origin, { waitUntil: "networkidle" });
   assert.equal(response?.status(), 200);
   await click("Tutor");
   await expect(tutor()).toBeVisible();
-  await expect(tutor().getByRole("tab", { name: "Heute", exact: true })).toHaveAttribute("aria-selected", "true");
 }
+async function fixture(workspace = mainFixture) { await write(structuredClone(workspace)); await reloadTutor(); }
 async function uiSave(action, predicate) {
   const before = await snapshot();
   await verifyLocal(before);
   const requested = page.waitForRequest(request => request.url() === api && request.method() === "PUT");
   const responded = page.waitForResponse(response => response.url() === api && response.request().method() === "PUT");
   await action();
-  assert.equal((await requested).postDataJSON().revision, before.revision, "Every interaction submits its current workspace revision.");
+  assert.equal((await requested).postDataJSON().revision, before.revision, "UI writes carry their saved revision.");
   const response = await responded;
   assert.equal(response.status(), 200, await response.text());
+  // Final-card confirmation can trigger a separate save to start the short test.
   await expect.poll(async () => {
     const after = await snapshot();
-    return after.revision === before.revision + 1 && predicate(after.workspace);
+    return after.revision > before.revision && predicate(after.workspace);
   }).toBe(true);
   await expect(page.locator(".save-state")).toHaveText("Gespeichert");
   const after = await snapshot();
   await verifyLocal(after);
   return after.workspace;
 }
-async function responsive(stage) {
+async function startRound() {
+  const data = await uiSave(() => primary().click(), workspace => !!workspace.tutorSession);
+  await expect(page.locator(data.tutorSession.cardIds.length ? ".study-question" : ".quiz-question")).toBeVisible();
+  return (await snapshot()).workspace;
+}
+async function rateCurrent(known = true, response = "") {
+  const before = (await snapshot()).workspace;
+  const session = before.flashcardSession;
+  assert.ok(session);
+  const cardId = session.queue[session.index].id;
+  await expect(page.locator(".study-question")).toContainText(before.cards.find(card => card.id === cardId).question);
+  if (response) await page.getByLabel("Deine Antwort in eigenen Worten", { exact: true }).fill(response);
+  await click("Antwort aufdecken");
+  return uiSave(() => click(known ? /^Gewusst/ : /^Noch üben/, page.getByRole("group", { name: "Bewertung der Lernkarte", exact: true })), workspace =>
+    workspace.cardReviewEvents?.some(event => event.sessionId === session.id && event.cardId === cardId));
+}
+async function completeQuiz(run, wrongFirst = false) {
+  for (let index = run.answers.length; index < run.questions.length; index++) {
+    const question = run.questions[index];
+    await expect(page.locator(".quiz-question")).toContainText(question.prompt);
+    await page.getByRole("checkbox", { name: question.options[wrongFirst && index === 0 ? 1 : 0].text, exact: true }).check();
+    await uiSave(() => click("Antwort speichern"), workspace => workspace.quizRuns.find(item => item.id === run.id)?.answers.length === index + 1);
+    await expect(page.locator(".quiz-verdict, .quiz-option-review")).toHaveCount(0);
+  }
+  await uiSave(() => click("Test abgeben"), workspace => !!workspace.quizRuns.find(item => item.id === run.id)?.finishedAt);
+  await expect(page.locator(".quiz-result-summary")).toBeVisible();
+}
+async function responsive(stage, scope = tutor()) {
   for (const width of [1440, 390, 320]) {
     await page.setViewportSize({ width, height: width === 1440 ? 1000 : 844 });
+    await page.screenshot({ path: `.sites-runtime/qa/tutor-guided-${stage}-${width}.png`, fullPage: true, animations: "disabled" });
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
-    assert.deepEqual(await tutor().evaluate(element => [...element.querySelectorAll("section, article, form, dl, ul, button, input, select, textarea")].filter(child => child.scrollWidth > child.clientWidth + 1).map(child => child.className || child.tagName)), [], `${stage} content fits ${width}px`);
-    const targets = await tutor().locator("button:visible, input:visible, select:visible, textarea:visible").evaluateAll(elements => elements.map(element => ({ label: element.getAttribute("aria-label") || element.textContent, height: element.getBoundingClientRect().height })));
-    assert.ok(targets.every(target => target.height >= 43.9), `${stage} controls have 44px touch targets at ${width}px: ${JSON.stringify(targets)}`);
+    assert.deepEqual(await scope.evaluate(element => {
+      const computed = node => {
+        const style = getComputedStyle(node);
+        return { display: style.display, position: style.position, flex: style.flex, width: style.width,
+          gridTemplateColumns: style.gridTemplateColumns, transform: style.transform };
+      };
+      return [...element.querySelectorAll("article, form, select, textarea, button")]
+        .filter(child => child.getClientRects().length && child.scrollWidth > child.clientWidth + 1)
+        .map(child => {
+          const ancestors = [];
+          for (let parent = child.parentElement; parent; parent = parent.parentElement) {
+            ancestors.push({ className: parent.className, width: parent.getBoundingClientRect().width, ...computed(parent) });
+          }
+          return { label: child.getAttribute("aria-label") || child.textContent?.trim(), className: child.className,
+            clientWidth: child.clientWidth, scrollWidth: child.scrollWidth, computed: computed(child), ancestors,
+            siblings: [...child.parentElement.children].filter(node => node.getClientRects().length)
+              .map(node => ({ label: node.textContent?.trim(), width: node.getBoundingClientRect().width, ...computed(node) })) };
+        });
+    }), [], stage + " fits " + width + "px");
     if (width < 1440) {
-      const navigation = page.getByRole("navigation", { name: "Hauptnavigation", exact: true });
-      await expect(button("Tutor", navigation)).toBeVisible();
-      await expect(button("Tutor", navigation)).toHaveAttribute("aria-current", "page");
-      await expect(navigation.getByRole("button")).toHaveCount(6);
-      const shortcuts = await navigation.getByRole("button").evaluateAll(elements => elements.map(element => {
-        const bounds = element.getBoundingClientRect();
-        return { label: element.getAttribute("aria-label"), width: bounds.width, height: bounds.height };
+      const targets = await scope.locator("button:visible:not([role='checkbox']), input:visible:not([type='checkbox']), select:visible, textarea:visible").evaluateAll(elements =>
+        elements.map(element => ({ label: element.getAttribute("aria-label") || element.textContent, height: element.getBoundingClientRect().height })));
+      assert.ok(targets.every(target => target.height >= 43.9), stage + " touch targets: " + JSON.stringify(targets));
+      const choices = await scope.locator("[role='checkbox']:visible, input[type='checkbox']:visible").evaluateAll(elements => elements.map(element => {
+        const label = element.closest("label.quiz-option");
+        const bounds = label?.getBoundingClientRect();
+        return { label: label?.textContent, width: bounds?.width ?? 0, height: bounds?.height ?? 0 };
       }));
-      assert.ok(shortcuts.every(target => target.width >= 43.9 && target.height >= 43.9), `All six mobile shortcuts retain 44px touch targets at ${width}px: ${JSON.stringify(shortcuts)}`);
-      if (stage === "today") {
-        await page.evaluate(() => window.scrollTo(0, 0));
-        await expect.poll(async () => {
-          const primary = await tutor().locator(".tutor-primary-action").boundingBox();
-          const dock = await navigation.boundingBox();
-          return primary && dock ? dock.y - primary.y - primary.height : -1000;
-        }, { message: `The primary learning action is immediately visible above the navigation at ${width}px` }).toBeGreaterThanOrEqual(-1);
-      }
+      assert.ok(choices.every(target => target.width >= 43.9 && target.height >= 43.9), stage + " answer choices have full clickable touch targets: " + JSON.stringify(choices));
     }
-    await page.screenshot({ path: `.sites-runtime/qa/learning-tutor-${stage}-${width}.png`, fullPage: true, animations: "disabled" });
   }
   await page.setViewportSize({ width: 1440, height: 1000 });
 }
-const day = value => new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin", year: "numeric", month: "2-digit", day: "2-digit" }).format(value);
+
 const now = new Date().toISOString();
-const yesterday = new Date(Date.now() - 86400000).toISOString();
-const today = day(new Date());
-const subject = "Agiles Projektmanagement";
-const concepts = ["Sprint-Ziel", "Inkrement und Feedback"];
-const notes = concepts.map((concept, index) => ({ id: `tutor-note-${index}`, title: concept, summary: "Eine Grundlage für die Zusammenarbeit im Team.", content: `## ${concept}\n\nEin gemeinsames Ziel und Feedback machen Ergebnisse überprüfbar.`, topicId: null, tags: [], relatedIds: [], favorite: false, archived: false, createdAt: now, updatedAt: now }));
-const cards = concepts.map((concept, index) => ({ id: `tutor-card-${index}`, question: `Kartenfrage ${index}: ${concept}`, answer: `Antwort ${index}: Gemeinsame Ziele und Feedback erklären.`, noteId: notes[index].id, priority: 1, reviews: 0, intervalDays: 0, dueAt: `2000-01-01T00:00:0${index}.000Z` }));
-const questions = concepts.flatMap((concept, index) => [1, 2].map(difficulty => {
-  const id = `tutor-question-${index}-${difficulty}`;
-  return { id, subject, concept, difficulty, noteIds: [notes[index].id], prompt: `${concept}, Aufgabe ${difficulty}: Welche Aussage passt?`, options: [{ id: id + "-yes", text: `Richtig ${index}-${difficulty}: Ziele und Feedback gemeinsam klären.`, feedback: "" }, { id: id + "-no", text: `Falsch ${index}-${difficulty}: Rückmeldungen vollständig ignorieren.`, feedback: "Das Team benötigt ein gemeinsames Ziel und überprüfbare Ergebnisse." }], correctOptionIds: [id + "-yes"], explanation: "Ein gemeinsames Ziel richtet die Zusammenarbeit aus. Feedback prüft, ob das Ergebnis zum Ziel passt.", source: "" };
+const subject = "Projektmanagement";
+const concepts = ["Projekt und Projektmanagement: Grundlagen", "Projektstart und Stakeholder", "Risiko und Controlling"];
+const notes = concepts.map((title, index) => ({ id: "guided-note-" + index, title, summary: "Ziele und Entscheidungen nachvollziehbar machen.",
+  content: "## " + title + "\n\nEin Projektziel gibt Orientierung. Beteiligte prüfen Ergebnisse anhand gemeinsam vereinbarter Kriterien.",
+  topicId: null, tags: [], relatedIds: [], favorite: false, archived: false, createdAt: now, updatedAt: now }));
+const cards = notes.flatMap((note, area) => Array.from({ length: 7 }, (_, index) => ({ id: `guided-card-${area}-${index}`,
+  question: `${note.title}: Kartenfrage ${index + 1}`, answer: "Ein gemeinsames Ziel und überprüfbare Kriterien helfen bei der Entscheidung.",
+  noteId: note.id, priority: index < 5 ? 1 : 2, dueAt: `2000-01-01T00:00:0${index}.000Z`, intervalDays: 0, reviews: 0 })));
+const questions = notes.flatMap((note, area) => [1, 2, 3].map(difficulty => {
+  const id = `guided-question-${area}-${difficulty}`;
+  return { id, subject, concept: note.title, difficulty, noteIds: [note.id], prompt: `${note.title}: Welche Aussage passt in Aufgabe ${difficulty}?`,
+    options: [{ id: id + "-yes", text: "Ziele gemeinsam klären und Ergebnisse prüfen", feedback: "Richtig." }, { id: id + "-no", text: "Beteiligte und Rückmeldungen ignorieren", feedback: "Rückmeldungen prüfen die Entscheidung." }],
+    correctOptionIds: [id + "-yes"], explanation: "Ein gemeinsames Ziel gibt Orientierung. Rückmeldungen helfen beim Anpassen.", source: "" };
 }));
-const outsideQuestion = { ...structuredClone(questions[0]), id: "tutor-outside-question", subject: "Datenanalyse", concept: "Datengrundlage" };
-const outsideCard = { ...structuredClone(cards[0]), id: "tutor-outside-card", question: "Eine Karte aus einer getrennten Vorbereitung", noteId: null, reviews: 7, dueAt: "2099-01-01T00:00:00.000Z" };
-const collection = { id: "tutor-agile", title: "Vorbereitung agiles Projektmanagement", description: "Ziele klären und Ergebnisse prüfen.", noteIds: notes.map(note => note.id), cardIds: [], questionIds: questions.map(question => question.id), pathIds: [] };
-const unrelated = { id: "tutor-other", title: "Getrennte Vorbereitung", description: "Ein anderer Lernumfang.", noteIds: [], cardIds: [outsideCard.id], questionIds: [outsideQuestion.id], pathIds: [] };
-const fixture = { schemaVersion: 1, topics: [], notes, paths: [], completedStepIds: [], cards: [...cards, outsideCard], quizQuestions: [...questions, outsideQuestion], quizRuns: [], learningReminders: [], learningCollections: [collection, unrelated], learningFocus: { collectionId: collection.id, subject, updatedAt: now }, cardReviewDays: [{ date: day(new Date(yesterday)), collectionId: collection.id, reviewed: 3, known: 2 }, { date: today, collectionId: unrelated.id, reviewed: 7, known: 7 }] };
-const todaysReviews = workspace => workspace.cardReviewDays.find(item => item.date === today && item.collectionId === collection.id);
+const outsideCard = { ...cards[0], id: "guided-outside-card", noteId: null, question: "Diese Karte gehört zu einem anderen Lernziel." };
+const outsideQuestion = { ...questions[0], id: "guided-outside-question", subject: "Datenanalyse", noteIds: [] };
+const collection = { id: "guided-projects", title: "Projektmanagement vorbereiten", description: "Grundlagen erklären und anwenden.",
+  noteIds: notes.map(note => note.id), cardIds: [], questionIds: questions.map(question => question.id), pathIds: [] };
+const mainFixture = { schemaVersion: 1, topics: [], notes, paths: [], completedStepIds: [], cards: [...cards, outsideCard],
+  quizQuestions: [...questions, outsideQuestion], quizRuns: [], learningReminders: [], learningCollections: [collection,
+    { id: "guided-outside", title: "Getrenntes Lernziel", description: "", noteIds: [], cardIds: [outsideCard.id], questionIds: [outsideQuestion.id], pathIds: [] }],
+  learningFocus: { collectionId: collection.id, subject, updatedAt: now } };
 
 try {
-  await reload(); // Opens the development browser session through the app's normal login redirect.
+  await reloadTutor();
   initial = (await snapshot()).workspace;
   await verifyLocal(await snapshot());
   await mkdir(".sites-runtime/qa", { recursive: true });
-  await write(fixture);
-  await reload();
-  await expect(tutor()).toContainText(collection.title);
-  await expect(button("Fällige Karten wiederholen", tutor())).toBeVisible();
-  await responsive("today");
+  await fixture();
+  console.log("Checking assistant tools read actual state, save an ordered plan and reject stale revisions");
+  await expect.poll(() => page.evaluate(() => !!window.__tutorTools?.get_tutor_state)).toBe(true);
+  const beforeTool = await snapshot();
+  const toolState = await page.evaluate(() => window.__tutorTools.get_tutor_state.execute({}));
+  assert.equal(toolState.revision, beforeTool.revision);
+  assert.equal(toolState.focus.collectionId, collection.id);
+  assert.deepEqual(toolState.availableConcepts, concepts);
+  assert.deepEqual(await snapshot(), beforeTool, "Reading the planning tool never writes progress.");
+  const toolPlan = { revision: toolState.revision, goal: "Risiken zuerst verstehen, anschließend Grundlagen klären.", targetDate: null,
+    weeklyDays: 4, instructions: "Gemeinsam vereinbarte Reihenfolge, kurze Kartenrunden und Rückmeldung nach jedem Test.",
+    conceptOrder: [concepts[2], concepts[0], concepts[1]] };
+  const toolSaved = await page.evaluate(input => window.__tutorTools.save_tutor_plan.execute(input), toolPlan);
+  assert.equal(toolSaved.saved, true);
+  await expect(page.locator(".save-state")).toHaveText("Gespeichert");
+  const afterTool = await snapshot();
+  assert.equal(afterTool.revision, beforeTool.revision + 1);
+  assert.deepEqual(afterTool.workspace.tutorPlan.conceptOrder, toolPlan.conceptOrder);
+  assert.equal(afterTool.workspace.tutorPlan.instructions, toolPlan.instructions);
+  await expect(tutor()).toContainText(concepts[2]);
+  const stale = await page.evaluate(async input => {
+    try { await window.__tutorTools.save_tutor_plan.execute(input); return null; }
+    catch (error) { return error.message; }
+  }, toolPlan);
+  assert.match(stale, /geändert/);
+  assert.deepEqual(await snapshot(), afterTool, "A stale assistant plan cannot silently overwrite the saved plan.");
+  await fixture();
+  await expect(tutor().getByRole("tab")).toHaveCount(0);
+  await expect(tutor().locator("select:visible, textarea:visible")).toHaveCount(0);
+  await expect(primary()).toHaveText(/Mit 5 Karten starten/);
+  await responsive("ready");
 
-  console.log("Checking the preparation plan persists, survives reload, and reports a failed save honestly");
+  console.log("Checking the collapsed agreed plan persists with its instructions");
+  await click(/^Lernplan und Fokus/, tutor());
   const goal = tutor().getByLabel("Dein Lernziel", { exact: true });
-  const targetDate = tutor().getByLabel("Zieldatum (optional)", { exact: true });
-  const weeklyDays = tutor().getByLabel("Lerntage pro Woche", { exact: true });
-  await goal.fill("Scrum-Zusammenhänge sicher erklären und im Kurztest anwenden.");
-  await targetDate.fill("2099-01-15");
-  if (await weeklyDays.evaluate(element => element.tagName === "SELECT")) await weeklyDays.selectOption("4");
-  else await weeklyDays.fill("4");
-  let stored = await uiSave(() => click("Lernplan speichern", tutor()), workspace => workspace.tutorPlan?.weeklyDays === 4 && workspace.tutorPlan.targetDate === "2099-01-15");
-  assert.equal(stored.tutorPlan.goal, "Scrum-Zusammenhänge sicher erklären und im Kurztest anwenden.");
-  await reload();
-  await expect(goal).toHaveValue(stored.tutorPlan.goal);
-  await expect(targetDate).toHaveValue("2099-01-15");
-  await expect(weeklyDays).toHaveValue("4");
+  const instructions = tutor().getByLabel("Vereinbarter Lernablauf", { exact: true });
+  await goal.fill("Projektmanagement erklären und in Entscheidungssituationen anwenden.");
+  await instructions.fill("Mit fünf Grundlagenkarten beginnen, danach kurz testen und offene Begriffe erneut aufgreifen.");
+  const planned = await uiSave(() => click("Lernplan speichern", tutor()), workspace => !!workspace.tutorPlan?.instructions);
   await responsive("plan");
-  await tab("Vorbereitung");
-  await responsive("preparation");
-  await tab("Heute");
+  await reloadTutor();
+  await expect(goal).toBeHidden();
+  await click(/^Lernplan und Fokus/, tutor());
+  await expect(goal).toHaveValue(planned.tutorPlan.goal);
+  await expect(instructions).toHaveValue(planned.tutorPlan.instructions);
+  await click(/^Lernplan und Fokus/, tutor());
+
+  console.log("Checking bounded sessions, exact resume and the failed final-card save");
+  let data = await startRound();
+  const session = structuredClone(data.tutorSession);
+  assert.equal(session.reason, "foundation");
+  assert.equal(session.concept, concepts[0]);
+  assert.equal(session.cardIds.length, 5);
+  assert.equal(session.questionIds.length, 3);
+  assert.deepEqual(data.flashcardSession.queue.map(card => card.id), session.cardIds);
+  assert.equal(data.flashcardSession.id, session.id);
+  assert.ok(session.cardIds.every(id => cards.find(card => card.id === id)?.noteId === notes[0].id));
+  assert.ok(session.questionIds.every(id => questions.find(question => question.id === id)?.concept === concepts[0]));
+  const recall = "Mein Praxisbeispiel: Ein gemeinsames Projektziel macht Entscheidungen nachvollziehbar.";
+  await rateCurrent(true, recall);
+  await click("Beenden", page.locator(".study-topline"));
+  await reloadTutor();
+  assert.equal((await snapshot()).workspace.flashcardSession.index, 1);
+  await uiSave(() => primary().click(), workspace => workspace.flashcardSession?.id === session.id && workspace.flashcardSession.index === 1);
+  for (let index = 1; index < 4; index++) await rateCurrent();
   const beforeFailure = await snapshot();
-  await verifyLocal(beforeFailure);
-  await goal.fill("Anwendung anhand eines praktischen Teambeispiels festigen.");
   await page.route(api, async route => {
-    if (route.request().method() === "PUT") await route.fulfill({ status: 503, json: { error: "Lokaler Test: Lernplan konnte nicht gespeichert werden." } });
-    else await route.continue();
-  });
-  await click("Lernplan speichern", tutor());
-  await expect(tutor().getByRole("alert")).toBeVisible();
-  assert.deepEqual(await snapshot(), beforeFailure, "A failed plan save must not silently update the persisted goal.");
-  await tab("Auswertung");
-  await tab("Heute");
-  await expect(goal).toHaveValue("Anwendung anhand eines praktischen Teambeispiels festigen.");
-  await expect(tutor().getByRole("alert")).toBeVisible();
+    if (route.request().method() !== "PUT") return route.continue();
+    await route.fulfill({ status: 503, json: { error: "Lokaler Test: Letzte Kartenbewertung konnte nicht gespeichert werden." } });
+  }, { times: 1 });
+  await click("Antwort aufdecken");
+  await click(/^Noch üben/, page.getByRole("group", { name: "Bewertung der Lernkarte", exact: true }));
+  await expect(page.locator(".error-banner")).toBeVisible();
+  assert.deepEqual(await snapshot(), beforeFailure);
+  await expect(page.locator(".quiz-question")).toHaveCount(0);
   await page.unroute(api);
-  stored = await uiSave(() => click("Lernplan speichern", tutor()), workspace => workspace.tutorPlan.goal === "Anwendung anhand eines praktischen Teambeispiels festigen.");
-  await reload();
-  await expect(goal).toHaveValue(stored.tutorPlan.goal);
+  data = await uiSave(() => click(/^Noch üben/, page.getByRole("group", { name: "Bewertung der Lernkarte", exact: true })), workspace => workspace.quizRuns.some(run => !run.finishedAt && run.tutorSessionId === session.id));
+  await expect(page.locator(".quiz-question")).toBeVisible();
+  assert.equal(data.flashcardSession, null);
+  assert.equal(data.cardReviewEvents.filter(event => event.sessionId === session.id).length, 5);
+  assert.equal(data.cardReviewEvents.find(event => event.sessionId === session.id && event.cardId === session.cardIds[0]).response, recall);
+  const test = data.quizRuns.find(run => !run.finishedAt);
+  assert.deepEqual(test.questions.map(question => question.id), session.questionIds);
+  assert.equal(test.collectionId, collection.id);
+  assert.equal(test.mode, "exam");
+  assert.equal(test.tutorSessionId, session.id);
+  await responsive("short-test", page.locator(".quiz-session"));
+  await completeQuiz(test, true);
+  await click("Rückmeldung im Tutor ansehen");
+  await expect(tutor()).toContainText("2 von 3");
+  await responsive("feedback");
+  await click(/^Rückmeldung für die gemeinsame Planung/, tutor());
+  const report = tutor().getByLabel("Tutor-Rückmeldung zum Kopieren", { exact: true });
+  await expect(report).toHaveValue(new RegExp("Weiter zu festigen: " + concepts[0]));
+  await expect(report).toHaveValue(new RegExp("Noch nicht geprüft: " + concepts[1]));
+  await expect(report).toHaveValue(new RegExp(planned.tutorPlan.instructions));
+  await click(/^Rückmeldung für die gemeinsame Planung/, tutor());
+  data = await startRound();
+  assert.equal(data.tutorSession.reason, "repair");
+  assert.equal(data.tutorSession.concept, concepts[0]);
+  assert.equal(data.tutorSession.questionIds.length, 1, "The next test repairs the unresolved task.");
 
-  console.log("Checking external plan conflicts sync untouched fields and preserve a local draft until explicit adoption");
-  async function rejectStalePlanSave(expectedRevision) {
-    const current = await snapshot();
-    await verifyLocal(current);
-    const request = page.waitForRequest(request => request.url() === api && request.method() === "PUT");
-    const response = page.waitForResponse(response => response.url() === api && response.request().method() === "PUT");
-    await click("Lernplan speichern", tutor());
-    assert.equal((await request).postDataJSON().revision, expectedRevision);
-    assert.equal((await response).status(), 409);
-    await expect(page.locator(".error-banner")).toBeVisible();
-    assert.deepEqual(await snapshot(), current, "A stale plan save must preserve the parallel stored plan.");
-    await click("Aktuellen Stand laden");
-    await expect(page.locator(".error-banner")).toHaveCount(0);
-    await expect(page.locator(".save-state")).toHaveText("Gespeichert");
-    assert.deepEqual(await snapshot(), current, "Loading the current plan creates no additional write.");
-  }
-  const pristineBefore = await snapshot();
-  const pristineRemote = structuredClone(pristineBefore.workspace);
-  pristineRemote.tutorPlan = { goal: "Extern gespeichertes Lernziel für meine nächste Vorbereitung.", targetDate: null, weeklyDays: 2, updatedAt: new Date().toISOString() };
-  const pristineSaved = await write(pristineRemote);
-  await rejectStalePlanSave(pristineBefore.revision);
-  await expect(goal).toHaveValue(pristineSaved.workspace.tutorPlan.goal);
-  await expect(targetDate).toHaveValue("");
-  await expect(weeklyDays).toHaveValue("2");
-  await expect(button("Aktuellen Lernplan übernehmen", tutor())).toHaveCount(0);
-
-  await goal.fill("Mein eigener Entwurf soll beim Laden erhalten bleiben.");
-  const dirtyBefore = await snapshot();
-  const dirtyRemote = structuredClone(dirtyBefore.workspace);
-  dirtyRemote.tutorPlan = { goal: "Ein zweites parallel gespeichertes Lernziel.", targetDate: "2099-02-20", weeklyDays: 5, updatedAt: new Date().toISOString() };
-  const dirtySaved = await write(dirtyRemote);
-  await rejectStalePlanSave(dirtyBefore.revision);
-  await expect(goal).toHaveValue("Mein eigener Entwurf soll beim Laden erhalten bleiben.");
-  await expect(targetDate).toHaveValue("");
-  await expect(weeklyDays).toHaveValue("2");
-  await expect(tutor().locator(".tutor-plan-remote-change")).toContainText(/zwischenzeitlich geändert/);
-  await click("Aktuellen Lernplan übernehmen", tutor());
-  await expect(goal).toHaveValue(dirtySaved.workspace.tutorPlan.goal);
-  await expect(targetDate).toHaveValue("2099-02-20");
-  await expect(weeklyDays).toHaveValue("5");
-  await expect(tutor().locator(".tutor-plan-remote-change")).toHaveCount(0);
-  assert.deepEqual(await snapshot(), dirtySaved, "Adopting the stored plan only replaces the local form draft.");
-
-  console.log("Checking direct card entry, durable daily self-ratings, continuity, and exact resume position");
-  await tab("Heute");
-  stored = await uiSave(() => click("Fällige Karten wiederholen", tutor()), workspace => workspace.flashcardSession?.index === 0);
-  assert.equal(stored.flashcardSession.collectionId, collection.id);
-  assert.deepEqual(stored.flashcardSession.queue.map(card => card.id), cards.map(card => card.id));
-  await expect(page.locator(".study-question")).toContainText(cards[0].question);
+  console.log("Checking revision conflicts cannot rate cards or advance the durable queue");
+  await fixture();
+  await startRound();
+  const beforeConflict = await snapshot();
+  await write({ ...beforeConflict.workspace, tutorPlan: { goal: "Zwischenzeitlich abgestimmter Lernplan", targetDate: null, weeklyDays: 3, updatedAt: new Date().toISOString() } });
+  const afterRemote = await snapshot();
   await click("Antwort aufdecken");
-  stored = await uiSave(() => click(/^Gewusst/), workspace => todaysReviews(workspace)?.reviewed === 1 && todaysReviews(workspace).known === 1);
-  assert.equal(stored.cards[0].reviews, 1);
-  await click("Beenden");
-  await reload();
-  await expect(button("Lernkarten fortsetzen", tutor())).toBeVisible();
-  await expect(tutor().getByLabel("Lernfokus auswählen", { exact: true })).toBeDisabled();
-  await expect(button("Kurztest starten", tutor())).toBeDisabled();
-  await expect(tutor().locator(".tutor-week-strip")).toBeVisible();
-  await expect(tutor().locator(".tutor-week-strip li")).toHaveCount(7);
-  assert.ok((await tutor().locator(".tutor-week-strip li").evaluateAll(elements => elements.map(element => element.getAttribute("aria-label")))).some(label => /8 Kartenbewertungen/.test(label)), "The learning week includes the new review and activity in the other collection.");
-  await uiSave(() => click("Lernkarten fortsetzen", tutor()), workspace => workspace.flashcardSession?.index === 1);
-  await expect(page.locator(".study-question")).toContainText(cards[1].question);
-  await click("Antwort aufdecken");
-  stored = await uiSave(() => click(/^Noch üben/), workspace => workspace.flashcardSession === null && todaysReviews(workspace)?.reviewed === 2 && todaysReviews(workspace).known === 1);
-  assert.equal(stored.cardReviewDays.find(item => item.collectionId === unrelated.id).reviewed, 7, "A card rating retains the other collection's historical activity.");
-  await reload();
+  const rejected = page.waitForResponse(response => response.url() === api && response.request().method() === "PUT");
+  await click(/^Gewusst/, page.getByRole("group", { name: "Bewertung der Lernkarte", exact: true }));
+  assert.equal((await rejected).status(), 409);
+  await expect(page.locator(".error-banner")).toBeVisible();
+  assert.deepEqual(await snapshot(), afterRemote);
 
-  console.log("Checking a direct scoped short test and its persisted evaluation");
-  stored = await uiSave(() => click("Kurztest starten", tutor()), workspace => workspace.quizRuns.length === 1 && !workspace.quizRuns[0].finishedAt);
-  const run = stored.quizRuns[0];
-  assert.equal(run.mode, "exam");
-  assert.equal(run.collectionId, collection.id);
-  assert.equal(run.questions.length, 4);
-  assert.ok(run.questions.every(question => collection.questionIds.includes(question.id)), "The direct test never pulls tasks from another collection.");
-  for (let index = 0; index < run.questions.length; index++) {
-    const question = run.questions[index];
-    await expect(page.locator(".quiz-question")).toContainText(question.prompt);
-    await page.getByRole("checkbox", { name: question.options[index === 0 ? 0 : 1].text, exact: true }).check();
-    await uiSave(() => click("Antwort speichern"), workspace => workspace.quizRuns[0].answers.length === index + 1);
-    await expect(page.locator(".quiz-verdict, .quiz-option-review")).toHaveCount(0);
-  }
-  await uiSave(() => click("Test abgeben"), workspace => !!workspace.quizRuns[0].finishedAt);
-  await expect(page.locator(".quiz-result-summary")).toContainText("1 von 4 richtig");
-  await click("Zum Lernüberblick");
-  await expect(tutor()).toBeVisible();
-  await tab("Auswertung");
-  await expect(tutor().locator(".tutor-result-list")).toContainText(/25\s*%/);
-  await expect(tutor().locator(".tutor-result-list").getByRole("button", { name: /Auswertung ansehen$/ })).toHaveCount(1);
-  const resultRevision = (await snapshot()).revision;
-  await click(/Auswertung ansehen$/, tutor().locator(".tutor-result-list"));
-  await expect(page.locator(".quiz-result-summary")).toContainText("1 von 4 richtig");
-  assert.equal((await snapshot()).revision, resultRevision, "Viewing a saved result creates no extra completion or new run.");
-  await reload();
-  await tab("Auswertung");
-  await expect(tutor().locator(".tutor-result-list")).toContainText(/25\s*%/);
-  await responsive("evaluation");
+  console.log("Checking quiz-only pause/resume and the next uncovered foundation");
+  await fixture({ ...structuredClone(mainFixture), cards: [], learningCollections: [structuredClone(collection)] });
+  data = await startRound();
+  assert.deepEqual(data.tutorSession.cardIds, []);
+  let quizOnlyRun = data.quizRuns.find(run => !run.finishedAt);
+  await page.getByRole("checkbox", { name: quizOnlyRun.questions[0].options[0].text, exact: true }).check();
+  await uiSave(() => click("Antwort speichern"), workspace => workspace.quizRuns.find(run => run.id === quizOnlyRun.id)?.answers.length === 1);
+  await reloadTutor();
+  await primary().click();
+  await expect(page.locator(".quiz-question")).toContainText(quizOnlyRun.questions[1].prompt);
+  assert.equal((await snapshot()).workspace.quizRuns.filter(run => !run.finishedAt).length, 1);
+  quizOnlyRun = (await snapshot()).workspace.quizRuns.find(run => !run.finishedAt);
+  await completeQuiz(quizOnlyRun);
+  await click("Rückmeldung im Tutor ansehen");
+  await expect(tutor()).toContainText("3 von 3");
+  data = await startRound();
+  assert.equal(data.tutorSession.reason, "foundation");
+  assert.equal(data.tutorSession.concept, concepts[1]);
 
-  console.log("Checking comparable learning-curve results and collection scope while continuity stays global");
-  const evaluated = (await snapshot()).workspace;
-  const baseline = { ...structuredClone(evaluated.quizRuns[0]), id: "tutor-baseline-run", startedAt: yesterday, finishedAt: yesterday, answers: evaluated.quizRuns[0].questions.map(question => ({ questionId: question.id, selectedOptionIds: [question.options[1].id], answeredAt: yesterday, reflection: "" })) };
-  const outsideRun = { id: "tutor-outside-run", subject: outsideQuestion.subject, mode: "exam", collectionId: unrelated.id, startedAt: now, deadlineAt: null, finishedAt: now, questions: [outsideQuestion], answers: [{ questionId: outsideQuestion.id, selectedOptionIds: outsideQuestion.correctOptionIds, answeredAt: now, reflection: "" }] };
-  evaluated.quizRuns = [baseline, evaluated.quizRuns[0], outsideRun];
-  await write(evaluated);
-  await reload();
-  const globalWeek = await tutor().locator(".tutor-week-strip li").evaluateAll(elements => elements.map(element => element.getAttribute("aria-label")));
-  await tab("Auswertung");
-  await expect(tutor().locator(".tutor-result-list").getByRole("button", { name: /Auswertung ansehen$/ })).toHaveCount(2);
-  await expect(tutor().locator(".tutor-learning-curve")).toBeVisible();
-  await expect(tutor()).toContainText(/\+25\s+Prozentpunkte/);
-  await responsive("curve");
-  await uiSave(() => tutor().getByLabel("Lernfokus auswählen", { exact: true }).selectOption(unrelated.id), workspace => workspace.learningFocus.collectionId === unrelated.id);
-  await expect(tutor().locator(".tutor-result-list").getByRole("button", { name: /Auswertung ansehen$/ })).toHaveCount(1);
-  await expect(tutor().locator(".tutor-result-list")).toContainText(/100\s*%/);
-  await expect(tutor().locator(".tutor-result-list")).not.toContainText(subject);
-  await tab("Heute");
-  assert.deepEqual(await tutor().locator(".tutor-week-strip li").evaluateAll(elements => elements.map(element => element.getAttribute("aria-label"))), globalWeek, "Changing the learning focus does not hide the overall learning continuity.");
-  await reload();
-  await expect(tutor().getByLabel("Lernfokus auswählen", { exact: true })).toHaveValue(unrelated.id);
-
-  console.log("Checking cards-only and empty workspaces expose useful entry points");
-  const cardsOnly = structuredClone(fixture);
-  cardsOnly.cards = structuredClone(cards);
-  cardsOnly.quizQuestions = [];
-  cardsOnly.quizRuns = [];
-  cardsOnly.cardReviewDays = [];
-  cardsOnly.learningCollections = [{ ...structuredClone(collection), questionIds: [] }];
-  cardsOnly.learningFocus.subject = null;
-  await write(cardsOnly);
-  await reload();
-  await expect(button("Fällige Karten wiederholen", tutor())).toBeEnabled();
-  assert.equal(await button("Kurztest starten", tutor()).isEnabled().catch(() => false), false, "Cards-only preparation must not offer a runnable empty test.");
-  await responsive("cards-only");
-  await uiSave(() => click("Fällige Karten wiederholen", tutor()), workspace => workspace.flashcardSession?.queue.length === 2);
-  await expect(page.locator(".study-question")).toBeVisible();
-  const empty = { schemaVersion: 1, topics: [], notes: [], paths: [], completedStepIds: [], cards: [], quizQuestions: [], quizRuns: [], learningReminders: [], learningCollections: [] };
-  await write(empty);
-  await reload();
-  await expect(tutor().getByRole("heading")).not.toHaveCount(0);
-  await expect(tutor()).toContainText(/Lernsammlung|Vorbereitung|Lernbestand/);
+  console.log("Checking honest cards-only feedback and an empty focus without invented tasks");
+  await fixture({ ...structuredClone(mainFixture), quizQuestions: [], learningCollections: [{ ...structuredClone(collection), questionIds: [] }] });
+  data = await startRound();
+  assert.equal(data.tutorSession.cardIds.length, 5);
+  assert.deepEqual(data.tutorSession.questionIds, []);
+  for (let index = 0; index < 5; index++) await rateCurrent();
+  await expect(page.locator(".study-finished")).toBeVisible();
+  assert.equal((await snapshot()).workspace.quizRuns.length, 0);
+  await click("Rückmeldung im Tutor ansehen");
+  await expect(tutor()).toContainText("selbst als sicher eingeschätzt");
+  await expect(tutor()).toContainText("noch kein Testergebnis");
+  await fixture({ schemaVersion: 1, topics: [], notes: [], paths: [], completedStepIds: [], cards: [], quizQuestions: [], quizRuns: [], learningReminders: [], learningCollections: [] });
+  await expect(tutor()).toContainText(/keine passende|Ergänze passende|Lernsammlung/);
+  assert.equal((await snapshot()).workspace.tutorSession, undefined);
   await responsive("empty");
-  const emptyRevision = (await snapshot()).revision;
-  await click("Lernsammlung anlegen", tutor());
-  await expect(page.getByRole("region", { name: "Lernsammlungen", exact: true })).toBeVisible();
-  await expect(button("Neue Lernsammlung")).toBeEnabled();
-  assert.equal((await snapshot()).revision, emptyRevision, "The empty-state entry point opens preparation without inventing progress.");
-  await click("Tutor");
-  await tab("Auswertung");
-  await expect(tutor()).toContainText(/noch keine|Noch keine|ersten|erste/);
-  assert.deepEqual(errors, [], "No client runtime errors.");
-  console.log("Tutor browser tests passed.");
+  assert.deepEqual(errors, [], "The guided flow has no client runtime errors.");
+  console.log("Guided tutor browser tests passed.");
 } finally {
   await page.unroute(api);
   await page.goto("about:blank");
