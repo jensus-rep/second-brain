@@ -29,11 +29,11 @@ const llmEnvelope = (selection = { candidate_id: "c0", message: "Eine kurze Rund
   output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text: JSON.stringify(selection) }] }], ...overrides,
 });
 const mockedResponse = (selection, overrides) => Response.json(llmEnvelope(selection, overrides));
-function harness({ data = workspace(), enabled = true, fetcher = async () => mockedResponse(), timeoutMs } = {}) {
+function harness({ data = workspace(), enabled = true, fetcher = async () => mockedResponse(), timeoutMs, deployment = "gpt-6.1-sol" } = {}) {
   const state = { revision: 7, now: initialNow, reads: [], calls: [], data, enabled };
   const runtime = createTutorRuntime({
     readWorkspace: async owner => { state.reads.push(owner); return { workspace: state.data, revision: state.revision }; },
-    config: () => state.enabled ? tutorLlmConfig(env) : tutorLlmConfig({ ...env, NEWHOPE_TUTOR_LLM_ENABLED: "false" }),
+    config: () => state.enabled ? tutorLlmConfig({ ...env, AZURE_OPENAI_TUTOR_DEPLOYMENT: deployment }) : tutorLlmConfig({ ...env, NEWHOPE_TUTOR_LLM_ENABLED: "false" }),
     fetch: async (...args) => { state.calls.push(args); return fetcher(...args); },
     now: () => state.now, timeoutMs,
   });
@@ -102,6 +102,7 @@ test("the model selects only a server-generated candidate and gets compact scope
   assert.equal(body.model, "gpt-6.1-sol");
   assert.equal(body.store, false);
   assert.equal(body.max_output_tokens, 1024);
+  assert.deepEqual(body.reasoning, { effort: "low" });
   assert.equal(body.text.format.strict, true);
   assert.deepEqual(body.text.format.schema.properties.candidate_id.enum, ["c0", "c1"]);
   assert.equal(Object.hasOwn(body, "tools"), false);
@@ -111,6 +112,25 @@ test("the model selects only a server-generated candidate and gets compact scope
   assert.equal(options.body.includes("PRIVATE_"), false, "No note, answer, goal, task content, identity or unrelated scope is sent");
   assert.equal(options.body.includes('"alpha"'), false, "Internal collection IDs stay server-side");
   assert.equal(options.body.includes('"q1"'), false, "Internal question IDs stay server-side");
+});
+
+test("Azure schema compatibility preserves local text limits and avoids unsupported reasoning parameters on other deployments", async () => {
+  for (const deployment of ["gpt-6.1-sol", "gpt-4.1", "custom-deployment"]) {
+    const { runtime, state } = harness({ deployment, fetcher: async (_url, options) => {
+      const body = JSON.parse(options.body);
+      const messageSchema = body.text.format.schema.properties.message;
+      assert.equal(Object.hasOwn(messageSchema, "maxLength"), false, "Azure's supported schema subset does not accept string length keywords");
+      assert.equal(messageSchema.type, "string");
+      assert.deepEqual(body.text.format.schema.required, ["candidate_id", "message"]);
+      if (deployment === "gpt-6.1-sol") assert.deepEqual(body.reasoning, { effort: "low" });
+      else assert.equal(Object.hasOwn(body, "reasoning"), false, "Unspecified deployments must not receive model-specific parameters");
+      return mockedResponse({ candidate_id: "c0", message: "x".repeat(421) });
+    } });
+    const result = await runtime("owner", input);
+    assert.equal(state.calls.length, 1);
+    assert.equal(result.source, "rules", "The local length check still rejects an oversized provider response");
+    assert.ok(result.message.length <= 420);
+  }
 });
 
 test("unfinished quiz and card rounds remain the sole permissible overview candidate", async () => {

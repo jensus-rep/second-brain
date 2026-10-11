@@ -149,6 +149,7 @@ async function generateSuggestion(config: TutorLlmConfig, plan: TutorPlan, fetch
         method: "POST", headers: { "Content-Type": "application/json", "api-key": config.apiKey }, redirect: "error", signal: controller.signal,
         body: JSON.stringify({
           model: config.deployment, store: false, max_output_tokens: 1024, instructions,
+          ...(config.deployment === "gpt-6.1-sol" ? { reasoning: { effort: "low" } } : {}),
           input: JSON.stringify({ ...plan.summary, candidates: plan.candidates.map(candidate => ({
             id: candidate.id, kind: candidate.action.kind,
             subject: "subject" in candidate.action ? short(candidate.action.subject) : null,
@@ -156,7 +157,7 @@ async function generateSuggestion(config: TutorLlmConfig, plan: TutorPlan, fetch
             taskCount: "questionCount" in candidate.action ? candidate.action.questionCount : null,
           })) }),
           text: { format: { type: "json_schema", name: "tutor_suggestion", strict: true, schema: {
-            type: "object", additionalProperties: false, properties: { candidate_id: { type: "string", enum: plan.candidates.map(item => item.id) }, message: { type: "string", maxLength: 420 } }, required: ["candidate_id", "message"],
+            type: "object", additionalProperties: false, properties: { candidate_id: { type: "string", enum: plan.candidates.map(item => item.id) }, message: { type: "string" } }, required: ["candidate_id", "message"],
           } } },
         }),
       });
