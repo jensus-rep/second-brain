@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronDown, LoaderCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -8,16 +8,32 @@ import { answerComparisonResultSchema, answerResponseFingerprint, referenceAnswe
 import { Markdown } from "./markdown";
 
 /** A comparison belongs to one response and one revision of the source card. */
-export function useAnswerComparison({ revision, sessionId, cardId, question, answer, response, active, requestEnabled }: {
-  revision: number; sessionId?: string; cardId?: string; question: string; answer: string; response: string; active: boolean; requestEnabled: boolean;
+export function useAnswerComparison({ revision, sessionId, cardId, question, answer, response, active, revealed, requestEnabled }: {
+  revision: number; sessionId?: string; cardId?: string; question: string; answer: string; response: string; active: boolean; revealed: boolean; requestEnabled: boolean;
 }) {
   const ownResponse = response.trim();
+  const [attempt, setAttempt] = useState(0);
+  const sourceKey = JSON.stringify([revision, sessionId, cardId, question, answer]);
   const requestKey = active && revision >= 0 && sessionId && cardId && ownResponse
-    ? JSON.stringify([revision, sessionId, cardId, question, answer, ownResponse]) : null;
+    ? JSON.stringify([sourceKey, ownResponse, attempt]) : null;
   const [completed, setCompleted] = useState<{ key: string; result: AnswerComparisonResult } | null>(null);
+  const [scheduledKey, setScheduledKey] = useState<string | null>(null);
+  const preloadedSource = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!requestKey || !requestEnabled || !sessionId || !cardId || completed?.key === requestKey) return;
+    if (!requestKey || !requestEnabled || completed?.key === requestKey) return;
+    // At most one speculative comparison per source, after a writing pause.
+    // Later edits are compared on reveal, keeping the hourly budget useful.
+    if (!revealed && preloadedSource.current === sourceKey) return;
+    const timer = window.setTimeout(() => {
+      if (!revealed) preloadedSource.current = sourceKey;
+      setScheduledKey(requestKey);
+    }, revealed ? 0 : 1200);
+    return () => window.clearTimeout(timer);
+  }, [requestKey, sourceKey, requestEnabled, revealed, completed?.key]);
+
+  useEffect(() => {
+    if (!requestKey || scheduledKey !== requestKey || !requestEnabled || !sessionId || !cardId || completed?.key === requestKey) return;
     const controller = new AbortController();
     let disposed = false;
     const fallback = referenceAnswerComparison({ revision, cardId, response: ownResponse }, answer);
@@ -45,12 +61,12 @@ export function useAnswerComparison({ revision, sessionId, cardId, question, ans
     }
     void compare();
     return () => { disposed = true; window.clearTimeout(timeout); controller.abort(); };
-  }, [requestKey, requestEnabled, completed?.key, revision, sessionId, cardId, ownResponse, answer]);
+  }, [requestKey, scheduledKey, requestEnabled, completed?.key, revision, sessionId, cardId, ownResponse, answer]);
 
   const result = requestKey && cardId
     ? completed?.key === requestKey ? completed.result : referenceAnswerComparison({ revision, cardId, response: ownResponse }, answer)
     : null;
-  return { result, pending: !!requestKey && requestEnabled && completed?.key !== requestKey };
+  return { result, pending: !!requestKey && requestEnabled && completed?.key !== requestKey, retry: () => setAttempt(value => value + 1) };
 }
 
 const verdictTitles: Record<AnswerComparisonResult["verdict"], string> = {
@@ -58,8 +74,8 @@ const verdictTitles: Record<AnswerComparisonResult["verdict"], string> = {
   unclear: "Deine Erklärung ist noch nicht eindeutig", reference: "Zum Abgleichen",
 };
 
-export function AnswerComparisonView({ comparison, pending, answer }: {
-  comparison: AnswerComparisonResult; pending: boolean; answer: string;
+export function AnswerComparisonView({ comparison, pending, answer, onRetry }: {
+  comparison: AnswerComparisonResult; pending: boolean; answer: string; onRetry?: () => void;
 }) {
   return <div className="study-answer-comparison" data-source={comparison.source} data-verdict={comparison.verdict} aria-label="Vergleich deiner Antwort" aria-busy={pending}>
     <div className="study-comparison-heading"><span className="eyebrow">DEINE ERKLÄRUNG IM VERGLEICH</span><span className="study-comparison-source">{comparison.source === "llm" ? "KI-Kurzvergleich" : "Referenz zum Abgleichen"}</span></div>
@@ -70,6 +86,7 @@ export function AnswerComparisonView({ comparison, pending, answer }: {
           {comparison.missing.length > 0 && <p><strong>Das fehlt noch:</strong> {comparison.missing.join("; ")}</p>}
         </>}
     </div>
+    {!pending && comparison.source === "reference" && onRetry && <Button type="button" variant="outline" onClick={onRetry}>Vergleich erneut versuchen</Button>}
     <div className="study-comparison-reference"><h3>Musterantwort in Kürze</h3><p>{referenceAnswer(comparison.reference, 360)}</p></div>
     <Collapsible className="study-reference-full"><CollapsibleTrigger asChild><Button type="button" variant="ghost">Vollständige Musterantwort<ChevronDown size={16} aria-hidden="true" /></Button></CollapsibleTrigger><CollapsibleContent><Markdown content={answer} /></CollapsibleContent></Collapsible>
   </div>;

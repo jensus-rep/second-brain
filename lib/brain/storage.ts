@@ -12,6 +12,9 @@ export async function readWorkspace(owner: string): Promise<Snapshot> {
   if (!row) throw new Error("Die Wissenssammlung konnte nicht geladen werden.");
   return { workspace: workspaceSchema.parse(JSON.parse(row.body)), revision: row.revision };
 }
+export async function readWorkspaceRevision(owner: string): Promise<number | null> {
+  return (await store()).getWorkspaceRevision(owner);
+}
 export async function writeWorkspace(owner: string, workspace: Workspace, revision: number): Promise<Snapshot | null> {
   const saved = await (await store()).updateWorkspace(owner, JSON.stringify(workspace), revision);
   return saved ? { workspace, revision: revision + 1 } : null;

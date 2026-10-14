@@ -33,18 +33,36 @@ const instructions = [
   "Antworte ausschließlich gemäß JSON-Schema mit verdict, summary, matched und missing.",
 ].join(" ");
 
+// Presentation limits must not discard an otherwise usable comparison. Validate
+// every statement first, then compact it for the UI. Unsafe output still fails.
+const statement = z.string().trim().min(1).max(2000).refine(value =>
+  !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(value) && !/<\/?[a-z][^>]*>/i.test(value) &&
+  !/\b(?:[a-z][a-z0-9+.-]*:\/\/|www\.|mailto:|javascript:|data:)/i.test(value));
 const selectionSchema = z.object({
-  verdict: z.enum(["aligned", "partial", "needs_revision", "unclear"]), summary: z.string(),
-  matched: z.array(z.string()), missing: z.array(z.string()),
+  verdict: z.enum(["aligned", "partial", "needs_revision", "unclear"]), summary: statement,
+  matched: z.array(statement).max(8), missing: z.array(statement).max(8),
 }).strict();
+
+function compactStatement(value: string, limit: number): string {
+  const text = value.replace(/\s+/g, " ");
+  if (text.length <= limit) return text;
+  const cut = text.lastIndexOf(" ", limit - 2);
+  return text.slice(0, cut >= limit / 2 ? cut : limit - 2).trimEnd() + " …";
+}
 const envelopeSchema = z.object({
   status: z.literal("completed"), error: z.null().optional(), incomplete_details: z.null().optional(),
   output: z.array(z.object({ type: z.string(), content: z.array(z.object({ type: z.string(), text: z.string().optional() }).passthrough()).optional() }).passthrough()),
 }).passthrough();
 
+class ComparisonFailure extends Error {
+  readonly reason: string;
+  constructor(reason: string) { super(reason); this.reason = reason; }
+}
+
 async function boundedJson(response: Response): Promise<unknown> {
   const maxBytes = 32_768;
-  if (!response.ok || Number(response.headers.get("content-length")) > maxBytes || !response.body) throw new Error("Comparison unavailable");
+  if (!response.ok || !response.body) throw new ComparisonFailure("provider_unavailable");
+  if (Number(response.headers.get("content-length")) > maxBytes) throw new ComparisonFailure("oversized_response");
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let length = 0;
@@ -53,7 +71,7 @@ async function boundedJson(response: Response): Promise<unknown> {
       const next = await reader.read();
       if (next.done) break;
       length += next.value.byteLength;
-      if (length > maxBytes) throw new Error("Comparison too large");
+      if (length > maxBytes) throw new ComparisonFailure("oversized_response");
       chunks.push(next.value);
     }
   } finally { await reader.cancel().catch(() => {}); }
@@ -66,9 +84,10 @@ async function boundedJson(response: Response): Promise<unknown> {
 async function generateComparison(config: TutorLlmConfig, input: AnswerComparisonInput, card: Flashcard,
   fallback: AnswerComparisonResult, fetcher: typeof fetch, timeoutMs: number): Promise<AnswerComparisonResult> {
   const controller = new AbortController();
+  const startedAt = Date.now();
   let timer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => { controller.abort(); reject(new Error("Comparison timeout")); }, timeoutMs);
+    timer = setTimeout(() => { controller.abort(); reject(new ComparisonFailure("timeout")); }, timeoutMs);
   });
   try {
     const operation = (async () => {
@@ -88,16 +107,23 @@ async function generateComparison(config: TutorLlmConfig, input: AnswerCompariso
         }),
       });
       const envelope = envelopeSchema.parse(await boundedJson(response));
-      if (envelope.output.some(item => item.type !== "message" && item.type !== "reasoning" || item.content?.some(content => content.type !== "output_text"))) throw new Error("Comparison refused");
+      if (envelope.output.some(item => item.type !== "message" && item.type !== "reasoning" || item.content?.some(content => content.type !== "output_text"))) throw new ComparisonFailure("unexpected_output");
       const content = envelope.output.flatMap(item => item.type === "message" ? item.content ?? [] : []);
-      if (content.length !== 1 || !content[0].text) throw new Error("Comparison missing");
+      if (content.length !== 1 || !content[0].text) throw new ComparisonFailure("missing_output");
       const selected = selectionSchema.parse(JSON.parse(content[0].text));
-      return answerComparisonResultSchema.parse({ ...fallback, ...selected, source: "llm" });
+      return answerComparisonResultSchema.parse({ ...fallback, ...selected, source: "llm",
+        summary: compactStatement(selected.summary, 300),
+        matched: selected.matched.slice(0, 2).map(value => compactStatement(value, 140)),
+        missing: selected.missing.slice(0, 2).map(value => compactStatement(value, 140)),
+      });
     })();
     return await Promise.race([operation, deadline]);
   } catch (error) {
-    // Only the failure class is logged; card text and learner answers stay out of the logs.
-    console.warn("Answer comparison LLM fallback", error instanceof Error ? error.name + ": " + error.message.slice(0, 120) : "unknown");
+    // Stable failure categories and latency make outages diagnosable without
+    // logging provider diagnostics, card text or learner answers.
+    const reason = error instanceof ComparisonFailure ? error.reason : error instanceof z.ZodError ? "invalid_output"
+      : error instanceof SyntaxError ? "invalid_json" : "provider_error";
+    console.warn("Answer comparison LLM fallback", { reason, durationMs: Date.now() - startedAt });
     return fallback;
   }
   finally { if (timer) clearTimeout(timer); }
@@ -110,6 +136,7 @@ type OwnerState = {
 };
 export type AnswerComparisonDependencies = {
   readWorkspace: (owner: string) => Promise<Snapshot>;
+  readRevision?: (owner: string) => Promise<number | null>;
   config?: () => TutorLlmConfig | null; fetch?: typeof fetch; now?: () => number; timeoutMs?: number;
 };
 
@@ -136,7 +163,9 @@ export function createAnswerComparisonRuntime(dependencies: AnswerComparisonDepe
         owners.set(owner, state);
       }
       if (state) {
-        const key = createHash("sha256").update(JSON.stringify([config.endpoint, config.deployment, input, card.question, card.answer])).digest("hex");
+        // A save unrelated to this card or a new round does not change the
+        // semantic comparison. Current revision/session are validated separately.
+        const key = createHash("sha256").update(JSON.stringify([config.endpoint, config.deployment, card.id, card.question, card.answer, input.response])).digest("hex");
         const cached = state.cache.get(key);
         const pending = state.pending.get(key);
         if (cached && cached.until > time) result = cached.result;
@@ -147,7 +176,8 @@ export function createAnswerComparisonRuntime(dependencies: AnswerComparisonDepe
           const currentState = state;
           const operation = generateComparison(config, input, card, fallback, dependencies.fetch ?? fetch,
             Math.min(15_000, Math.max(1, dependencies.timeoutMs ?? 10_000))).then(value => {
-            currentState.cache.set(key, { until: now() + 120_000, result: value });
+            // A transient failure must not suppress the next attempt for 2 min.
+            if (value.source === "llm") currentState.cache.set(key, { until: now() + 120_000, result: value });
             while (currentState.cache.size > 20) currentState.cache.delete(currentState.cache.keys().next().value!);
             return value;
           }).finally(() => { currentState.pending.delete(key); activeCalls--; });
@@ -158,10 +188,16 @@ export function createAnswerComparisonRuntime(dependencies: AnswerComparisonDepe
     }
     // Revalidate cached, coalesced and fallback results too; a concurrent save
     // invalidates the advisory even when its card itself did not change.
-    const latest = await dependencies.readWorkspace(owner);
-    if (latest.revision !== input.revision) throw new AnswerComparisonConflict();
-    const latestCard = activeCard(latest.workspace, input);
-    if (latestCard.question !== card.question || latestCard.answer !== card.answer) throw new AnswerComparisonConflict();
-    return result;
+    if (dependencies.readRevision) {
+      // All workspace writes advance the revision atomically. Rechecking this
+      // number avoids downloading and validating the entire collection twice.
+      if (await dependencies.readRevision(owner) !== input.revision) throw new AnswerComparisonConflict();
+    } else {
+      const latest = await dependencies.readWorkspace(owner);
+      if (latest.revision !== input.revision) throw new AnswerComparisonConflict();
+      const latestCard = activeCard(latest.workspace, input);
+      if (latestCard.question !== card.question || latestCard.answer !== card.answer) throw new AnswerComparisonConflict();
+    }
+    return { ...result, revision: input.revision, cardId: input.cardId };
   };
 }

@@ -6,6 +6,7 @@ export type AccessKeyRecord = { id: string; ownerId: string; name: string; hint:
 
 export interface Store {
   getWorkspace(owner: string): Promise<WorkspaceRow | null>;
+  getWorkspaceRevision(owner: string): Promise<number | null>;
   /** Inserts the initial body only when the owner has no workspace yet. */
   createWorkspace(owner: string, body: string): Promise<void>;
   /** Writes only when the stored revision still matches; returns false on conflict. */

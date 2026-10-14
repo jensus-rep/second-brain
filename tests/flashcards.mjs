@@ -142,6 +142,50 @@ try {
   const foreignReply = await page.request.post(origin + "/api/tutor/compare", { headers: { Origin: "https://example.invalid" }, data: endpointInput });
   assert.equal(foreignReply.status(), 403);
 
+  console.log("Checking preparation during a writing pause and reuse on reveal");
+  comparisonHandler = async (route, body) => route.fulfill({ json: shortComparison(body) });
+  await start();
+  const preparedRequestCount = comparisonRequests.length;
+  await page.getByLabel("Deine Antwort in eigenen Worten", { exact: true }).fill("Ein eigenes Beispiel hilft beim aktiven Erinnern.");
+  await expect.poll(() => comparisonRequests.length).toBe(preparedRequestCount + 1);
+  await expect(page.locator(".study-answer")).toHaveCount(0);
+  await reveal().click();
+  await expect(page.locator(".study-answer-comparison")).toHaveAttribute("data-source", "llm");
+  assert.equal(comparisonRequests.length, preparedRequestCount + 1, "Revealing a prepared comparison must not start another request");
+
+  await start();
+  await holdComparison();
+  const pendingRequestCount = comparisonRequests.length;
+  await page.getByLabel("Deine Antwort in eigenen Worten", { exact: true }).fill("Diese Erklärung wird bereits vor dem Aufdecken vorbereitet.");
+  await heldComparison.request;
+  await reveal().click();
+  await expect(page.locator(".study-answer-comparison")).toHaveAttribute("aria-busy", "true");
+  assert.equal(comparisonRequests.length, pendingRequestCount + 1, "Reveal must preserve the running comparison");
+  heldComparison.release();
+  await heldComparison.done;
+  heldComparison = null;
+  await expect(page.locator(".study-answer-comparison")).toHaveAttribute("data-source", "llm");
+
+  console.log("Checking edits after preparation and the speculative request budget");
+  await start();
+  await holdComparison();
+  const editedRequestCount = comparisonRequests.length;
+  await page.getByLabel("Deine Antwort in eigenen Worten", { exact: true }).fill("Ein erster Entwurf, der noch verändert wird.");
+  await heldComparison.request;
+  const finalResponse = "Mein endgültiges Beispiel erklärt den Zusammenhang mit aktivem Erinnern.";
+  await page.getByLabel("Deine Antwort in eigenen Worten", { exact: true }).fill(finalResponse);
+  heldComparison.release();
+  await heldComparison.done;
+  heldComparison = null;
+  await page.waitForTimeout(1400);
+  assert.equal(comparisonRequests.length, editedRequestCount + 1, "Only one speculative draft per card is compared");
+  await expect(page.locator(".study-answer")).toHaveCount(0);
+  comparisonHandler = async (route, body) => route.fulfill({ json: shortComparison(body) });
+  await reveal().click();
+  await expect(page.locator(".study-answer-comparison")).toHaveAttribute("data-source", "llm");
+  assert.equal(comparisonRequests.length, editedRequestCount + 2);
+  assert.equal(comparisonRequests.at(-1).response, finalResponse);
+
   console.log("Checking concise own-answer comparison and its manual rating");
   comparisonHandler = async (route, body) => route.fulfill({ json: shortComparison(body) });
   await page.setViewportSize({ width: 320, height: 844 });
@@ -187,6 +231,22 @@ try {
   await rating(true).click();
   await expect(page.locator(".study-topline")).toContainText("2 von 3");
   assert.equal((await snapshot()).workspace.cardReviewEvents.at(-1).comparison.source, "reference");
+
+  console.log("Checking recovery without re-entering the answer or restarting the card");
+  await start();
+  await page.getByLabel("Deine Antwort in eigenen Worten", { exact: true }).fill("Ein Praxisbeispiel hilft mir beim aktiven Erinnern.");
+  await reveal().click();
+  await expect(comparison).toHaveAttribute("aria-busy", "false");
+  await expect(comparison).toHaveAttribute("data-source", "reference");
+  comparisonHandler = async (route, body) => route.fulfill({ json: shortComparison(body) });
+  const retryRevision = (await snapshot()).revision;
+  await page.getByRole("button", { name: "Vergleich erneut versuchen", exact: true }).click();
+  await expect(comparison).toHaveAttribute("data-source", "llm");
+  await expect(page.locator(".study-topline")).toContainText("1 von 3");
+  assert.equal((await snapshot()).revision, retryRevision, "Retrying does not save or rate the card");
+  await rating(false).click();
+  await expect(page.locator(".study-topline")).toContainText("2 von 3");
+  assert.equal((await snapshot()).workspace.cardReviewEvents.at(-1).comparison.source, "llm");
 
   comparisonHandler = async (route, body) => route.fulfill({ json: { ...shortComparison(body), revision: body.revision + 1, summary: "Dieser fremde Vergleich darf nicht erscheinen." } });
   await start();

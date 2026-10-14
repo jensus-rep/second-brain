@@ -1,11 +1,11 @@
 import { z } from "zod";
 import { getSessionUser, sameOrigin } from "@/lib/server/auth";
-import { readWorkspace } from "@/lib/brain/storage";
+import { readWorkspace, readWorkspaceRevision } from "@/lib/brain/storage";
 import { answerComparisonInputSchema } from "@/lib/brain/answer-comparison";
 import { AnswerComparisonConflict, createAnswerComparisonRuntime } from "@/lib/server/answer-comparison";
 
 export const dynamic = "force-dynamic";
-const compare = createAnswerComparisonRuntime({ readWorkspace });
+const compare = createAnswerComparisonRuntime({ readWorkspace, readRevision: readWorkspaceRevision });
 const response = (body: unknown, status = 200) => Response.json(body, { status, headers: { "Cache-Control": "private, no-store" } });
 class RequestTooLarge extends Error {}
 

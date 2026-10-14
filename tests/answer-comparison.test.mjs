@@ -25,10 +25,11 @@ const envelope = (selected = selection, overrides = {}) => ({ status: "completed
   output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(selected) }] }], ...overrides });
 const providerResponse = (selected = selection, overrides) => Response.json(envelope(selected, overrides));
 const flush = () => new Promise(resolve => setImmediate(resolve));
-function harness({ workspace = data(), enabled = true, fetcher = async () => providerResponse(), timeoutMs, deployment = "gpt-6.1-sol" } = {}) {
-  const state = { revision: 7, workspace, now: Date.parse(timestamp), calls: [], reads: [], enabled };
+function harness({ workspace = data(), enabled = true, fetcher = async () => providerResponse(), timeoutMs, deployment = "gpt-6.1-sol", revisionOnly = false } = {}) {
+  const state = { revision: 7, workspace, now: Date.parse(timestamp), calls: [], reads: [], revisionReads: [], enabled };
   const runtime = createAnswerComparisonRuntime({
     readWorkspace: async owner => { state.reads.push(owner); return { revision: state.revision, workspace: state.workspace }; },
+    ...(revisionOnly ? { readRevision: async owner => { state.revisionReads.push(owner); return state.revision; } } : {}),
     config: () => state.enabled ? { ...config, deployment } : null,
     fetch: async (...args) => { state.calls.push(args); return fetcher(...args); }, now: () => state.now, timeoutMs,
   });
@@ -131,12 +132,13 @@ test("equivalent phrasing, contradictory response and unclear response preserve 
   }
 });
 
-test("invalid, contradictory, oversized, linked or HTML model statements degrade honestly to reference", async () => {
+test("invalid, contradictory, unbounded, linked or HTML model statements degrade honestly to reference", async () => {
   for (const selected of [
-    { ...selection, verdict: "reference" }, { ...selection, score: 100 }, { ...selection, summary: "x".repeat(301) },
-    { ...selection, matched: ["a", "b", "c"] }, { ...selection, missing: ["x".repeat(141)] },
+    { ...selection, verdict: "reference" }, { ...selection, score: 100 }, { ...selection, summary: "x".repeat(2001) },
+    { ...selection, matched: Array(9).fill("a") }, { ...selection, missing: ["x".repeat(2001)] },
     { ...selection, summary: "<strong>Alles richtig</strong>" }, { ...selection, summary: "Siehe https://example.test" },
-    { ...selection, matched: ["javascript:alert(1)"] }, { ...selection, summary: "Eine Antwort\nmit Steuerzeichen" },
+    { ...selection, matched: ["javascript:alert(1)"] }, { ...selection, summary: "Eine Antwort\u0000mit Steuerzeichen" },
+    { ...selection, matched: ["a", "b", "https://example.test"] },
     { ...selection, verdict: "aligned" }, { ...selection, summary: "" },
   ]) {
     const { runtime } = harness({ fetcher: async () => providerResponse(selected) });
@@ -144,6 +146,91 @@ test("invalid, contradictory, oversized, linked or HTML model statements degrade
     assert.equal(result.source, "reference", JSON.stringify(selected)); assert.equal(result.verdict, "reference");
     assert.deepEqual(result.matched, []); assert.deepEqual(result.missing, []);
   }
+});
+
+test("formatting and modest output overruns retain valid feedback within presentation limits", async () => {
+  const selected = { ...selection, summary: "Ein Projekt ist nicht dauerhaft.\n" + "Eine kurze Erklärung zum eigenen Ziel. ".repeat(12),
+    matched: ["Zeitlich\tbegrenztes Vorhaben", "Eigenes Ziel", "Dritter passender Punkt"],
+    missing: ["Die Abgrenzung zur Routine. ".repeat(8)] };
+  const { runtime } = harness({ fetcher: async () => providerResponse(selected) });
+  const result = await runtime("owner", input);
+  assert.equal(result.source, "llm");
+  assert.equal(result.verdict, "partial");
+  assert.ok(result.summary.length <= 300);
+  assert.match(result.summary, /^Ein Projekt ist nicht dauerhaft\. /);
+  assert.match(result.summary, / …$/);
+  assert.deepEqual(result.matched, ["Zeitlich begrenztes Vorhaben", "Eigenes Ziel"]);
+  assert.ok(result.missing[0].length <= 140);
+  assert.equal(answerComparisonResultSchema.safeParse(result).success, true);
+});
+
+test("a transient provider failure is not cached and the next attempt can recover", async () => {
+  let attempts = 0;
+  const { runtime, state } = harness({ fetcher: async () => ++attempts === 1 ? new Response("Unavailable", { status: 503 }) : providerResponse() });
+  assert.equal((await runtime("owner", input)).source, "reference");
+  assert.equal((await runtime("owner", input)).source, "llm");
+  assert.equal(state.calls.length, 2);
+  assert.equal((await runtime("owner", input)).source, "llm");
+  assert.equal(state.calls.length, 2);
+});
+
+test("cached semantic comparison survives unrelated saves and a new session with current metadata", async () => {
+  const { runtime, state } = harness();
+  await runtime("owner", input);
+  state.revision++;
+  state.workspace = { ...state.workspace, flashcardSession: { ...state.workspace.flashcardSession, id: "session2" } };
+  const currentInput = { ...input, revision: state.revision, sessionId: "session2" };
+  const result = await runtime("owner", currentInput);
+  assert.equal(result.source, "llm");
+  assert.equal(result.revision, state.revision);
+  assert.equal(state.calls.length, 1);
+  assert.ok(comparisonForCardReview(result, "card1", input.response, card().answer));
+  state.workspace = { ...state.workspace, cards: state.workspace.cards.map(item => item.id === "card1" ? { ...item, answer: "Eine geänderte Musterantwort." } : item) };
+  state.revision++;
+  await runtime("owner", { ...currentInput, revision: state.revision });
+  assert.equal(state.calls.length, 2, "Changed source content requires a fresh comparison");
+});
+
+test("production revalidation reads only the revision and still rejects concurrent saves", async () => {
+  const { runtime, state } = harness({ revisionOnly: true });
+  await runtime("owner", input);
+  assert.deepEqual(state.reads, ["owner"]);
+  assert.deepEqual(state.revisionReads, ["owner"]);
+  const changed = harness({ revisionOnly: true, fetcher: async () => { changed.state.revision++; return providerResponse(); } });
+  await assert.rejects(changed.runtime("owner", input), AnswerComparisonConflict);
+  assert.equal(changed.state.reads.length, 1);
+  assert.equal(changed.state.revisionReads.length, 1);
+});
+
+test("coalesced requests bind metadata to each caller and reject the stale caller after a save", async () => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const { runtime, state } = harness({ revisionOnly: true, fetcher: async () => { await gate; return providerResponse(); } });
+  const oldRequest = runtime("owner", input);
+  const oldRejection = assert.rejects(oldRequest, AnswerComparisonConflict);
+  await flush();
+  state.revision++;
+  const currentRequest = runtime("owner", { ...input, revision: state.revision });
+  await flush();
+  assert.equal(state.calls.length, 1);
+  release();
+  await oldRejection;
+  const result = await currentRequest;
+  assert.equal(result.source, "llm");
+  assert.equal(result.revision, state.revision);
+});
+
+test("failure diagnostics report a category and duration without provider or learner text", async () => {
+  const logs = [];
+  const originalWarn = console.warn;
+  console.warn = (...values) => logs.push(values);
+  try {
+    const { runtime } = harness({ fetcher: async () => { throw new Error("PRIVATE_PROVIDER_DIAGNOSTIC"); } });
+    await runtime("PRIVATE_OWNER", { ...input, response: "PRIVATE_RESPONSE" });
+    assert.equal(logs[0][1].reason, "provider_error");
+    assert.equal(typeof logs[0][1].durationMs, "number");
+    assert.equal(JSON.stringify(logs).includes("PRIVATE_"), false);
+  } finally { console.warn = originalWarn; }
 });
 
 test("refusal, incomplete envelopes, tool output and multiple output fragments never become an assessment", async () => {

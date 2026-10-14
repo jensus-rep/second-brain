@@ -63,6 +63,10 @@ export async function createMssqlStore(): Promise<Store> {
       const result = await q().input("owner", sql.NVarChar(64), owner).query<{ body: string; revision: number }>("SELECT body, revision FROM dbo.newhope_workspaces WHERE owner_id = @owner");
       return result.recordset[0] ?? null;
     },
+    async getWorkspaceRevision(owner) {
+      const result = await q().input("owner", sql.NVarChar(64), owner).query<{ revision: number }>("SELECT revision FROM dbo.newhope_workspaces WHERE owner_id = @owner");
+      return result.recordset[0]?.revision ?? null;
+    },
     async createWorkspace(owner, body) {
       try {
         await q().input("owner", sql.NVarChar(64), owner).input("body", sql.NVarChar(sql.MAX), body).input("at", sql.NVarChar(40), now())

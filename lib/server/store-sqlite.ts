@@ -30,6 +30,10 @@ export function createSqliteStore(path: string): Store {
       const row = db.prepare("SELECT body, revision FROM newhope_workspaces WHERE owner_id = ?").get(owner) as { body: string; revision: number } | undefined;
       return row ? { body: row.body, revision: Number(row.revision) } : null;
     },
+    async getWorkspaceRevision(owner) {
+      const row = db.prepare("SELECT revision FROM newhope_workspaces WHERE owner_id = ?").get(owner) as { revision: number } | undefined;
+      return row ? Number(row.revision) : null;
+    },
     async createWorkspace(owner, body) {
       db.prepare("INSERT INTO newhope_workspaces (owner_id, body, revision, updated_at) VALUES (?, ?, 0, ?) ON CONFLICT(owner_id) DO NOTHING").run(owner, body, now());
     },
