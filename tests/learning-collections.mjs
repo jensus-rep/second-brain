@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdir, realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { brainBody } from "./brain-request.mjs";
 
 // Run against npm run dev. An isolated preview may override both variables:
 // BRAIN_TEST_URL=http://127.0.0.1:5185 BRAIN_TEST_SQLITE_PATH=/absolute/preview.sqlite
@@ -89,7 +90,7 @@ async function saveUi(action, predicate) {
   const responded = page.waitForResponse(response => response.url() === origin + "/api/brain" && response.request().method() === "PUT");
   await action();
   const request = await requested;
-  assert.equal(request.postDataJSON().revision, before.revision, "UI writes the revision it actually loaded.");
+  assert.equal(brainBody(request).revision, before.revision, "UI writes the revision it actually loaded.");
   const response = await responded;
   assert.equal(response.status(), 200, await response.text());
   await expect.poll(async () => {

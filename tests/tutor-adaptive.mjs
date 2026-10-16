@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdir, realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { brainBody } from "./brain-request.mjs";
 
 // Every mutation must target loopback and match the selected local SQLite file.
 const origin = process.env.BRAIN_TEST_URL ?? "http://127.0.0.1:5173";
@@ -66,7 +67,7 @@ async function uiSave(action, predicate) {
   const request = page.waitForRequest(request => request.url() === api && request.method() === "PUT");
   const response = page.waitForResponse(response => response.url() === api && response.request().method() === "PUT");
   await action();
-  assert.equal((await request).postDataJSON().revision, before.revision, "UI writes use the current revision.");
+  assert.equal(brainBody(await request).revision, before.revision, "UI writes use the current revision.");
   const answered = await response;
   assert.equal(answered.status(), 200, await answered.text());
   await expect.poll(async () => {
@@ -113,7 +114,7 @@ async function holdFailedRating() {
   await page.route(api, async route => {
     if (route.request().method() !== "PUT") return route.continue();
     captured = true;
-    arrived(route.request().postDataJSON());
+    arrived(brainBody(route.request()));
     await gate;
     try { await route.fulfill({ status: 503, json: { error: "Lokaler Test: Bewertung konnte nicht gespeichert werden." } }); }
     finally { finished(); }
@@ -139,7 +140,7 @@ async function holdNextRuntime(message = "VERSPÄTETER TUTORHINWEIS DARF NICHT E
   const finishWhenIdle = () => { if (released && pending === 0) finished(); };
   const release = () => { released = true; openGate(); finishWhenIdle(); };
   await page.route(tutorApi, async route => {
-    const data = route.request().postDataJSON();
+    const data = brainBody(route.request());
     const key = JSON.stringify(data);
     if (data.context !== "cards" || targetKey !== null && key !== targetKey) return route.continue();
     // StrictMode can abort the first mounted effect and immediately send the

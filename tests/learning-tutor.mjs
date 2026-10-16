@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdir, realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { brainBody } from "./brain-request.mjs";
 
 // Every mutation needs loopback and proof of the exact local SQLite store.
 const origin = process.env.BRAIN_TEST_URL ?? "http://127.0.0.1:5173";
@@ -69,7 +70,7 @@ async function uiSave(action, predicate) {
   const requested = page.waitForRequest(request => request.url() === api && request.method() === "PUT");
   const responded = page.waitForResponse(response => response.url() === api && response.request().method() === "PUT");
   await action();
-  assert.equal((await requested).postDataJSON().revision, before.revision, "UI writes carry their saved revision.");
+  assert.equal(brainBody(await requested).revision, before.revision, "UI writes carry their saved revision.");
   const response = await responded;
   assert.equal(response.status(), 200, await response.text());
   // Final-card confirmation can trigger a separate save to start the short test.
@@ -356,7 +357,7 @@ try {
   await fixture({ ...structuredClone(mainFixture), cards: [], learningCollections: [structuredClone(collection)] });
   await page.setViewportSize({ width: 390, height: 844 });
   const failQuizStart = async route => {
-    if (route.request().method() !== "PUT" || !route.request().postDataJSON().workspace.quizRuns.length) return route.continue();
+    if (route.request().method() !== "PUT" || !brainBody(route.request()).workspace.quizRuns.length) return route.continue();
     await route.fulfill({ status: 503, json: { error: "Lokaler Test: Kurztest konnte nicht gestartet werden." } });
   };
   await page.route(api, failQuizStart);

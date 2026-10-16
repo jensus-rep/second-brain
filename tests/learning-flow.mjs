@@ -4,6 +4,7 @@ import { mkdir, realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 import { setTimeout as pause } from "node:timers/promises";
 import { DatabaseSync } from "node:sqlite";
+import { brainBody } from "./brain-request.mjs";
 
 const origin = process.env.BRAIN_TEST_URL ?? "http://127.0.0.1:5173";
 if (!["127.0.0.1", "localhost"].includes(new URL(origin).hostname)) throw new Error("Learning flow tests may only mutate localhost.");
@@ -98,7 +99,7 @@ async function gateFirstWrite(status = 200, failFollowUpAt = null) {
   const finished = new Promise(resolve => { firstFinished = resolve; });
   await page.route(api, async route => {
     if (route.request().method() !== "PUT") { await route.continue(); return; }
-    writes.push({ body: route.request().postDataJSON(), prefer: route.request().headers().prefer });
+    writes.push({ body: brainBody(route.request()), prefer: route.request().headers().prefer });
     if (writes.length !== 1) {
       if (writes.length === failFollowUpAt) await route.fulfill({ status: 503, json: { error: "Lokaler Test: Eine Antwort muss erneut gespeichert werden." } });
       else await route.continue();
@@ -256,7 +257,7 @@ try {
   const conflictingWrites = [];
   await page.route(api, async route => {
     if (route.request().method() !== "PUT") { await route.continue(); return; }
-    conflictingWrites.push(route.request().postDataJSON());
+    conflictingWrites.push(brainBody(route.request()));
     if (conflictingWrites.length === 1) {
       const changed = structuredClone(beforeConflict.workspace);
       changed.notes[0].summary = "Eine parallel gespeicherte Änderung muss erhalten bleiben.";

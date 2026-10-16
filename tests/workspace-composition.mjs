@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { seedWorkspace } from "../lib/brain/seed.ts";
 import { emptyWorkspace, workspaceSchema } from "../lib/brain/model.ts";
+import { brainBody } from "./brain-request.mjs";
 
 const origin = process.env.BRAIN_TEST_URL ?? "http://127.0.0.1:5173";
 if (!["127.0.0.1", "localhost"].includes(new URL(origin).hostname)) throw new Error("UI checks must use localhost.");
@@ -27,7 +28,7 @@ await page.route("**/*", async route => {
   if (["http:", "https:"].includes(url.protocol) && url.origin !== origin) return route.abort();
   if (url.pathname === "/api/brain") {
     if (route.request().method() === "PUT") {
-      const submitted = route.request().postDataJSON();
+      const submitted = brainBody(route.request());
       if (submitted.revision !== revision) return route.fulfill({ status: 409, json: { error: "Revision geändert" } });
       workspace = workspaceSchema.parse(submitted.workspace);
       revision++;

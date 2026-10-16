@@ -122,6 +122,7 @@ body, .brain-main { background: #f6f7f9; }
 .study-question .prose-brain > ul > li, .study-question .prose-brain > ol > li { padding: 9px 12px; border: 1px solid #e3e9f2; border-radius: 8px; background: #f8faff; }
 .study-question .prose-brain li > p:last-child { margin-bottom: 0; }
 .study-save-status { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-size: 12px; color: #536783; }
+.study-rating-error { border: 1px solid #efcecf; background: #fff3f3; border-radius: 9px; padding: 10px 14px; margin: 0; font-size: 13px; line-height: 1.6; color: #aa555d; }
 .editor-dialog { border-radius: 16px; }
 .editor-form .field > span { font-size: 0.875rem; color: #40516c; }
 .field input, .field textarea, .field [data-slot="select-trigger"] { background: #fff; }

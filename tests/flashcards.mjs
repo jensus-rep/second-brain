@@ -4,6 +4,7 @@ import { mkdir, realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { referenceAnswerComparison } from "../lib/brain/answer-comparison.ts";
+import { brainBody } from "./brain-request.mjs";
 
 const origin = process.env.BRAIN_TEST_URL ?? "http://127.0.0.1:5173";
 if (!["127.0.0.1", "localhost"].includes(new URL(origin).hostname)) throw new Error("Flashcard tests may only change localhost.");
@@ -85,7 +86,7 @@ async function holdWrite(status = 200) {
   const done = new Promise(resolve => { finished = resolve; });
   await page.route(origin + "/api/brain", async route => {
     assert.equal(route.request().method(), "PUT");
-    arrived(route.request().postDataJSON());
+    arrived(brainBody(route.request()));
     await gate;
     if (status === 503) await route.fulfill({ status, json: { error: "Speichern nicht möglich. Bitte versuche es erneut." } });
     else await route.fulfill({ response: await route.fetch() });
@@ -307,52 +308,40 @@ try {
     }).toBe(true, { message: "The mobile rating bar stays fixed to the viewport during the answer animation." });
 
     await holdWrite();
-    const currentQuestion = await page.locator(".study-question").textContent();
-    const currentCard = await page.locator(".study-card").elementHandle();
     // Two clicks in one event turn must still issue one review.
     await rating(true).evaluate(button => { button.click(); button.click(); });
     const submitted = await held.request;
     assert.equal(submitted.workspace.cards[0].reviews, 1);
-    await expect(page.locator(".study-topline")).toContainText("1 von 3", { timeout: 1000 });
-    await expect(page.locator(".study-question")).toHaveText(currentQuestion);
-    await expect(page.locator(".study-answer")).toBeVisible();
-    await expect(responseField).toHaveValue(ownResponse);
-    assert.equal(await currentCard.evaluate(element => element.isConnected), true, "Pending saves retain the same card element.");
-    await expect(reveal()).toHaveCount(0);
-    await expect(page.locator(".study-save-status")).toBeVisible();
-    assert.equal((await snapshot()).workspace.cards[0].reviews, 0, "The rating is still awaiting confirmation from the server.");
-    await expect(rating(true)).toBeDisabled();
-    await expect(rating(false)).toBeDisabled();
-    await finishWrite();
-    await expect(page.locator(".study-topline")).toContainText("2 von 3");
+    assert.equal(submitted.workspace.cards[1].reviews, 0, "The second click must not rate the next card.");
+    assert.equal(submitted.workspace.cardReviewEvents.at(-1).response, ownResponse);
+    // The next card appears at once; the rating saves in the background.
+    await expect(page.locator(".study-topline")).toContainText("2 von 3", { timeout: 1000 });
     await expect(page.locator(".study-question")).toHaveText(cards[1].question);
     await expect(page.locator(".study-question")).toBeInViewport();
+    await expect(page.locator(".study-save-status")).toBeVisible();
     await expect(responseField).toHaveValue("");
+    await expect(responseField).toBeEnabled();
     await expect(reveal()).toBeFocused();
+    assert.equal((await snapshot()).workspace.cards[0].reviews, 0, "The rating is still awaiting confirmation from the server.");
+    await finishWrite();
+    await expect(page.locator(".study-save-status")).toHaveCount(0);
+    assert.equal((await snapshot()).workspace.cards[0].reviews, 1);
+    await expect(page.locator(".study-topline")).toContainText("2 von 3");
     await reveal().click();
     await expect(rating(false)).toBeEnabled();
 
     await holdWrite();
     await rating(false).click();
     await held.request;
-    await expect(page.locator(".study-topline")).toContainText("2 von 3", { timeout: 1000 });
-    await expect(page.locator(".study-question")).toHaveText(cards[1].question);
-    await expect(page.locator(".study-answer")).toBeVisible();
-    await finishWrite();
-    await expect(page.locator(".study-topline")).toContainText("3 von 3");
+    await expect(page.locator(".study-topline")).toContainText("3 von 3", { timeout: 1000 });
     await expect(page.locator(".study-question")).toBeInViewport();
     assert.equal(await page.locator(".study-question ol").evaluate(el => parseFloat(getComputedStyle(el).fontSize)), 16);
+    // The last card can be rated while the previous rating still saves.
     await reveal().click();
-    await holdWrite();
+    await expect(rating(true)).toBeEnabled();
     await rating(true).click();
-    await held.request;
-    await expect(page.locator(".study-topline")).toContainText("3 von 3");
-    await expect(page.locator(".study-question")).toContainText("Welche Schritte unterstützen die Wiederholung?");
-    await expect(page.locator(".study-answer")).toBeVisible();
-    await expect(page.locator(".study-save-status")).toBeVisible();
-    await expect(page.locator(".study-finished")).toHaveCount(0);
-    await expect(page.getByRole("heading", { name: "Ein Stück Wissen bleibt.", exact: true })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Zur Kartenübersicht", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Dein Fortschritt wird gespeichert …", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Zur Kartenübersicht", exact: true })).toBeDisabled();
     await finishWrite();
     await expect(page.getByRole("heading", { name: "Ein Stück Wissen bleibt.", exact: true })).toBeVisible();
     await page.reload({ waitUntil: "networkidle" });
@@ -368,30 +357,28 @@ try {
     const responseField = page.getByLabel("Deine Antwort in eigenen Worten", { exact: true });
     await responseField.fill("Diese eigene Erklärung bleibt bei einem fehlgeschlagenen Speichern erhalten.");
     await reveal().click();
-    const currentCard = await page.locator(".study-card").elementHandle();
     const questionText = await page.locator(".study-question").textContent();
     await holdWrite(503);
     await rating(false).click();
     await held.request;
-    await expect(page.locator(".study-save-status")).toBeVisible();
-    await expect(page.locator(".study-finished")).toHaveCount(0);
-    await expect(page.locator(".study-question")).toHaveText(questionText);
-    await expect(page.locator(".study-answer")).toBeVisible();
-    const focusDuringSave = await page.evaluate(() => ({ tag: document.activeElement?.tagName, className: document.activeElement?.className }));
+    if (final) await expect(page.getByRole("heading", { name: "Dein Fortschritt wird gespeichert …", exact: true })).toBeVisible();
+    else await expect(page.locator(".study-question")).toHaveText(cards[1].question);
     held.release();
     await held.done;
     held = null;
+    // A rejected rating returns to its card with the own answer, ready to rate again.
     await expect(page.locator(".study-topline")).toContainText(final ? "1 von 1" : "1 von 3");
+    await expect(page.locator(".study-question")).toHaveText(questionText);
     await expect(page.locator(".study-answer")).toBeVisible();
     await expect(responseField).toHaveValue("Diese eigene Erklärung bleibt bei einem fehlgeschlagenen Speichern erhalten.");
-    assert.equal(await currentCard.evaluate(element => element.isConnected), true, "A rejected rating leaves the same card mounted rather than rolling back from the next one.");
-    assert.deepEqual(await page.evaluate(() => ({ tag: document.activeElement?.tagName, className: document.activeElement?.className })), focusDuringSave, "A failed save does not move focus to a different card.");
+    await expect(page.locator(".study-rating-error")).toContainText("nicht gespeichert");
     await expect(page.getByRole("alert").filter({ hasText: "Speichern nicht möglich." })).toBeVisible();
     assert.equal((await snapshot()).workspace.cards[0].reviews, 0, "Failed review must not persist or skip its card.");
     await expect(rating(false)).toBeEnabled();
     await holdWrite();
     await rating(false).click();
-    await held.request;
+    const retried = await held.request;
+    assert.equal(retried.workspace.cardReviewEvents.at(-1).response, "Diese eigene Erklärung bleibt bei einem fehlgeschlagenen Speichern erhalten.");
     await finishWrite();
     assert.equal((await snapshot()).workspace.cards[0].reviews, 1, "Retry saves exactly one review.");
   }
@@ -429,7 +416,7 @@ try {
   const footer = await page.locator(".study-rating").boundingBox();
   assert.ok(Math.abs(footer.y + footer.height - page.viewportSize().height) < 1, "Reduced-motion controls remain fixed to the viewport.");
   assert.deepEqual(errors, [], "No browser runtime errors.");
-  console.log("PASS: concise own-answer comparison, honest fallback, nonblocking manual ratings, stale-result protection, compact A–D choices at 1440/390/320px, stable card/answer/draft until saved, clean next-card focus, fixed mobile controls, reduced motion, duplicate-click protection, truthful completion, failed-save retry and revision conflict preservation.");
+  console.log("PASS: concise own-answer comparison, honest fallback, nonblocking manual ratings, stale-result protection, compact A–D choices at 1440/390/320px, instant next card while ratings save in order, clean next-card focus, fixed mobile controls, reduced motion, duplicate-click protection, truthful completion, failed-save return to the unsaved card with its own answer, retry and revision conflict preservation.");
 } finally {
   heldComparison?.release();
   if (heldComparison) await heldComparison.done;

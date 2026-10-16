@@ -66,7 +66,8 @@ export function useAnswerComparison({ revision, sessionId, cardId, question, ans
   const result = requestKey && cardId
     ? completed?.key === requestKey ? completed.result : referenceAnswerComparison({ revision, cardId, response: ownResponse }, answer)
     : null;
-  return { result, pending: !!requestKey && requestEnabled && completed?.key !== requestKey, retry: () => setAttempt(value => value + 1) };
+  // A comparison that waits for a background save is still on its way.
+  return { result, pending: !!requestKey && completed?.key !== requestKey, retry: () => setAttempt(value => value + 1) };
 }
 
 const verdictTitles: Record<AnswerComparisonResult["verdict"], string> = {

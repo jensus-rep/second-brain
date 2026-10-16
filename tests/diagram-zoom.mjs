@@ -28,8 +28,9 @@ try {
     const image = region.getByRole("img");
     await expect(image).toBeVisible();
     await expect.poll(() => image.evaluate(img => img.getBoundingClientRect().width)).toBeGreaterThan(0);
-    await expect.poll(() => image.evaluate(img => Math.abs(img.getBoundingClientRect().width - img.naturalWidth))).toBeLessThan(1);
-    const originalZoom = await dialog.locator("output").innerText();
+    const openingZoom = await dialog.locator("output").innerText();
+    assert.ok(parseInt(openingZoom, 10) <= 150, "SVG diagrams open at no more than 150 %");
+    assert.ok(await image.evaluate(img => img.getBoundingClientRect().width <= img.naturalWidth + 1), "Opening never exceeds the intrinsic size");
     assert.ok(await image.evaluate(img => img.getBoundingClientRect().width) > previewWidth, "Opening actually enlarges the diagram beyond the preview");
     await dialog.getByRole("button", { name: "Diagramm einpassen" }).click();
     const cdp = await page.context().newCDPSession(page);
@@ -73,7 +74,8 @@ try {
     await expect(dialog.locator("output")).toHaveText("100 %");
     assert.equal(await region.evaluate(el => el.scrollWidth > el.clientWidth || el.scrollHeight > el.clientHeight), false, "Reset fits the whole diagram");
     await dialog.getByRole("button", { name: "Originalgröße anzeigen" }).click();
-    await expect(dialog.locator("output")).toHaveText(originalZoom);
+    await expect.poll(() => image.evaluate(img => Math.abs(img.getBoundingClientRect().width - img.naturalWidth))).toBeLessThan(1);
+    const originalZoom = await dialog.locator("output").innerText();
     const originalWidth = await image.evaluate(img => img.getBoundingClientRect().width);
     const rotated = viewport.width < viewport.height ? { width: 844, height: 390 } : { width: 390, height: 844 };
     await page.setViewportSize(rotated);
@@ -85,11 +87,11 @@ try {
     await expect(editor).toBeVisible();
     await expect(trigger).toBeFocused();
     await trigger.click();
-    await expect(dialog.locator("output")).toHaveText(originalZoom);
+    await expect(dialog.locator("output")).toHaveText(openingZoom);
     assert.deepEqual(errors, []);
     await page.close();
   }
-  console.log("PASS: 320px and mobile portrait/landscape, readable opening, real pinch zoom, touch panning to all edges, fit/original size, rotation, reopen and nested-dialog focus.");
+  console.log("PASS: 320px and mobile portrait/landscape, SVG opening capped at 150 %, real pinch zoom, touch panning to all edges, fit/original size, rotation, reopen and nested-dialog focus.");
 } finally {
   await browser.close();
 }

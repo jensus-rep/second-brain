@@ -88,3 +88,45 @@ test("an unexpected rejection also cancels waiting writes and releases the queue
   assert.deepEqual(calls, ["first"]);
   assert.equal(queue.busy, false);
 });
+
+test("writes that queue up behind an active write are sent as one batch", async () => {
+  const first = deferred();
+  const singles = [];
+  const batches = [];
+  const queue = createSaveQueue(async operation => {
+    singles.push(operation);
+    if (operation === "first") await first.promise;
+    return true;
+  }, () => {}, async operations => { batches.push(operations); return operations.map(() => true); });
+  const saves = ["first", "second", "third", "fourth"].map(operation => queue.enqueue(operation, { queue: true }));
+  first.resolve();
+  assert.deepEqual(await Promise.all(saves), [true, true, true, true]);
+  assert.deepEqual(singles, ["first"]);
+  assert.deepEqual(batches, [["second", "third", "fourth"]]);
+  assert.equal(queue.busy, false);
+});
+
+test("a batch keeps the operations before a failure and cancels the rest", async () => {
+  const first = deferred();
+  const calls = [];
+  const queue = createSaveQueue(async operation => {
+    calls.push([operation]);
+    if (operation === "first") await first.promise;
+    return true;
+  }, () => {}, async operations => { calls.push(operations); return [true, false, false]; });
+  const saves = ["first", "second", "rejected", "after"].map(operation => queue.enqueue(operation, { queue: true }));
+  first.resolve();
+  assert.deepEqual(await Promise.all(saves), [true, true, false, false]);
+  assert.equal(queue.busy, false);
+  assert.equal(await queue.enqueue("retry", { queue: true }), true);
+  assert.deepEqual(calls, [["first"], ["second", "rejected", "after"], ["retry"]]);
+});
+
+test("a rejected batch cancels all of its operations", async () => {
+  const first = deferred();
+  const queue = createSaveQueue(async () => { await first.promise; return true; }, () => {}, async () => { throw new Error("Unexpected failure"); });
+  const saves = ["first", "second", "third"].map(operation => queue.enqueue(operation, { queue: true }));
+  first.resolve();
+  assert.deepEqual(await Promise.all(saves), [true, false, false]);
+  assert.equal(queue.busy, false);
+});

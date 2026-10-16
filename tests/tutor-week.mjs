@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { brainBody } from "./brain-request.mjs";
 
 // Existing weekly plans remain valid data after the Tutor surface is simplified.
 // All fixture imports and UI writes must match a verified loopback SQLite store.
@@ -57,7 +58,7 @@ async function uiSave(action, predicate) {
   const request = page.waitForRequest(request => request.url() === api && request.method() === "PUT");
   const response = page.waitForResponse(response => response.url() === api && response.request().method() === "PUT");
   await action();
-  assert.equal((await request).postDataJSON().revision, before.revision);
+  assert.equal(brainBody(await request).revision, before.revision);
   const saved = await response;
   assert.equal(saved.status(), 200, await saved.text());
   await expect.poll(async () => {

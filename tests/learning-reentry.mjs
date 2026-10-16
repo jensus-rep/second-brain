@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdir, realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { brainBody } from "./brain-request.mjs";
 
 const origin = process.env.BRAIN_TEST_URL ?? "http://127.0.0.1:5173";
 if (!["127.0.0.1", "localhost"].includes(new URL(origin).hostname)) throw new Error("Learning reentry tests may only mutate localhost.");
@@ -51,7 +52,7 @@ async function uiSave(action, predicate) {
   const requested = page.waitForRequest(request => request.url() === origin + "/api/brain" && request.method() === "PUT");
   const responded = page.waitForResponse(response => response.url() === origin + "/api/brain" && response.request().method() === "PUT");
   await action();
-  assert.equal((await requested).postDataJSON().revision, before.revision);
+  assert.equal(brainBody(await requested).revision, before.revision);
   const response = await responded;
   assert.equal(response.status(), 200, await response.text());
   await expect.poll(async () => {
@@ -246,7 +247,8 @@ try {
   assert.equal((await snapshot()).workspace.flashcardSession, undefined);
   assert.equal(failedCardStart.count(), 1);
   await failedCardStart.stop();
-  await uiSave(() => click("Lernrunde starten"), workspace => workspace.flashcardSession?.index === 0);
+  // A failed start keeps the launch view; retrying starts the round there.
+  await uiSave(() => click("Erneut versuchen"), workspace => workspace.flashcardSession?.index === 0);
 
   console.log("Checking revision conflicts cannot automatically restart a card round");
   await write(fixture);

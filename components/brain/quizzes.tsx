@@ -121,6 +121,10 @@ function QuizSession({ run, workspace, save, saving, onOpenNote, onBackToOvervie
   const [pendingAnswers, setPendingAnswers] = useState<QuizAnswer[]>([]);
   const pendingAnswersRef = useRef<QuizAnswer[]>([]);
   const answerWrites = useRef(new Set<Promise<boolean>>());
+  // Submission order decides where an exam returns to when a background write fails.
+  const answerOrder = useRef(new Map<QuizAnswer, number>());
+  const submittedAnswers = useRef(0);
+  const failedAnswer = useRef<{ answer: QuizAnswer; order: number } | null>(null);
   const [saveFailed, setSaveFailed] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [finishing, setFinishing] = useState(false);
@@ -133,10 +137,11 @@ function QuizSession({ run, workspace, save, saving, onOpenNote, onBackToOvervie
   const question = run.questions[index];
   const expired = !!run.deadlineAt && Date.parse(run.deadlineAt) <= now;
   const answered = run.answers.find(a => a.questionId === question.id);
+  const latestAnswer = (questionId: string) => pendingAnswersRef.current.filter(a => a.questionId === questionId).at(-1) ?? run.answers.find(a => a.questionId === questionId);
   const review = run.mode === "practice" ? run.questions.find(q => q.id === reviewId) : undefined;
   const reviewAnswer = review && (pendingAnswers.find(answer => answer.questionId === review.id) ?? run.answers.find(a => a.questionId === review.id));
   const answeredCount = run.answers.length + pendingAnswers.filter(answer => !run.answers.some(a => a.questionId === answer.questionId)).length;
-  const backgroundSaving = run.mode === "practice" && pendingAnswers.length > 0 && !saveFailed;
+  const backgroundSaving = pendingAnswers.length > 0 && !saveFailed;
   const interactionBlocked = finishing || saveFailed || (saving && !backgroundSaving);
   const reviewKey = review?.id;
   const hasPending = pendingAnswers.length > 0;
@@ -164,8 +169,9 @@ function QuizSession({ run, workspace, save, saving, onOpenNote, onBackToOvervie
     if (finishingRef.current || saveFailed) return false;
     finishingRef.current = true; setFinishing(true);
     try {
-      await Promise.all([...answerWrites.current]);
-      if (pendingAnswersRef.current.length) return false;
+      // A failed exam answer returns to its task instead of being submitted without it.
+      const written = await Promise.all([...answerWrites.current]);
+      if (written.includes(false) || pendingAnswersRef.current.length) return false;
       return await save(w => {
         const finishedAt = new Date().toISOString();
         return { ...withQuizFocus(w, run, finishedAt, collectionId), quizRuns: w.quizRuns.map(r => r.id === run.id && !r.finishedAt ? { ...r, finishedAt } : r) };
@@ -180,7 +186,7 @@ function QuizSession({ run, workspace, save, saving, onOpenNote, onBackToOvervie
       return { ...withQuizFocus(w, run, finishedAt, collectionId), quizRuns: w.quizRuns.map(r => r.id === run.id && !r.finishedAt ? { ...r, finishedAt } : r) };
     }, "Zeit abgelaufen. Auswertung gespeichert.");
   }, [expired, now, saving, run, save, collectionId]);
-  function move(next: number) { focusHeading.current = true; setIndex(next); setSelected((pendingAnswersRef.current.find(a => a.questionId === run.questions[next].id) ?? run.answers.find(a => a.questionId === run.questions[next].id))?.selectedOptionIds ?? []); }
+  function move(next: number) { focusHeading.current = true; setIndex(next); setSelected(latestAnswer(run.questions[next].id)?.selectedOptionIds ?? []); }
   function next() {
     if (interactionBlocked) return;
     const open = run.questions.findIndex(q => !run.answers.some(a => a.questionId === q.id) && !pendingAnswersRef.current.some(a => a.questionId === q.id));
@@ -209,6 +215,19 @@ function QuizSession({ run, workspace, save, saving, onOpenNote, onBackToOvervie
         pendingAnswersRef.current = pendingAnswersRef.current.filter(item => item !== answer);
         setPendingAnswers(pendingAnswersRef.current);
       } else if (run.mode === "practice") setSaveFailed(true);
+      else {
+        // A failed write cancels the answers queued after it. Return to the
+        // earliest unsaved task with its selection, ready to save again.
+        pendingAnswersRef.current = pendingAnswersRef.current.filter(item => item !== answer);
+        setPendingAnswers(pendingAnswersRef.current);
+        const order = answerOrder.current.get(answer) ?? 0;
+        if (!failedAnswer.current || order < failedAnswer.current.order) failedAnswer.current = { answer, order };
+        const restore = failedAnswer.current.answer;
+        focusHeading.current = true;
+        setIndex(run.questions.findIndex(q => q.id === restore.questionId));
+        setSelected(restore.selectedOptionIds);
+      }
+      answerOrder.current.delete(answer);
       return ok;
     });
     answerWrites.current.add(write);
@@ -235,7 +254,21 @@ function QuizSession({ run, workspace, save, saving, onOpenNote, onBackToOvervie
       pendingAnswersRef.current = [...pendingAnswersRef.current, answer];
       setPendingAnswers(pendingAnswersRef.current); setReviewId(question.id);
       void persistAnswer(answer);
-    } else if (await persistAnswer(answer) && index < run.questions.length - 1) move(index + 1);
+    } else {
+      // The same selection is already on its way to the server.
+      const pending = pendingAnswersRef.current.filter(item => item.questionId === question.id).at(-1);
+      if (pending && pending.selectedOptionIds.length === selected.length && selected.every(id => pending.selectedOptionIds.includes(id))) {
+        if (index < run.questions.length - 1) move(index + 1);
+        return;
+      }
+      // Move on at once; the queue saves exam answers in order in the background.
+      failedAnswer.current = null;
+      answerOrder.current.set(answer, ++submittedAnswers.current);
+      pendingAnswersRef.current = [...pendingAnswersRef.current, answer];
+      setPendingAnswers(pendingAnswersRef.current);
+      if (index < run.questions.length - 1) move(index + 1);
+      void persistAnswer(answer);
+    }
   }
   // Keyboard: digits toggle answers, Enter confirms or moves on. Typing in fields and open dialogs stay untouched.
   useEffect(() => {
@@ -259,7 +292,7 @@ function QuizSession({ run, workspace, save, saving, onOpenNote, onBackToOvervie
     {collectionName && <p className="small-note quiz-session-collection">Sammlung: {collectionName}</p>}
     <Progress value={answeredCount / run.questions.length * 100} aria-label="Testfortschritt" />
     {pendingAnswers.length > 0 && <div className="quiz-save-notice" role={saveFailed ? "alert" : "status"}>{saveFailed ? <><p>Deine Antworten konnten noch nicht gespeichert werden. Sie bleiben hier erhalten. Prüfe den Speicherhinweis und versuche es erneut.</p><div className="quiz-actions"><Button variant="outline" disabled={saving || retrying} onClick={() => void retryAnswers()}>{retrying ? "Antworten werden gespeichert …" : "Antworten erneut speichern"}</Button><Button variant="ghost" disabled={saving || retrying} onClick={discardPendingAnswers}>Offene Antworten verwerfen</Button></div></> : <p>{finishing ? "Deine letzten Antworten werden gespeichert. Danach erscheint die Auswertung." : "Antworten werden gespeichert. Du kannst direkt weiterüben."}</p>}</div>}
-    {run.mode === "exam" && <nav className="quiz-question-nav" aria-label="Aufgaben im Test">{run.questions.map((q, i) => <Button key={q.id} variant={i === index ? "default" : "outline"} size="sm" onClick={() => move(i)} disabled={saving || expired} aria-label={"Aufgabe " + (i + 1) + (run.answers.some(a => a.questionId === q.id) ? ", beantwortet" : "")}>{i + 1}{run.answers.some(a => a.questionId === q.id) ? " ✓" : ""}</Button>)}</nav>}
+    {run.mode === "exam" && <nav className="quiz-question-nav" aria-label="Aufgaben im Test">{run.questions.map((q, i) => { const done = run.answers.some(a => a.questionId === q.id) || pendingAnswers.some(a => a.questionId === q.id); return <Button key={q.id} variant={i === index ? "default" : "outline"} size="sm" onClick={() => move(i)} disabled={interactionBlocked || expired} aria-label={"Aufgabe " + (i + 1) + (done ? ", beantwortet" : "")}>{i + 1}{done ? " ✓" : ""}</Button>; })}</nav>}
     {review ? <article key={`review-${review.id}`} className="quiz-panel quiz-question">
       <div className="eyebrow">{review.concept} · {difficultyLabels[review.difficulty]}</div><h2 tabIndex={-1}>Aufgabe {reviewNumber}: {review.prompt}</h2>
       <Feedback key={review.id} question={review} answer={reviewAnswer} run={run} workspace={workspace} save={save} saving={saving || pendingAnswers.length > 0} onOpenNote={onOpenNote} actions={<div className="quiz-actions quiz-session-controls" role="group" aria-label="Aktionen für die Testaufgabe"><Button ref={nextButton} disabled={interactionBlocked} onClick={next}>{finishing ? "Runde wird abgeschlossen …" : answeredCount === run.questions.length ? "Runde abschließen" : "Nächste Aufgabe"}<ArrowRight size={16} /></Button>{mobileEnd}<small className="quiz-keys">Enter: weiter</small></div>} />
