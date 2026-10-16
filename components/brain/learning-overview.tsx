@@ -25,6 +25,7 @@ const actionLabels: Record<LearningAction["kind"], string> = {
   "review-concept": "Schwachstelle üben",
   "review-cards": "Fällige Karten wiederholen",
   preparation: "Nächste Einheit starten",
+  "exam-simulation": "Prüfungssimulation starten",
   checkpoint: "Kurztest starten",
   "open-collection": "Lernsammlung öffnen",
 };

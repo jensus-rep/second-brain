@@ -1,0 +1,75 @@
+/* Tutor mode switch and exam simulation */
+.tutor-mode-tabs { gap: 20px; }
+.tutor-exam { display: grid; gap: 20px; min-width: 0; }
+.tutor-exam-step { background: #f5f8fd; border-color: #dbe4f1; }
+.tutor-exam-step .tutor-guided-intro .eyebrow { color: #4d6894; }
+.tutor-exam-settings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; width: 100%; max-width: 520px; }
+.tutor-exam-mix { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; width: 100%; list-style: none; margin: 0; padding: 0; }
+.tutor-exam-mix li { display: grid; gap: 2px; padding: 12px 14px; border: 1px solid #e0e6ee; border-radius: 10px; background: #fff; min-width: 0; }
+.tutor-exam-mix strong { font-size: 1.45rem; font-weight: 600; line-height: 1.3; font-variant-numeric: tabular-nums; }
+.tutor-exam-mix span { font-size: .75rem; line-height: 1.5; color: #657186; overflow-wrap: anywhere; }
+.tutor-exam-mix .is-repeat strong { color: #94652b; }
+.tutor-exam-mix .is-new strong { color: #315b9e; }
+.tutor-exam-mix .is-refresh strong { color: #39755b; }
+.tutor-exam-areas { display: grid; list-style: none; margin: 0; padding: 0; }
+.tutor-exam-areas li { display: flex; align-items: center; justify-content: space-between; gap: 8px 18px; padding: 13px 0; border-top: 1px solid #e8edf3; min-width: 0; }
+.tutor-exam-areas li > div { display: grid; gap: 3px; min-width: 0; }
+.tutor-exam-areas strong { font-size: .875rem; font-weight: 600; color: #3e516a; overflow-wrap: anywhere; }
+.tutor-exam-areas li > div > span { font-size: .75rem; color: #657186; line-height: 1.6; }
+.tutor-exam-area-count { flex-shrink: 0; font-size: .75rem; color: #315b9e; background: #edf3ff; padding: 3px 9px; border-radius: 6px; white-space: nowrap; }
+.tutor-exam-history { display: grid; gap: 12px; padding: 20px; border: 1px solid #e0e5ec; border-radius: 12px; background: #fff; min-width: 0; }
+
+/* Shared bars for results by area and the simulation history */
+.exam-bar { display: block; height: 8px; border-radius: 99px; background: #e8edf4; overflow: hidden; min-width: 0; }
+.exam-bar > span { display: block; height: 100%; border-radius: inherit; background: #5b7fc0; }
+.exam-history-bars { display: grid; gap: 4px; list-style: none; margin: 0; padding: 0; }
+.exam-history-bars li { display: grid; grid-template-columns: minmax(96px, 150px) minmax(0, 1fr) 92px; gap: 14px; align-items: center; padding: 8px 0; min-width: 0; }
+.exam-history-bars.has-actions li { grid-template-columns: minmax(96px, 150px) minmax(0, 1fr) 92px auto; }
+.exam-history-bars .is-current .exam-bar > span { background: #315b9e; }
+.exam-history-label, .exam-history-value { display: grid; gap: 1px; font-size: .8125rem; color: #3e516a; min-width: 0; }
+.exam-history-label small, .exam-history-value small { font-size: .75rem; color: #657186; }
+.exam-history-value strong { font-weight: 600; font-variant-numeric: tabular-nums; }
+.learning-tutor .exam-history-bars button { min-height: 40px; font-size: .75rem; }
+
+.exam-report { display: grid; gap: 22px; }
+.exam-report .eyebrow { color: #617493; font-size: 10px; letter-spacing: .12em; }
+.quiz-panel .exam-report-heading h2 { margin: 6px 0 0; }
+.quiz-panel .exam-report-heading p { margin: 8px 0 0; }
+.exam-area-list { display: grid; list-style: none; margin: 0; padding: 0; }
+.exam-area-list li { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(90px, 1fr) 118px; gap: 8px 18px; align-items: center; padding: 11px 0; border-top: 1px solid #edf0f5; min-width: 0; }
+.exam-area-label { display: grid; gap: 2px; min-width: 0; }
+.exam-area-label strong { font-size: 14px; font-weight: 600; color: #30425d; overflow-wrap: anywhere; }
+.exam-area-label span { font-size: 12px; color: #64748b; }
+.exam-area-list .is-weak .exam-bar > span { background: #d4a768; }
+.exam-area-list .is-partial .exam-bar > span { background: #7d9bd2; }
+.exam-area-list .is-secure .exam-bar > span { background: #70a88e; }
+.exam-area-list li > button { justify-self: end; font-size: 12px; }
+.exam-report-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.exam-report-grid > section { padding: 16px 18px; border: 1px solid #e3eaf3; border-radius: 10px; background: #fafcfe; min-width: 0; }
+.quiz-panel .exam-report-grid h3, .quiz-panel .exam-report-history h3 { font-size: 15px; margin: 0 0 8px; }
+.exam-report-stats { display: grid; gap: 0; margin: 0; }
+.exam-report-stats > div { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-top: 1px solid #edf0f5; font-size: 13px; }
+.exam-report-stats > div:first-child { border-top: 0; }
+.exam-report-stats dt { color: #64748b; }
+.exam-report-stats dd { margin: 0; color: #30425d; font-weight: 500; text-align: right; font-variant-numeric: tabular-nums; }
+.quiz-panel .exam-report-note { font-size: 12px; line-height: 1.7; color: #64748b; margin: 0; }
+.exam-report-history { display: grid; gap: 6px; }
+
+.quiz-exam-complete { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px 16px; margin-top: 16px; padding: 14px 16px; border: 1px solid #cfe0d4; border-radius: 10px; background: #f3f9f5; }
+.quiz-exam-complete p { margin: 0; font-size: 14px; line-height: 1.6; color: #3f5f4b; flex: 1 1 280px; }
+.quiz-exam-complete strong { font-weight: 600; }
+
+@media (max-width: 640px) {
+  .tutor-exam-settings { grid-template-columns: minmax(0, 1fr); max-width: none; }
+  .tutor-exam-mix { gap: 8px; }
+  .tutor-exam-mix li { padding: 10px; }
+  .tutor-exam-history { padding: 16px; }
+  .exam-history-bars li, .exam-history-bars.has-actions li { grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; padding: 10px 0; border-top: 1px solid #edf0f5; }
+  .exam-history-bars li > .exam-bar { grid-column: 1 / -1; grid-row: 2; }
+  .exam-history-bars li > button { grid-column: 1 / -1; justify-self: start; }
+  .exam-area-list li { grid-template-columns: minmax(0, 1fr) auto; }
+  .exam-area-list li > .exam-bar { grid-column: 1 / -1; grid-row: 2; }
+  .exam-area-list li > button { grid-column: 2; grid-row: 1; }
+  .exam-report-grid { grid-template-columns: minmax(0, 1fr); }
+  .quiz-exam-complete > button { width: 100%; }
+}

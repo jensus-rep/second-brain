@@ -76,10 +76,10 @@ export function compactQuizRuns(workspace: Workspace, previous?: Workspace, keep
       }
       if (older.has(run)) {
         if (!archived(q)) q = { ...q, options: q.options.map(o => ({ ...o, feedback: "" })), explanation: ARCHIVED_EXPLANATION, source: "" };
-        // Planned learning units keep the original tasks as durable evidence
-        // after the usual five full rounds have rotated out. Explanation and
-        // feedback can still be compacted without guessing later bank wording.
-        if (!run.tutorWeekCheckpoint && !run.tutorWeekStartedOn && !run.tutorSessionId && !wordingArchived(q) && sameWording(q, bank.get(q.id))) q = { ...q, prompt: ARCHIVED_TEXT, options: q.options.map(o => ({ ...o, text: ARCHIVED_TEXT })) };
+        // Planned learning units and exam simulations keep the original tasks
+        // as durable evidence after the usual five full rounds have rotated out.
+        // Explanation and feedback can still be compacted without guessing later bank wording.
+        if (!run.tutorWeekCheckpoint && !run.tutorWeekStartedOn && !run.tutorSessionId && !run.examSimulation && !wordingArchived(q) && sameWording(q, bank.get(q.id))) q = { ...q, prompt: ARCHIVED_TEXT, options: q.options.map(o => ({ ...o, text: ARCHIVED_TEXT })) };
       }
       if (q !== original) runChanged = true;
       return q;

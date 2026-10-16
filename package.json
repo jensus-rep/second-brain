@@ -11,7 +11,7 @@
     "start": "node .next/standalone/server.js",
     "lint": "eslint . --ignore-pattern .next",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test tests/model.test.mjs tests/quiz-learning.test.mjs tests/quiz-preparation.test.mjs tests/learning-collections.test.mjs tests/learning-resume.test.mjs tests/learning-tutor.test.mjs tests/tutor-session.test.mjs tests/tutor-week.test.mjs tests/tutor-runtime.test.mjs tests/answer-comparison.test.mjs tests/save-queue.test.mjs tests/glossary.test.mjs",
+    "test": "node --experimental-strip-types --test tests/model.test.mjs tests/quiz-learning.test.mjs tests/quiz-preparation.test.mjs tests/learning-collections.test.mjs tests/learning-resume.test.mjs tests/learning-tutor.test.mjs tests/tutor-session.test.mjs tests/tutor-week.test.mjs tests/tutor-runtime.test.mjs tests/answer-comparison.test.mjs tests/save-queue.test.mjs tests/glossary.test.mjs tests/exam-simulation.test.mjs",
     "test:browser": "node tests/browser.mjs",
     "test:visual": "node tests/visual-learning.mjs",
     "test:flashcards": "node --experimental-strip-types tests/flashcards.mjs",
@@ -32,6 +32,7 @@
     "test:tutor-week": "node tests/tutor-week.mjs",
     "test:tutor-adaptive": "node tests/tutor-adaptive.mjs",
     "test:zoom": "node tests/diagram-zoom.mjs",
+    "test:exam-simulation": "node tests/exam-simulation.mjs",
     "test:comparisons": "node --experimental-strip-types tests/comparison-visual.mjs"
   },
   "dependencies": {

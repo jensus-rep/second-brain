@@ -8,7 +8,7 @@ import { comparisonForCardReview, type AnswerComparisonResult } from "./answer-c
 
 export type TutorQuizResult = {
   runId: string; subject: string; mode: QuizRun["mode"]; concept: string | null; finishedAt: string;
-  correct: number; total: number; percent: number;
+  examSimulation: boolean; correct: number; total: number; percent: number;
   previousRunId: string | null; previousPercent: number | null; change: number | null;
 };
 export type TutorAreaEvidence = {
@@ -185,7 +185,7 @@ export function tutorInsights(workspace: Workspace, recommendation: LearningReco
     const previousPercent = previous ? score(previous).percent : null;
     const current = score(run);
     return {
-      runId: run.id, subject: run.subject, mode: run.mode, concept: run.preparationConcept ?? null, finishedAt: run.finishedAt!, ...current,
+      runId: run.id, subject: run.subject, mode: run.mode, concept: run.preparationConcept ?? null, finishedAt: run.finishedAt!, examSimulation: !!run.examSimulation, ...current,
       previousRunId: previous?.id ?? null, previousPercent, change: previousPercent === null ? null : current.percent - previousPercent,
     };
   });

@@ -20,6 +20,7 @@ export type LearningAction = ActionScope & (
   | { kind: "review-cards"; mode: "due" | "all"; cardIds?: string[] }
   | { kind: "preparation"; subject: string; concept: string; tutorWeekStartedOn?: string }
   | { kind: "checkpoint"; subject: string; questionCount: number; questionIds?: string[]; cardCheckpoint?: { sessionId: string; reviewedAt: string }; tutorWeekCheckpoint?: QuizRun["tutorWeekCheckpoint"]; tutorSessionId?: string }
+  | { kind: "exam-simulation"; subject: string; questionCount: number; minutes: number }
   | { kind: "open-collection" }
 );
 export type LearningRecommendation = {

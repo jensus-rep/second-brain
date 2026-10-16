@@ -160,7 +160,9 @@ export function tutorSessionInsights(workspace: Workspace, recommendation: Learn
     return { ...initial, session: activeSession, phase: "resume",
       ...(activeSession && reviews ? { cardProgress: { done: reviews.size, total: activeSession.cardIds.length, known: [...reviews.values()].filter(Boolean).length } } : {}),
       action: { kind: "resume-quiz", collectionId: active.collectionId ?? null, runId: active.id },
-      title: "Deinen Test fortsetzen", description: "Deine bisherigen Antworten sind gespeichert. Wir beenden zuerst diese kurze Runde." };
+      ...(active.examSimulation
+        ? { title: "Deine Prüfungssimulation fortsetzen", description: `${active.answers.length} von ${active.questions.length} Aufgaben sind beantwortet und gespeichert. Gib die Simulation zuerst ab; danach geht es mit kurzen Einheiten weiter.` }
+        : { title: "Deinen Test fortsetzen", description: "Deine bisherigen Antworten sind gespeichert. Wir beenden zuerst diese kurze Runde." }) };
   }
   if (paused && paused.session.id !== session?.id) return { ...initial, phase: "resume",
     action: { kind: "resume-cards", collectionId: paused.session.collectionId, sessionId: paused.session.id, remaining: paused.remaining.length },

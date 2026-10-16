@@ -25,10 +25,11 @@ import { Quizzes, LearningReminders, type QuizLaunchRequest } from "./quizzes";
 import { LearningOverview } from "./learning-overview";
 import { HomeWorkspace } from "./home-workspace";
 import { NoteRows } from "./note-rows";
-import { LearningTutor } from "./learning-tutor";
+import { LearningTutor, type TutorMode } from "./learning-tutor";
 import { LearningTransition } from "./learning-transition";
 import { recommendLearning, type LearningAction } from "@/lib/brain/learning-resume";
 import { startTutorSession, tutorSessionInsights } from "@/lib/brain/tutor-session";
+import { examSimulationInsights } from "@/lib/brain/exam-simulation";
 import { LearningCollectionsOverview } from "./learning-collections";
 import { firstImage, noteExcerpt } from "@/lib/brain/media";
 import { MobileNavigation, type BrainView } from "./mobile-navigation";
@@ -110,6 +111,7 @@ export function BrainApp() {
   const [quizLaunchRequest, setQuizLaunchRequest] = useState<QuizLaunchRequest | undefined>();
   const [quizResultRequest, setQuizResultRequest] = useState<{ id: string; runId: string; collectionId?: string } | undefined>();
   const [learningReturnView, setLearningReturnView] = useState<"home" | "tutor">("home");
+  const [tutorMode, setTutorMode] = useState<TutorMode>("guided");
   const consumeCardResume = useCallback(() => setCardResumeRequest(0), []);
   const consumeQuizLaunch = useCallback(() => setQuizLaunchRequest(undefined), []);
   const consumeQuizResult = useCallback(() => setQuizResultRequest(undefined), []);
@@ -154,7 +156,7 @@ export function BrainApp() {
   function startCollectionCards(id: string | null, mode: "due" | "all" = "due", cardIds?: string[]) { if (!go("flashcards")) return; setLearningCollectionId(id ?? ""); setCardStartMode(mode); setCardStartIds(cardIds); setCardStartRequest(value => value + 1); }
   async function handleLearningAction(action: LearningAction) {
     if (quizPending.current) { toast.info("Speichere zuerst die offenen Antworten in deiner Lernrunde."); return; }
-    setLearningReturnView(view === "tutor" || view === "flashcards" || action.kind === "tutor-session" || action.kind === "checkpoint" && action.tutorSessionId ? "tutor" : "home");
+    setLearningReturnView(view === "tutor" || view === "flashcards" || action.kind === "tutor-session" || action.kind === "exam-simulation" || action.kind === "checkpoint" && action.tutorSessionId ? "tutor" : "home");
     if (action.kind === "tutor-session") {
       if (saving || tutorStarting.current) return;
       tutorStarting.current = true;
@@ -181,6 +183,11 @@ export function BrainApp() {
     if (!go("quizzes")) return;
     setLearningCollectionId(action.collectionId ?? "");
     if (action.kind === "resume-quiz") return;
+    if (action.kind === "exam-simulation") {
+      setTutorMode("exam");
+      setQuizLaunchRequest({ id: crypto.randomUUID(), subject: action.subject, collectionId: action.collectionId ?? undefined, mode: "exam-simulation", questionCount: action.questionCount, minutes: action.minutes });
+      return;
+    }
     setQuizLaunchRequest({ id: crypto.randomUUID(), subject: action.subject, collectionId: action.collectionId ?? undefined, mode: action.kind === "checkpoint" ? "checkpoint" : "preparation", ...(action.kind === "checkpoint" ? { questionCount: action.questionCount, questionIds: action.questionIds, cardCheckpoint: action.cardCheckpoint, tutorWeekCheckpoint: action.tutorWeekCheckpoint, tutorSessionId: action.tutorSessionId } : { concept: action.concept, ...(action.kind === "preparation" ? { tutorWeekStartedOn: action.tutorWeekStartedOn } : {}) }) });
   }
   function viewLearningResult(runId: string, collectionId: string | null) { setLearningReturnView(view === "tutor" ? "tutor" : "home"); go("quizzes"); setQuizResultRequest({ id: crypto.randomUUID(), runId, collectionId: collectionId ?? undefined }); }
@@ -205,11 +212,13 @@ export function BrainApp() {
           if (loading || brain.revision < 0) throw new Error("Der Lernstand wird noch geladen.");
           const recommendation = recommendLearning(w, Date.now());
           const tutor = tutorSessionInsights(w, recommendation, Date.now());
+          const exam = examSimulationInsights(w, recommendation, Date.now());
           return { revision: brain.revision, focus: { collectionId: recommendation.collectionId, title: recommendation.title, subject: recommendation.subject },
             plan: w.tutorPlan ?? null, availableConcepts: recommendation.areas.map(area => area.concept),
             phase: tutor.phase, progress: tutor.progress, cards: tutor.cardProgress, result: tutor.result,
             untouched: tutor.untouched, weakConcepts: tutor.weakConcepts,
-            next: tutor.next ?? tutor.proposal, feedback: tutor.description };
+            next: tutor.next ?? tutor.proposal, feedback: tutor.description,
+            examSimulations: { completed: [...exam.history].reverse().map(({ number, correct, total, percent, finishedAt }) => ({ number, correct, total, percent, finishedAt })), coverage: exam.coverage, running: !!exam.active } };
         },
       },
       {
@@ -260,7 +269,7 @@ export function BrainApp() {
       </>}
       {brain.error && <div className="error-banner" role="alert"><p>{brain.error}</p><Button variant="outline" size="sm" disabled={saving || loading} onClick={() => void brain.load()}>Aktuellen Stand laden</Button></div>}
       {loading && brain.revision < 0 ? <div className="card-grid loading-grid" aria-label="Wissenssammlung wird geladen">{[1, 2, 3].map(i => <Skeleton key={i} className="h-56 rounded-xl" />)}</div> : <>
-      {view === "tutor" && (tutorLaunching ? <LearningTransition title="Deine kurze Lernrunde wird vorbereitet …" description="Dein Tutor stellt die passenden Karten und Fragen zusammen." /> : <LearningTutor revision={brain.revision} onOpenCollections={() => go("collections")} workspace={w} save={save} saving={saving} now={overviewClock} onAction={handleLearningAction} onOpenNote={openNote} onOpenCollection={openCollection} onViewResult={viewLearningResult} />)}
+      {view === "tutor" && (tutorLaunching ? <LearningTransition title="Deine kurze Lernrunde wird vorbereitet …" description="Dein Tutor stellt die passenden Karten und Fragen zusammen." /> : <LearningTutor mode={tutorMode} onModeChange={setTutorMode} revision={brain.revision} onOpenCollections={() => go("collections")} workspace={w} save={save} saving={saving} now={overviewClock} onAction={handleLearningAction} onOpenNote={openNote} onOpenCollection={openCollection} onViewResult={viewLearningResult} />)}
       {view === "home" && <HomeWorkspace workspace={w}
         focus={<LearningOverview workspace={w} save={save} saving={saving} now={overviewClock} onAction={handleLearningAction} onOpenNote={openNote} onOpenCollection={openCollection} onViewResult={viewLearningResult} />}
         notes={filtered.length ? <NoteRows notes={filtered.slice(0, 5)} topics={w.topics} saving={saving} onOpen={openNote} onFavorite={toggleFavorite} /> : <p className="home-empty-notes">Dein Wissensraum beginnt mit einer Frage oder einem Gedanken. Lege deine erste Notiz an.</p>}
@@ -271,7 +280,7 @@ export function BrainApp() {
       />}
       {view === "collections" && <LearningCollectionsOverview workspace={w} save={save} saving={saving} collectionId={learningCollectionId} onCollectionChange={setLearningCollectionId} onOpenNote={openNote} onOpenCards={id => { setLearningCollectionId(id); go("flashcards"); }} onOpenQuizzes={id => { setLearningCollectionId(id); go("quizzes"); }} onOpenPath={id => { go("paths"); setSelectedPathId(id); }} onOpenCollection={openCollection} onStartCards={startCollectionCards} onOpenAllCollections={() => go("collections")} />}
       {view === "topics" && <section className="topic-browser" aria-label="Themenstruktur"><div className="structure-intro"><FolderOpen size={22} /><div><h2>Vom Fachthema zum Detail</h2><p>Unterthemen gehören zu ihrem übergeordneten Thema. Einträge bleiben ihrer konkreten Ebene zugeordnet und erscheinen auch beim übergeordneten Thema.</p></div></div><TopicTree topics={w.topics} notes={w.notes} onSelect={setTopic} onEdit={setEditingTopic} onCreateChild={parentId => createTopic(parentId)} /><button className="unassigned-topic" onClick={() => setTopic(UNASSIGNED)}><FileText size={18} /><span>Ohne Thema<small>Einträge, die noch einen Platz suchen.</small></span><strong>{activeNotes.filter(n => !n.topicId).length}</strong><ChevronRight size={16} /></button>{!w.topics.length && <p className="topic-empty-hint">Lege ein Fachthema an und ergänze darunter passende Unterthemen.</p>}<div className="structure-collection-link"><div><h3>Für ein Lernziel bündeln</h3><p>Lernsammlungen verbinden Inhalte aus mehreren Themen mit Karten und Übungen.</p></div><Button variant="outline" onClick={() => go("collections")}>Lernsammlungen öffnen<ChevronRight size={16} /></Button></div></section>}
-      {view === "quizzes" && <Quizzes onLearningAction={handleLearningAction} workspace={w} save={save} saving={saving} onStudyChange={setStudying} onOpenNote={openNote} collectionId={learningCollectionId} onCollectionChange={setLearningCollectionId} launchRequest={quizLaunchRequest} onLaunchConsumed={consumeQuizLaunch} resultRequest={quizResultRequest} onResultRequestConsumed={consumeQuizResult} onBackToOverview={() => go(learningReturnView)} onPendingChange={onQuizPendingChange} />}
+      {view === "quizzes" && <Quizzes onLearningAction={handleLearningAction} workspace={w} save={save} saving={saving} onStudyChange={setStudying} onOpenNote={openNote} collectionId={learningCollectionId} onCollectionChange={setLearningCollectionId} launchRequest={quizLaunchRequest} onLaunchConsumed={consumeQuizLaunch} resultRequest={quizResultRequest} onResultRequestConsumed={consumeQuizResult} onBackToOverview={() => go(learningReturnView)} onOpenTutor={mode => { if (go("tutor")) setTutorMode(mode); }} onPendingChange={onQuizPendingChange} />}
       {view === "flashcards" && <Flashcards revision={brain.revision} onLearningAction={handleLearningAction} onBackToTutor={() => go("tutor")} workspace={w} save={save} saving={saving} onEdit={setEditingCard} onStudyChange={onCardStudyChange} onOpenNote={openNote} collectionId={learningCollectionId} onCollectionChange={setLearningCollectionId} startRequest={cardStartRequest} startMode={cardStartMode} startCardIds={cardStartIds} resumeRequest={cardResumeRequest} onResumeRequestConsumed={consumeCardResume} onBackToCollection={learningCollectionId ? () => openCollection(learningCollectionId) : undefined} />}
       {["library", "favorites", "archive"].includes(view) && <section className="library-section">
         <div className="section-heading"><h2>{view === "home" ? "Zuletzt in deinem Wissensraum" : query ? "Suchergebnisse" : topic ? "Notizen in diesem Thema" : view === "archive" ? "Archivierte Notizen" : view === "favorites" ? "Deine Favoriten" : "Alle Notizen"} <span>{filtered.length}</span></h2>{view === "home" && <button onClick={() => go("library")}>Alle Notizen ansehen</button>}</div>

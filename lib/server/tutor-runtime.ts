@@ -48,6 +48,7 @@ function explainAction(action: LearningAction | null, recommendation: LearningRe
     case "review-cards": return action.mode === "due" ? `${recommendation.cards.due} Karten sind zur Wiederholung fällig. Eine kurze Runde hilft dir beim erneuten Abrufen.` : "Beginne mit einer kurzen Kartenrunde. Deine Bewertungen sind Selbsteinschätzungen und werden gespeichert.";
     case "preparation": return `Eine kurze Übung zu „${short(action.concept)}“ bringt dich direkt wieder ins Lernen. Sie nutzt vorhandene Aufgaben aus deinem Lernfokus.`;
     case "checkpoint": return `Ein Kurztest mit ${action.questionCount} vorhandenen Aufgaben prüft das Abrufen und Anwenden in deinem Lernfokus.`;
+    case "exam-simulation": return `Eine Prüfungssimulation mit ${action.questionCount} Aufgaben aus allen Lernbereichen zeigt, wo du unter Prüfungsbedingungen stehst.`;
     case "open-collection": return "Öffne deine Lernsammlung und wähle einen vorhandenen Inhalt für den nächsten kleinen Lernschritt.";
   }
 }

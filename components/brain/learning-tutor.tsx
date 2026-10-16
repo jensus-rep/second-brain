@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { tutorPlanSchema, type TutorPlan, type Workspace } from "@/lib/brain/model";
 import type { SaveWorkspace } from "@/lib/brain/use-brain";
@@ -13,9 +14,14 @@ import { collectionItems, learningCollections } from "@/lib/brain/learning-colle
 import { recommendLearning, type LearningAction } from "@/lib/brain/learning-resume";
 import { tutorInsights, type TutorQuizResult } from "@/lib/brain/learning-tutor";
 import { tutorSessionInsights } from "@/lib/brain/tutor-session";
+import { examSimulationInsights, examSimulationReport } from "@/lib/brain/exam-simulation";
 import { ARCHIVED_TEXT } from "@/lib/brain/quiz";
+import { TutorExamSimulation } from "./tutor-exam";
 
+export type TutorMode = "guided" | "exam";
 type Props = {
+  mode?: TutorMode;
+  onModeChange?: (mode: TutorMode) => void;
   workspace: Workspace;
   revision?: number;
   save: SaveWorkspace;
@@ -171,13 +177,18 @@ function actionLabel(action: LearningAction | null, cardCount: number, questionC
   return "Einheit starten";
 }
 
-export function LearningTutor({ workspace, save, saving, now, onAction, onOpenNote, onOpenCollection, onOpenCollections, onViewResult }: Props) {
+export function LearningTutor({ mode, onModeChange, workspace, save, saving, now, onAction, onOpenNote, onOpenCollection, onOpenCollections, onViewResult }: Props) {
+  const [localMode, setLocalMode] = useState<TutorMode>("guided");
+  const currentMode = mode ?? localMode;
   const recommendation = recommendLearning(workspace, now);
   const insights = tutorInsights(workspace, recommendation, now);
   const guided = tutorSessionInsights(workspace, recommendation, now);
   const collections = learningCollections(workspace);
   const selectedCollection = collections.find(collection => collection.id === recommendation.collectionId);
   const resumable = guided.action?.kind === "resume-quiz" || guided.action?.kind === "resume-cards" || guided.phase === "quiz";
+  const exam = examSimulationInsights(workspace, recommendation, now);
+  const latestSimulationRun = exam.history[0] ? workspace.quizRuns.find(run => run.id === exam.history[0].runId) : undefined;
+  const latestSimulation = latestSimulationRun ? examSimulationReport(workspace, latestSimulationRun, now) : null;
   const collectionValue = selectedCollection ? selectedCollection.id : resumable && recommendation.collectionId ? "::saved" : "::all";
   const legacyCards = !guided.session && guided.action?.kind === "resume-cards" ? workspace.flashcardSession : null;
   const resumedRunId = guided.action?.kind === "resume-quiz" ? guided.action.runId : null;
@@ -189,7 +200,7 @@ export function LearningTutor({ workspace, save, saving, now, onAction, onOpenNo
   const isQuiz = guided.phase === "quiz" || guided.action?.kind === "resume-quiz";
   const cardDone = isResult || isQuiz;
   const cardActive = !isResult && !isQuiz && cardCount > 0;
-  const label = guided.phase === "unavailable" && guided.action?.kind === "tutor-session" ? "Einheit neu zusammenstellen" : actionLabel(guided.action, cardCount, questionCount, isResult);
+  const label = guided.phase === "unavailable" && guided.action?.kind === "tutor-session" ? "Einheit neu zusammenstellen" : exam.active ? "Simulation fortsetzen" : actionLabel(guided.action, cardCount, questionCount, isResult);
   const latestResult = insights.history[0];
   const resultForReport = guided.result ?? latestResult;
   const scopedResultIds = new Set(insights.history.map(result => result.runId));
@@ -207,6 +218,7 @@ export function LearningTutor({ workspace, save, saving, now, onAction, onOpenNo
     `Aktuelle Einheit: ${guided.description}`,
     legacyCards ? `Karten der offenen Runde: ${reviewedCards} von ${cardCount} bewertet.` : legacyQuiz ? "Die offene Einheit ist eine Fragerunde." : guided.cardProgress.total ? `Karten der Einheit: ${guided.cardProgress.done} von ${guided.cardProgress.total} bewertet, ${guided.cardProgress.known} als gewusst eingeschätzt.` : "Aktuelle Einheit ohne Kartenrunde.",
     resultForReport ? `Letzter abgeschlossener Test: ${resultForReport.correct} von ${resultForReport.total} richtig (${resultForReport.percent} %), ${dateLabel(resultForReport.finishedAt)}.` : "Noch kein abgeschlossener Test im Lernfokus.",
+    latestSimulation ? `Prüfungssimulationen: ${exam.history.map(entry => `${entry.percent} %`).reverse().join(" → ")}. Letzte Simulation ${latestSimulation.correct} von ${latestSimulation.total} richtig${latestSimulation.areas.some(area => area.correct < area.total) ? `; schwächste Bereiche: ${latestSimulation.areas.filter(area => area.correct < area.total).slice(0, 3).map(area => `${area.concept} (${area.correct}/${area.total})`).join(", ")}` : ""}.` : "Noch keine Prüfungssimulation abgeschlossen.",
     `Gespeicherte Kartenbewertungen im Lernfokus: ${insights.cards.reviewed}, davon ${insights.cards.known} als gewusst eingeschätzt. Selbsteinschätzung und Testergebnis werden getrennt betrachtet.`,
     `Abdeckung: ${guided.progress.covered} von ${guided.progress.total} Lernbereichen aufgegriffen; in ${guided.progress.secure} Bereichen alle aktuellen Aufgaben zuletzt richtig.`,
     `Noch nicht geprüft: ${guided.untouched.length ? guided.untouched.join("; ") : guided.progress.total ? "Alle vorhandenen Lernbereiche wurden aufgegriffen." : "Keine Testaufgaben vorhanden; Grundlagen sind noch nicht durch Tests geprüft."}`,
@@ -233,8 +245,11 @@ export function LearningTutor({ workspace, save, saving, now, onAction, onOpenNo
   }
 
   return <section className="learning-tutor tutor-guided" aria-label="Dein Tutor">
-    <div className="tutor-focus-header"><div className="tutor-focus-title"><span className="tutor-icon"><Target size={22} aria-hidden="true" /></span><div><span className="eyebrow">DEIN TUTOR</span><h2>{recommendation.title}</h2><p>Kurze Einheiten. Ein klarer nächster Schritt.</p></div></div></div>
+    <div className="tutor-focus-header"><div className="tutor-focus-title"><span className="tutor-icon"><Target size={22} aria-hidden="true" /></span><div><span className="eyebrow">DEIN TUTOR</span><h2>{recommendation.title}</h2><p>{currentMode === "exam" ? "Prüfungsnah testen. Jede Simulation passt sich an." : "Kurze Einheiten. Ein klarer nächster Schritt."}</p></div></div></div>
 
+    <Tabs value={currentMode} onValueChange={value => { const next = value as TutorMode; setLocalMode(next); onModeChange?.(next); }} className="tutor-tabs tutor-mode-tabs">
+    <TabsList aria-label="Lernmodus des Tutors"><TabsTrigger value="guided">Kurze Einheiten</TabsTrigger><TabsTrigger value="exam">Prüfungssimulation</TabsTrigger></TabsList>
+    <TabsContent value="guided" className="tutor-tab-content">
     <article className={`tutor-guided-step ${isResult ? "is-result" : ""}`}>
       <div className="tutor-guided-intro"><span className="eyebrow">{isResult ? "DEINE RÜCKMELDUNG" : guided.phase === "cards" || guided.phase === "resume" || isQuiz ? "HIER GEHT ES WEITER" : "DEINE NÄCHSTE EINHEIT"}</span><h3>{guided.title}</h3><p>{guided.description}</p></div>
       {guided.phase !== "unavailable" && <ol className="tutor-guided-route" aria-label="Ablauf deiner kurzen Lerneinheit">
@@ -249,6 +264,11 @@ export function LearningTutor({ workspace, save, saving, now, onAction, onOpenNo
 
     <div className="tutor-guided-progress"><div><strong>{guided.progress.total ? `${guided.progress.covered} von ${guided.progress.total} Lernbereichen aufgegriffen` : "Deine Kartenbewertungen bleiben gespeichert"}</strong><span>{guided.progress.total ? `${guided.progress.secure} mit allen aktuellen Aufgaben zuletzt richtig` : `${insights.cards.reviewed} Bewertungen im Lernfokus`}{insights.plan ? ` · ${insights.continuity.weeklyActiveDays} von ${insights.plan.weeklyDays} Lerntagen diese Woche` : ""}</span></div>{guided.progress.total > 0 && <Progress value={guided.progress.covered / guided.progress.total * 100} aria-label={`${guided.progress.covered} von ${guided.progress.total} Lernbereichen aufgegriffen`} />}</div>
     {(guided.weakConcepts.length > 0 || guided.untouched.length > 0) && <aside className="tutor-guided-outlook" aria-label="Was der Tutor im Blick behält"><span>Im Blick behalten</span><p>{guided.weakConcepts.length > 0 && <><strong>Noch festigen:</strong> {guided.weakConcepts.slice(0, 2).join(", ")}. </>}{guided.untouched.length > 0 && <><strong>Noch nicht geprüft:</strong> {guided.untouched.slice(0, 3).join(", ")}{guided.untouched.length > 3 ? ` und ${guided.untouched.length - 3} weitere Bereiche` : ""}.</>}</p></aside>}
+    </TabsContent>
+    <TabsContent value="exam" className="tutor-tab-content">
+      <TutorExamSimulation workspace={workspace} recommendation={recommendation} saving={saving} now={now} onAction={onAction} onViewResult={onViewResult} />
+    </TabsContent>
+    </Tabs>
 
     <div className="tutor-guided-details">
       <TutorDetails title="Rückmeldung für die gemeinsame Planung" summary="Lernstand mitnehmen und den Plan im Chat verfeinern">
@@ -280,7 +300,7 @@ export function LearningTutor({ workspace, save, saving, now, onAction, onOpenNo
       </TutorDetails>
 
       <TutorDetails title="Ergebnisse und Verlauf" summary={latestResult ? `Letzte Einheit: ${latestResult.correct} von ${latestResult.total} richtig` : "Hier erscheinen deine abgeschlossenen Einheiten"}>
-        {latestResult ? <><div className="tutor-panel-heading"><TrendingUp size={20} aria-hidden="true" /><div><h3>Deine Lernkurve</h3><p>Richtige Antworten in den letzten {Math.min(12, insights.history.length)} Einheiten</p></div></div><LearningCurve results={insights.history} /><div className="tutor-result-list" aria-label="Gespeicherte Testergebnisse">{insights.history.map(result => <article key={result.runId} className="tutor-result"><div className="tutor-result-score"><strong>{result.percent}<span> %</span></strong><span>{result.correct} von {result.total} richtig</span></div><div className="tutor-result-detail"><h4>{result.concept ?? (result.mode === "exam" ? "Test" : "Übungsrunde")}</h4><p>{result.subject} · {dateLabel(result.finishedAt)}</p><p>{resultChange(result)}</p></div><Button variant="outline" disabled={saving || resumable} onClick={() => onViewResult(result.runId, recommendation.collectionId)} aria-label={`${result.concept ?? "Einheit"} vom ${dateLabel(result.finishedAt)}: Auswertung ansehen`}>Auswertung ansehen<ArrowRight size={15} aria-hidden="true" /></Button></article>)}</div></> : <p>Nach der ersten abgeschlossenen Einheit erscheinen hier deine Antworten und Ergebnisse.</p>}
+        {latestResult ? <><div className="tutor-panel-heading"><TrendingUp size={20} aria-hidden="true" /><div><h3>Deine Lernkurve</h3><p>Richtige Antworten in den letzten {Math.min(12, insights.history.length)} Einheiten</p></div></div><LearningCurve results={insights.history} /><div className="tutor-result-list" aria-label="Gespeicherte Testergebnisse">{insights.history.map(result => <article key={result.runId} className="tutor-result"><div className="tutor-result-score"><strong>{result.percent}<span> %</span></strong><span>{result.correct} von {result.total} richtig</span></div><div className="tutor-result-detail"><h4>{result.concept ?? (result.examSimulation ? "Prüfungssimulation" : result.mode === "exam" ? "Test" : "Übungsrunde")}</h4><p>{result.subject} · {dateLabel(result.finishedAt)}</p><p>{resultChange(result)}</p></div><Button variant="outline" disabled={saving || resumable} onClick={() => onViewResult(result.runId, recommendation.collectionId)} aria-label={`${result.concept ?? "Einheit"} vom ${dateLabel(result.finishedAt)}: Auswertung ansehen`}>Auswertung ansehen<ArrowRight size={15} aria-hidden="true" /></Button></article>)}</div></> : <p>Nach der ersten abgeschlossenen Einheit erscheinen hier deine Antworten und Ergebnisse.</p>}
         {hasArchivedWording && <p className="tutor-evidence-note">Ältere gekürzte Ergebnisse bleiben erhalten. Ohne ursprünglichen Aufgabenwortlaut belegen sie keine richtigen Antworten auf aktuelle Aufgaben und sind nicht mit ihnen vergleichbar.</p>}
         <p className="tutor-evidence-note">Karten im Lernfokus: {insights.cards.reviewed} gespeicherte Bewertungen, {insights.cards.known} als gewusst eingeschätzt. Kartenbewertungen sind deine Selbsteinschätzung und werden getrennt von Testantworten geführt.</p>
       </TutorDetails>

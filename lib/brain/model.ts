@@ -52,6 +52,7 @@ export const quizRunSchema = z.object({
   tutorWeekStartedOn: calendarDate.optional(),
   tutorWeekCheckpoint: z.object({ startedOn: calendarDate, stage: z.enum(["baseline", "midpoint", "final"]) }).optional(),
   tutorSessionId: id.optional(),
+  examSimulation: z.literal(true).optional(),
   deadlineAt: z.string().datetime().nullable(), finishedAt: z.string().datetime().nullable(),
   questions: z.array(quizQuestionSchema).min(1).max(30),
   answers: z.array(z.object({ questionId: id, selectedOptionIds: z.array(id).min(1).max(6), answeredAt: z.string().datetime(), reflection: z.string().max(1500) })).max(30),
@@ -67,6 +68,9 @@ export const quizRunSchema = z.object({
   }
   if (run.tutorWeekStartedOn && (run.mode !== "practice" || !run.preparationConcept || run.tutorWeekCheckpoint)) {
     ctx.addIssue({ code: "custom", message: "Eine Wocheneinheit braucht einen passenden Lernbereich." });
+  }
+  if (run.examSimulation && (run.mode !== "exam" || run.tutorSessionId || run.cardCheckpoint || run.tutorWeekCheckpoint || run.tutorWeekStartedOn || run.preparationConcept || run.questions.some(question => question.subject !== run.subject))) {
+    ctx.addIssue({ code: "custom", path: ["examSimulation"], message: "Eine Prüfungssimulation braucht einen eigenen Prüfungsmodus zu einem Fachthema." });
   }
   if (run.preparationConcept && (run.mode !== "practice" || run.questions.some(question => question.subject !== run.subject || question.concept !== run.preparationConcept))) {
     ctx.addIssue({ code: "custom", message: "Eine Vorbereitungseinheit muss zu ihrem Fachthema und Lernbereich gehören." });

@@ -260,7 +260,9 @@ try {
   assert.match(stale, /geändert/);
   assert.deepEqual(await snapshot(), afterTool, "A stale assistant plan cannot silently overwrite the saved plan.");
   await fixture();
-  await expect(tutor().getByRole("tab")).toHaveCount(0);
+  // Only the mode switch; the guided mode stays the default without form fields.
+  await expect(tutor().getByRole("tab")).toHaveText(["Kurze Einheiten", "Prüfungssimulation"]);
+  await expect(tutor().getByRole("tab", { name: "Kurze Einheiten", exact: true })).toHaveAttribute("aria-selected", "true");
   await expect(tutor().locator("select:visible, textarea:visible")).toHaveCount(0);
   await expect(primary()).toHaveText(/Mit 5 Karten starten/);
   await responsive("ready");
