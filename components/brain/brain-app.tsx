@@ -32,6 +32,7 @@ import { startTutorSession, tutorSessionInsights } from "@/lib/brain/tutor-sessi
 import { LearningCollectionsOverview } from "./learning-collections";
 import { firstImage, noteExcerpt } from "@/lib/brain/media";
 import { MobileNavigation, type BrainView } from "./mobile-navigation";
+import { GlossaryProvider } from "./term-preview";
 import { TopicTree } from "./topic-tree";
 import { flattenTopics, getTopicAncestors, getTopicDescendantIds, getTopicOptionLabel, getTopicPathLabel } from "@/lib/brain/topics";
 
@@ -246,7 +247,7 @@ export function BrainApp() {
   const focusedLearning = view === "flashcards" && (studying || !!cardStartRequest || !!cardResumeRequest)
     || view === "quizzes" && (studying || !!quizLaunchRequest || !!quizResultRequest || w.quizRuns.some(run => !run.finishedAt));
   const learningScene = view === "tutor" || view === "flashcards" || view === "quizzes";
-  return <SidebarProvider style={{ "--sidebar-width": "250px" } as CSSProperties}><Navigation view={view} go={go} workspace={w} topicId={topicId} setTopic={setTopic} newTopic={() => createTopic()} openKeys={() => setShowKeys(true)} onSignOut={() => { if (quizPending.current) toast.info("Speichere zuerst die offenen Antworten in deiner Lernrunde."); else void signOut(); }} /><SidebarInset className={"brain-main" + (focusedLearning ? " is-studying" : "")}>
+  return <GlossaryProvider notes={w.notes} topics={w.topics} onOpenNote={openNote}><SidebarProvider style={{ "--sidebar-width": "250px" } as CSSProperties}><Navigation view={view} go={go} workspace={w} topicId={topicId} setTopic={setTopic} newTopic={() => createTopic()} openKeys={() => setShowKeys(true)} onSignOut={() => { if (quizPending.current) toast.info("Speichere zuerst die offenen Antworten in deiner Lernrunde."); else void signOut(); }} /><SidebarInset className={"brain-main" + (focusedLearning ? " is-studying" : "")}>
     <header className="topbar"><div className="breadcrumb"><SidebarTrigger className="mobile-toggle" aria-label="Navigation öffnen" /><span>Wissensatelier</span><ChevronRight size={14} /><strong>{topic?.title ?? labels[view]}</strong></div><div className="topbar-right"><span className="save-state"><Check size={14} className={saving ? "pulse" : ""} />{saving ? "Speichert …" : loading ? "Lädt …" : brain.error ? "Bitte prüfen" : hasQuizPending ? "Antworten offen" : "Gespeichert"}</span><Button variant="ghost" size="icon" aria-label="Import & Datensicherung" disabled={hasQuizPending} onClick={() => setShowTransfer(true)}><Download size={18} /></Button></div></header>
     <div key={view} className={"workspace-content" + (learningScene ? " learning-scene" : "")}>
       {!focusedLearning && <><div className="page-heading"><div><div className="eyebrow">{view === "home" ? "PLATZ FÜR DEINE GEDANKEN" : "DEIN PERSÖNLICHER WISSENSRAUM"}</div><h1>{topic?.title ?? (topicId === UNASSIGNED ? "Ohne Thema" : view === "home" ? "Dein Wissen" : labels[view])}</h1><p>{topic?.description ?? ({ home: "Gedanken festhalten. Zusammenhänge entdecken.", tutor: "Deinen Plan umsetzen, kurz üben und den nächsten Schritt aus deinem Lernstand ableiten.", library: "Deine Einträge an einem Ort.", topics: "Fachthemen und Unterthemen ordnen dein Wissen. Öffne eine Ebene, um alle zugehörigen Einträge zu sehen.", collections: "Stelle Wissen, Lernkarten und Aufgaben für ein konkretes Lernziel zusammen.", paths: "Aus einzelnen Gedanken wird ein Weg. Lerne in deinem Tempo.", connections: "Entdecke, wie deine Gedanken zusammengehören.", favorites: "Die Gedanken, zu denen du gern zurückkommst.", archive: "Aufbewahrt für später. Hier geht kein Gedanke verloren.", flashcards: "Weniger nachlesen. Mehr im Gedächtnis behalten.", quizzes: "Wissen prüfen, Denkfehler verstehen und gezielt weiterüben." }[view])}</p></div><div className="heading-actions">{topic && <Button variant="outline" onClick={() => setEditingTopic(topic)} aria-label="Thema bearbeiten"><Pencil size={16} /></Button>}{view !== "quizzes" && view !== "collections" && view !== "tutor" && <Button className="primary-action" disabled={loading} onClick={() => view === "flashcards" ? setEditingCard(newFlashcard()) : view === "topics" ? createTopic() : view === "paths" ? setEditingPath({ id: crypto.randomUUID(), title: "", description: "", steps: [] }) : setEditingNote(freshNote())}><Plus size={18} />{view === "flashcards" ? "Neue Lernkarte" : view === "topics" ? "Neues Thema" : view === "paths" ? "Neuer Lernpfad" : "Neue Notiz"}</Button>}</div></div>
@@ -293,6 +294,6 @@ export function BrainApp() {
   {editingPath && <PathEditor path={editingPath} workspace={w} save={save} saving={saving} onClose={() => setEditingPath(null)} />}
   <TransferDialog open={showTransfer} setOpen={setShowTransfer} workspace={w} save={save} saving={saving} onImported={() => go("home")} />
   <AccessKeysDialog open={showKeys} setOpen={setShowKeys} />
-  </SidebarProvider>;
+  </SidebarProvider></GlossaryProvider>;
 }
 

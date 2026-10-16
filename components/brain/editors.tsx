@@ -13,6 +13,7 @@ import { MediaToolbar } from "./media-toolbar";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { normalizeTags, type Note, type Topic, type LearningPath, type Workspace } from "@/lib/brain/model";
 import { flattenTopics, getTopicDescendantIds, getTopicOptionLabel, getTopicPathLabel } from "@/lib/brain/topics";
+import { parseTerms } from "@/lib/brain/glossary";
 import type { SaveWorkspace } from "@/lib/brain/use-brain";
 
 export function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) {
@@ -34,16 +35,19 @@ export function NoteEditor({ note, workspace, save, saving, onClose }: {
 }) {
   const [draft, setDraft] = useState(note);
   const [tags, setTags] = useState(note.tags.join(", "));
+  const [terms, setTerms] = useState((note.terms ?? []).join(", "));
   const [linkQuery, setLinkQuery] = useState("");
   const [uploading, setUploading] = useState(false);
   const busy = saving || uploading;
   const [mode, setMode] = useState("edit");
-  const dirty = JSON.stringify(note) !== JSON.stringify(draft) || tags !== note.tags.join(", ");
+  const dirty = JSON.stringify(note) !== JSON.stringify(draft) || tags !== note.tags.join(", ") || terms !== (note.terms ?? []).join(", ");
   useUnsaved(dirty);
   const change = <K extends keyof Note>(key: K, value: Note[K]) => setDraft(d => ({ ...d, [key]: value }));
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    const updated = { ...draft, title: draft.title.trim(), tags: normalizeTags(tags), updatedAt: new Date().toISOString() };
+    const chosen = parseTerms(terms).slice(0, 20);
+    const updated: Note = { ...draft, title: draft.title.trim(), tags: normalizeTags(tags), terms: chosen.length ? chosen : undefined, updatedAt: new Date().toISOString() };
+    if (!updated.terms) delete updated.terms;
     const ok = await save(w => ({ ...w, notes: w.notes.some(n => n.id === note.id) ? w.notes.map(n => n.id === note.id ? updated : n) : [...w.notes, updated] }), "Notiz gespeichert");
     if (ok) onClose();
   }
@@ -63,6 +67,7 @@ export function NoteEditor({ note, workspace, save, saving, onClose }: {
           <Field label="Tags" hint="Mit Komma trennen"><Input value={tags} onChange={e => setTags(e.target.value)} placeholder="z. B. ideen, schreiben" maxLength={800} /></Field>
         </div>
         <Field label="Kurzbeschreibung"><Textarea value={draft.summary} onChange={e => change("summary", e.target.value)} placeholder="Die wichtigste Idee in einem Satz." maxLength={600} rows={2} /></Field>
+        <Field label="Begriffe für Verweise" hint="Mit Komma trennen. Unter diesen Begriffen verweisen Lernkarten auf diese Notiz, z. B. Abkürzungen oder Konzepte, die ein Abschnitt erklärt. Der Titelteil vor dem Doppelpunkt zählt automatisch."><Textarea value={terms} onChange={e => setTerms(e.target.value)} placeholder="z. B. OKR, Objectives and Key Results" maxLength={1400} rows={2} /></Field>
 
         <fieldset className="link-picker"><legend>Verknüpfte Notizen</legend><Input aria-label="Verknüpfbare Notizen filtern" value={linkQuery} onChange={e => setLinkQuery(e.target.value)} placeholder="Notizen finden …" /><div className="checkbox-list">{workspace.notes.filter(n => n.id !== note.id && (!n.archived || draft.relatedIds.includes(n.id)) && n.title.toLowerCase().includes(linkQuery.toLowerCase())).map(n => <label key={n.id}><Checkbox checked={draft.relatedIds.includes(n.id)} onCheckedChange={checked => change("relatedIds", checked ? [...draft.relatedIds, n.id] : draft.relatedIds.filter(id => id !== n.id))} /><span>{n.title}{n.archived ? " (archiviert)" : ""}</span></label>)}</div></fieldset>
 

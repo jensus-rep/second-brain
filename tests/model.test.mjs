@@ -297,3 +297,13 @@ test("trimmed wording is restored from the bank, written back on bank changes an
   assert.match(restoreQuestion(partly, []).explanation, /letzten 5 Runden/); assert.equal(restoreQuestion(partly, []).prompt, q.prompt);
   assert.equal(restoreQuestion(q, []), q, "Complete questions stay untouched");
 });
+
+test("notes keep optional terms for glossary links and stay compatible without them", () => {
+  const withTerms = structuredClone(seedWorkspace);
+  withTerms.notes[0].terms = ["OKR", "Objectives and Key Results"];
+  assert.deepEqual(workspaceSchema.parse(withTerms).notes[0].terms, ["OKR", "Objectives and Key Results"]);
+  assert.equal("terms" in workspaceSchema.parse(seedWorkspace).notes[0], false);
+  const tooShort = structuredClone(seedWorkspace);
+  tooShort.notes[0].terms = ["X"];
+  assert.equal(workspaceSchema.safeParse(tooShort).success, false);
+});

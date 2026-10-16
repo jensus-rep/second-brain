@@ -1,0 +1,36 @@
+/* Fachbegriffe in Lernkarten öffnen eine kurze Vorschau ihres Lerninhalts. */
+.glossary-term { display: inline; padding: 0; margin: 0; border: 0; border-radius: 3px; background: none; font: inherit; color: inherit; letter-spacing: inherit; text-align: inherit; cursor: pointer; text-decoration: underline dotted #8fa7d9; text-decoration-thickness: 1.5px; text-underline-offset: .22em; transition: background-color .15s, text-decoration-color .15s; }
+.glossary-term:hover { background: #edf2ff; text-decoration-color: var(--primary); text-decoration-style: solid; }
+.glossary-term:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+
+.term-preview { max-width: min(720px, calc(100% - 2rem)) !important; max-height: 90dvh; overflow-y: auto; padding: 28px; border-radius: 16px; }
+.term-preview-body { display: grid; gap: 18px; min-width: 0; }
+.term-preview-header { display: grid; gap: 6px; padding-right: 36px; text-align: left; }
+.term-preview-back { justify-self: start; margin: -6px 0 4px -10px; color: #5d6f8c; }
+.term-preview-title { font-size: 1.6rem; line-height: 1.2; letter-spacing: -.3px; color: var(--foreground); }
+.term-preview-subtitle { color: #647187; font-size: .95rem; }
+.term-preview-visual { display: grid; gap: 8px; min-width: 0; }
+.term-preview-visual .knowledge-figure, .term-preview-visual .diagram-figure { margin: 0; }
+.term-preview-visual .figure-zoom img { max-height: 52dvh; }
+.term-preview-visual .diagram-zoom > img { max-height: 46dvh; }
+.term-preview-pager { display: flex; align-items: center; justify-content: center; gap: 6px; color: #647187; font-size: 13px; }
+.term-preview-pager span { display: grid; text-align: center; }
+.term-preview-pager small { color: #8a96a8; font-size: 12px; }
+.term-preview-empty { display: flex; gap: 8px; align-items: center; padding: 14px 16px; border: 1px dashed #d7deea; border-radius: 12px; background: #fafbfe; color: #7b889c; font-size: 14px; }
+.term-preview-summary .prose-brain { font-size: 1rem; line-height: 1.7; color: #3f4f69; }
+.term-preview-summary .prose-brain > :last-child { margin-bottom: 0; }
+.term-preview-section { margin-bottom: 6px; font-size: 12px; font-weight: 600; letter-spacing: .02em; color: #6b7a92; }
+.term-preview-related h3 { margin-bottom: 8px; font-size: 12px; font-weight: 600; color: #6b7a92; }
+.term-preview-related > div { display: flex; flex-wrap: wrap; gap: 8px; }
+.term-chip { min-height: 32px; padding: 6px 12px; border: 1px solid #dbe3f2; border-radius: 999px; background: #f6f8fd; color: #34507f; font-size: 13px; cursor: pointer; }
+.term-chip:hover { background: #edf2ff; border-color: #b9c9ee; }
+.term-chip:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.term-preview-actions { display: flex; justify-content: flex-end; padding-top: 14px; border-top: 1px solid var(--border); }
+
+@media (max-width: 767px) {
+  .term-preview { max-width: calc(100% - 20px) !important; max-height: 94dvh; padding: 22px 18px; }
+  .term-preview-title { font-size: 1.35rem; }
+  .term-chip { min-height: 40px; }
+  .term-preview-actions > button { width: 100%; }
+  .term-preview [data-slot="dialog-close"] { top: 8px; right: 8px; width: 44px; height: 44px; display: grid; place-items: center; }
+}

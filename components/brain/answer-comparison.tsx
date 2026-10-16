@@ -89,6 +89,6 @@ export function AnswerComparisonView({ comparison, pending, answer, onRetry }: {
     </div>
     {!pending && comparison.source === "reference" && onRetry && <Button type="button" variant="outline" onClick={onRetry}>Vergleich erneut versuchen</Button>}
     <div className="study-comparison-reference"><h3>Musterantwort in Kürze</h3><p>{referenceAnswer(comparison.reference, 360)}</p></div>
-    <Collapsible className="study-reference-full"><CollapsibleTrigger asChild><Button type="button" variant="ghost">Vollständige Musterantwort<ChevronDown size={16} aria-hidden="true" /></Button></CollapsibleTrigger><CollapsibleContent><Markdown content={answer} /></CollapsibleContent></Collapsible>
+    <Collapsible className="study-reference-full"><CollapsibleTrigger asChild><Button type="button" variant="ghost">Vollständige Musterantwort<ChevronDown size={16} aria-hidden="true" /></Button></CollapsibleTrigger><CollapsibleContent><Markdown content={answer} linkTerms /></CollapsibleContent></Collapsible>
   </div>;
 }

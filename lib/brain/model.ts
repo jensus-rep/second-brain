@@ -14,6 +14,8 @@ export const noteSchema = z.object({
   topicId: id.nullable(), tags: z.array(z.string().trim().min(1).max(40)).max(20),
   relatedIds: z.array(id).max(100), favorite: z.boolean(), archived: z.boolean(),
   createdAt: z.string().datetime(), updatedAt: z.string().datetime(),
+  // Further terms under which learning material links to this note.
+  terms: z.array(z.string().trim().min(2).max(60)).max(20).optional(),
 });
 export const pathSchema = z.object({
   id, title, description: z.string().max(600),

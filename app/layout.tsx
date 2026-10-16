@@ -12,6 +12,7 @@ import "./learning-tutor.css";
 import "./workspace-composition.css";
 import "./learning-transitions.css";
 import "./flashcard-transitions.css";
+import "./glossary.css";
 
 export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover" };
 
