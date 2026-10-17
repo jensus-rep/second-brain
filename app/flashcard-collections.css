@@ -18,6 +18,32 @@
 .flashcard-filter-heading h2 { font-size: 22px; font-weight: 600; line-height: 1.45; color: #304b71; margin: 7px 0; }
 .flashcard-filter-heading h2 { overflow-wrap: anywhere; }
 .flashcard-filter-heading p, .flashcard-collection-description { color: #65758d; font-size: 13px; line-height: 1.75; margin: 0; overflow-wrap: anywhere; }
+.flashcard-filter-heading { display: flex; align-items: flex-start; gap: 16px; }
+.flashcard-filter-heading > div { min-width: 0; flex: 1; }
+.flashcard-deck-trigger { min-height: 44px; flex-shrink: 0; gap: 8px; white-space: nowrap; }
+.flashcard-study-deck-bar { display: flex; align-items: center; gap: 16px; margin-bottom: 18px; padding: 14px 16px; border: 1px solid #dbe5f4; border-radius: 12px; background: #f5f8ff; }
+.flashcard-study-deck-bar > div { flex: 1; min-width: 0; display: grid; gap: 4px; }
+.flashcard-study-deck-bar > div > span { color: #6b81a5; font-size: 10px; font-weight: 600; letter-spacing: .07em; }
+.flashcard-study-deck-bar strong { color: #35527d; font-size: 14px; font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
+.flashcard-deck-dialog { width: 600px; max-width: calc(100vw - 32px); max-height: min(760px, calc(100dvh - 40px)); display: flex; flex-direction: column; gap: 16px; padding: 24px; }
+.flashcard-deck-dialog [data-slot="dialog-header"] { flex-shrink: 0; padding-right: 20px; text-align: left; }
+.flashcard-deck-dialog [data-slot="dialog-title"] { color: #304b71; line-height: 1.5; }
+.flashcard-deck-dialog [data-slot="dialog-description"] { color: #6a7a92; font-size: 13px; line-height: 1.7; }
+.flashcard-deck-search { position: relative; flex-shrink: 0; }
+.flashcard-deck-search > svg { position: absolute; top: 50%; left: 12px; transform: translateY(-50%); color: #7186a5; pointer-events: none; }
+.flashcard-deck-search input { min-height: 44px; padding-left: 38px; }
+.flashcard-deck-options { min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: grid; gap: 8px; padding: 2px; }
+.flashcard-deck-option { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 76px; padding: 13px; border: 1px solid #e0e7f1; border-radius: 10px; background: white; text-align: left; cursor: pointer; }
+.flashcard-deck-option:hover, .flashcard-deck-option.is-selected { background: #f1f6ff; border-color: #aac1ee; }
+.flashcard-deck-option:focus-visible { outline: 2px solid #527cec; outline-offset: 1px; }
+.flashcard-deck-option:disabled { cursor: default; opacity: .5; }
+.flashcard-deck-icon { display: grid; place-items: center; flex-shrink: 0; width: 34px; height: 34px; border-radius: 9px; color: #6287c5; background: #edf3ff; }
+.flashcard-deck-copy { min-width: 0; display: grid; flex: 1; gap: 3px; }
+.flashcard-deck-copy strong { color: #3b5479; font-size: 13px; font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
+.flashcard-deck-copy > span { color: #73819a; font-size: 12px; line-height: 1.6; }
+.flashcard-deck-copy small { display: flex; align-items: center; gap: 5px; color: #5e7baa; font-size: 11px; line-height: 1.6; }
+.flashcard-deck-selected { color: #527bcc; flex-shrink: 0; }
+.flashcard-deck-empty { padding: 20px 8px; color: #73819a; font-size: 13px; line-height: 1.8; }
 .flashcard-start-grid { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 18px; margin-top: 23px; }
 .flashcard-collection-picker { min-width: 0; }
 .flashcard-collection-picker > span { font-size: 12px; color: #536783; }
@@ -99,6 +125,14 @@
 }
 
 @media (max-width: 600px) {
+  .flashcard-filter-heading { flex-wrap: wrap; gap: 12px; }
+  .flashcard-filter-heading > div { flex-basis: 100%; }
+  .flashcard-study-deck-bar { flex-wrap: wrap; gap: 10px; padding: 12px; }
+  .flashcard-study-deck-bar > div { flex-basis: 100%; }
+  .flashcard-study-deck-bar .flashcard-deck-trigger { min-height: 44px; }
+  .flashcard-deck-dialog { padding: 18px; gap: 12px; }
+  .flashcard-deck-option { padding: 12px 10px; gap: 10px; }
+  .flashcard-deck-icon { display: none; }
   .flashcard-paused-round { padding: 18px; grid-template-columns: minmax(0, 1fr); gap: 10px; }
   .flashcard-paused-icon { display: none; }
   .flashcard-paused-copy h2 { font-size: 17px; }
