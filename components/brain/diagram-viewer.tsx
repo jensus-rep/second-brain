@@ -6,9 +6,9 @@ import { Button } from "@/components/ui/button";
 
 type Point = { x: number; y: number };
 
-// Vector diagrams have no meaningful pixel size, so opening them at their
-// intrinsic size can mean 600 % and more on phones.
-const SVG_OPEN_ZOOM = 1.5;
+// Opening at the intrinsic size can mean 600 % and more on phones (vector
+// diagrams and large uploads alike), so every figure opens at most at 150 %.
+const OPEN_ZOOM = 1.5;
 
 export function DiagramViewer({ src, alt = "Diagramm" }: { src: string; alt?: string }) {
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -61,10 +61,10 @@ export function DiagramViewer({ src, alt = "Diagramm" }: { src: string; alt?: st
     if (nextSize.width === sizeRef.current.width && nextSize.height === sizeRef.current.height) return;
     // Original size can also equal 100% of the fitted view. Track the user's
     // fit choice separately so rotating back to portrait keeps labels readable.
-    const openZoom = src.startsWith("data:image/svg+xml") ? Math.min(1 / fit, SVG_OPEN_ZOOM) : 1 / fit;
+    const openZoom = Math.min(1 / fit, OPEN_ZOOM);
     const nextZoom = !sizeRef.current.width ? openZoom : fitted.current ? 1 : zoomRef.current * sizeRef.current.width / nextSize.width;
     changeZoom(nextZoom, undefined, undefined, nextSize, true);
-  }, [changeZoom, src]);
+  }, [changeZoom]);
 
   useLayoutEffect(() => {
     const viewport = viewportRef.current;

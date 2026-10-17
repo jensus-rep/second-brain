@@ -326,7 +326,7 @@ body, .brain-main { background: #f6f7f9; }
 .lightbox { grid-template-columns: minmax(0, 1fr); }
 .lightbox > img { display: block; min-width: 0; height: auto; }
 .zoom-lightbox { height: 90dvh; overflow: hidden; display: flex; flex-direction: column; gap: 12px; padding: 24px; }
-.zoom-lightbox-title { padding-right: 44px; flex-shrink: 0; overflow-wrap: anywhere; }
+.zoom-lightbox-title { padding-right: 44px; flex-shrink: 0; overflow-wrap: anywhere; font-size: 14px; line-height: 1.35; font-weight: 600; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
 .zoom-lightbox .diagram-viewer { flex: 1; min-height: 0; display: grid; grid-template-rows: auto auto minmax(0, 1fr); }
 .zoom-lightbox .diagram-viewer-controls { margin-bottom: 8px; flex-wrap: wrap; }
 .zoom-lightbox .diagram-viewer-controls button { width: 44px; height: 44px; }
@@ -390,5 +390,5 @@ body, .brain-main { background: #f6f7f9; }
 @media (max-width: 767px), (max-height: 500px) and (pointer: coarse) {
   .zoom-lightbox { top: 0; left: 0; translate: none; width: 100% !important; max-width: 100% !important; height: 100dvh; max-height: 100dvh; border: 0; border-radius: 0; padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
   .zoom-lightbox [data-slot="dialog-close"] { top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); }
-  .zoom-lightbox-title { min-height: 36px; display: flex; align-items: center; }
+  .zoom-lightbox-title { min-height: 36px; }
 }
