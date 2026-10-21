@@ -21,7 +21,7 @@ type Props = {
   saving: boolean;
   collectionId: string;
   onCollectionChange: (id: string) => void;
-  onOpenNote: (id: string) => void;
+  onOpenNote: (id: string, sequence?: string[]) => void;
   onOpenCards: (id: string) => void;
   onStartCards?: (id: string) => void;
   onOpenQuizzes: (id: string) => void;

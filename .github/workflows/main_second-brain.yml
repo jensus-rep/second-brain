@@ -35,6 +35,13 @@ jobs:
           npm run typecheck
           npm test
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Check course-import tools
+        run: npm run test:lernpaket
+
       - name: Build standalone server
         run: npm run build
 

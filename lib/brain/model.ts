@@ -179,6 +179,7 @@ export const workspaceSchema = z.object({
   learningCollections: z.array(learningCollectionSchema).max(100).default([]),
   learningFocus: learningFocusSchema.nullable().optional(),
   flashcardSession: flashcardSessionSchema.nullable().optional(),
+  pausedFlashcardSessions: z.array(flashcardSessionSchema).max(100).optional(),
   tutorPlan: tutorPlanSchema.optional(),
   tutorSession: tutorSessionSchema.optional(),
   tutorWeek: tutorWeekSchema.optional(),
@@ -191,6 +192,9 @@ export const workspaceSchema = z.object({
     if (new Set(list.map(item => item.id)).size !== list.length) issue("IDs müssen eindeutig sein.");
   }
   if (data.quizRuns.filter(run => !run.finishedAt).length > 1) issue("Bitte die laufende Testrunde zuerst beenden.");
+  const cardSessions = [...(data.pausedFlashcardSessions ?? []), ...(data.flashcardSession ? [data.flashcardSession] : [])];
+  if (new Set(cardSessions.map(session => session.id)).size !== cardSessions.length) issue("Gespeicherte Kartenrunden müssen eindeutige IDs haben.");
+  if (new Set(cardSessions.map(session => session.collectionId)).size !== cardSessions.length) issue("Pro Lernsammlung darf nur eine Kartenrunde gespeichert sein.");
   const reviewKeys = (data.cardReviewDays ?? []).map(day => JSON.stringify([day.date, day.collectionId]));
   if (new Set(reviewKeys).size !== reviewKeys.length) issue("Kartenwiederholungen pro Tag und Lernsammlung müssen eindeutig sein.");
   const notes = new Set(data.notes.map(n => n.id));

@@ -1,13 +1,26 @@
 # Lernpaket: vom Kursraum zur Prüfungsvorbereitung im Second Brain
 
+Für einen neuen Nutzer zuerst [Übergabe und Einrichtung](UEBERGABE.md) lesen. Beispiele in `module/` stammen aus der
+ursprünglichen Installation; neue Module mit der Vorlage und eigenen Werten anlegen. Der Ablauf wird von einem
+Agenten koordiniert; ein vollständiger Import per Link ist noch nicht eingebaut.
+
 Dieses Verfahren macht aus einem Moodle-Kursraum ein geprüftes Lernpaket im Second Brain: Notizen, Lernkarten und
 Multiple-Choice-Testaufgaben, die der Kursfassung folgen und jede Aussage belegen. Es ist am Modul Agiles
 Projektmanagement entstanden (09.10.2026; Referenz: `module/agiles-projektmanagement.json`) und für weitere Module
 gedacht.
 
-Beteiligt sind der **Nutzer** (Freigaben, Anmeldung), ein **Koordinator** (Claude in der Hauptsitzung: plant, führt
-zusammen, entscheidet Prüfbefunde, spielt ein) und **Autoren- und Prüfagenten** (schreiben nur Dateien im
-Arbeitsordner, nie ins Second Brain).
+Beteiligt sind der **Nutzer** (Freigaben, Anmeldung) und ein **Koordinator** (etwa Codex in der Hauptsitzung: plant,
+führt zusammen, entscheidet Prüfbefunde, spielt ein). Bei beauftragter Delegation können **Autoren- und Prüfagenten**
+zuarbeiten; sie schreiben nur Dateien im Arbeitsordner, nie ins Second Brain. Ein einzelner Agent kann die
+Arbeitsphasen auch nacheinander durchführen; Entwurf und fachliche Gegenprüfung bleiben getrennte Durchgänge.
+
+## API-Zugang einmalig einrichten
+
+Aus dem Second-Brain-Repo heraus `.env.brain.example` nach `.env.brain` kopieren. Darin die Basisadresse der eigenen
+Instanz (`BRAIN_URL`) und einen im angemeldeten Browser unter „Zugangsschlüssel“ erstellten eigenen Schlüssel
+(`BRAIN_ACCESS_KEY`) eintragen. `.env.brain` bleibt lokal und wird nie ausgegeben oder geteilt. Der mitgelieferte
+Helfer `tools/lernpaket/brain-api.mjs` benötigt Node ab 22.13 und die installierten Repo-Abhängigkeiten.
+Alle untenstehenden `node`-Aufrufe erfolgen aus dem Second-Brain-Repo. Platzhalter vor Ausführung ersetzen.
 
 ## Ablauf auf einen Blick
 
@@ -24,7 +37,7 @@ Arbeitsordner, nie ins Second Brain).
 | 8 | Unabhängige Prüfung | `pruefung-*.json` → `aenderungen-final.json`, `pool-final.json` | `vorlagen/PRUEFAUFTRAG.md`, `skripte/apply_pruefung.py` | gemeldete Punkte |
 | 9 | Freigabe | lesbare Änderungsliste und Aufgabenliste | – | **Einspielen** |
 | 10 | Einspielen | neue Revision, Sicherungen vorher und nachher | `brain-api.mjs`, `build_nachher.py`, `validate.mjs` | – |
-| 11 | Abschluss | Doku im Modulordner, TaskPilot, Gedächtnis | – | Vorschläge in TaskPilot |
+| 11 | Abschluss | Doku im Modulordner; optional im eigenen Aufgabenwerkzeug | – | externe Einträge nur beauftragt |
 
 Freigaben dürfen gebündelt werden („Freigabe für alles“); sie gelten für das beschriebene Paket, nicht für Folgearbeit.
 
@@ -54,10 +67,10 @@ Kursexport und Transkripte enthalten Kursmaterial: nur lokal halten, nicht in ei
 - `verbotene_ausdruecke`: Hochschule, Modulkürzel, Lehreinheitskürzel, Name der Lehrperson, Firmen aus Beispielen.
 - Prüfungsform aus dem Kursraum übernehmen (nach Schritt 1 nachtragen, wenn sie erst dort steht).
 
-### 1 · Kursraum erfassen (Downloader, `Private/audio_downloader`)
+### 1 · Kursraum erfassen (separates Repo `audio_downloader`)
 ```powershell
-cd C:\Users\jensm\Documents\Project\Private\audio_downloader
-.\.venv\Scripts\python main.py --export --with-media "<kurs_url>"
+Set-Location <Pfad-zum-audio_downloader-Repo>
+.\.venv\Scripts\python main.py --export --with-media --manual-login "<kurs_url>"
 ```
 - Anmeldung über die lokale `.env` des Nutzers (`UNI_USERNAME`, `UNI_PASSWORD`, `LOGIN_URL`) oder `--manual-login`
   (Browserfenster, 5 Minuten Zeit). Die `.env` wird nie gelesen, ausgegeben oder committet.
@@ -69,22 +82,30 @@ cd C:\Users\jensm\Documents\Project\Private\audio_downloader
 
 ### 2 · Transkribieren
 ```powershell
-.\.venv\Scripts\python transcribe.py exports\kurs-<id>\medien --out <Arbeitsordner>\transkripte --resource jensmoos-1541-resource --resource-group rg-jensmoos-1541
+.\.venv\Scripts\python transcribe.py exports\kurs-<id>\medien --out <Arbeitsordner>\transkripte --resource <eigene-speech-ressource> --resource-group <eigene-gruppe>
 ```
-- Audio per Azure AI Speech (Fast Transcription, de-DE), Schlüssel nur zur Laufzeit über `az`; Kosten gering (erster
-  Durchlauf: rund zwei Stunden Audio, unter zwei Euro; aktuelle Preise im Azure-Portal). Untertitel (`.vtt`) werden ohne Azure umgewandelt. Bereits transkribierte Dateien werden übersprungen.
+- Audio per Azure AI Speech (Fast Transcription, de-DE), Schlüssel zur Laufzeit über `az` oder die Prozessumgebung;
+  Kosten hängen von der eigenen Ressource ab. Untertitel (`.vtt`) werden ohne Azure umgewandelt. Bereits transkribierte
+  Dateien werden übersprungen. Die Speech-Variablen werden nicht automatisch aus einer `.env` geladen.
 - Automatische Untertitel und Spracherkennung enthalten Fehlhörungen: in der Soll-Liste korrigieren und kennzeichnen,
   wiederkehrende in `fehlhoerungen` aufnehmen.
 
 ### 3 · Nummern und Abgleich
+Vorher zurück ins Second-Brain-Repo wechseln und den eigenen Bestand als Entwurfsbasis ziehen:
+
+```powershell
+Set-Location <Pfad-zum-second-brain-Repo>
+node --experimental-strip-types --env-file=.env.brain tools/lernpaket/brain-api.mjs pull <Arbeitsordner>\stand.json
+```
+
 ```powershell
 python -I tools\lernpaket\skripte\quellen_nummern.py <Arbeitsordner>
 ```
 - Nummern beginnen nach der höchsten im Deck zitierten Aufzeichnung (nächster Zehner) und folgen der Kursreihenfolge;
   inhaltsgleiche Transkripte werden als Dublette markiert.
-- **Jedes Modul bekommt einen eigenen Hunderterblock** (`--start 101`, `--start 201` …), weil der Pull noch nicht die
-  Nummern eines parallel vorbereiteten Moduls enthält. Vergeben: Agiles Projektmanagement 1–71, Forschungsmethoden
-  101–169, Softwareentwicklung 201–231.
+- Parallel vorbereitete Module bekommen getrennte Nummernbereiche (`--start 101`, `--start 201` …), weil der Pull
+  noch nicht die Nummern eines anderen Entwurfs enthält. Bereiche anhand des eigenen Bestands abstimmen und bei mehr
+  als 100 Aufzeichnungen entsprechend vergrößern; die historischen Beispielbereiche sind keine globale Vergabe.
 - **Von Hand prüfen:** Titel (aus Dateinamen; fachlich passend benennen), und ob ein neues Transkript schon unter einer
   alten Nummer im Deck steckt (gleiche Dauer, gleicher Anfang). Beides ist im ersten Durchlauf passiert.
 - Kursinventar gegen vorhandene Transkripte abgleichen und festhalten, was fehlt (Beispiel:
@@ -105,12 +126,13 @@ python -I tools\lernpaket\skripte\quellen_nummern.py <Arbeitsordner>
   mindestens 1 MB frei. Lieber weniger, dafür geprüfte Aufgaben.
 
 ### 6 · Entwürfe
-- `stand.json` frisch ziehen: `node %USERPROFILE%\.newhope\brain-api.mjs pull <Arbeitsordner>\stand.json`.
+- `stand.json` aus Schritt 3 als feste Entwurfsbasis verwenden. Für eine neu begonnene Entwurfsrunde frisch pullen;
+  eine bereits verwendete Basis nicht überschreiben, da sie für den späteren Änderungsabgleich gebraucht wird.
 - Karten und Aufgaben in **getrennte Zuständigkeiten** aufteilen: je Autor eigene Lernbereiche, eigenes ID-Präfix für
   neue Karten, eine feste Liste von Notizen, an denen er Karten ändern darf. Notizen anderer Präfixe im selben
   Fachthema (Literatur-Notizen) gehören dazu.
-- Vorlagen ausfüllen (Platzhalter `{{…}}`), Agenten parallel starten. Korrekturen während der Arbeit an alle betroffenen
-  Agenten schicken und zusätzlich oben in die Aufträge schreiben.
+- Vorlagen ausfüllen (Platzhalter `{{…}}`), nacheinander oder bei beauftragter Delegation parallel bearbeiten.
+  Korrekturen während der Arbeit in alle betroffenen Aufträge übernehmen.
 
 ### 7 · Zusammenführen
 ```powershell
@@ -122,8 +144,8 @@ python -I tools\lernpaket\skripte\check_quiz.py --modul <modul.json> --pool <Arb
   Quellen überholt sind („nicht vertieft“, „nur genannt“), und Bestandskarten, die der Kursfassung widersprechen.
 
 ### 8 · Unabhängige Prüfung
-- Drei Prüfagenten mit `vorlagen/PRUEFAUFTRAG.md`, jeder ein Paket aus Karten und den passenden Aufgaben. Prüfer lösen
-  jede Aufgabe zuerst selbst; Korrekturen kommen als exakte Ersetzungen.
+- Fachliche Gegenprüfung mit `vorlagen/PRUEFAUFTRAG.md`, bei beauftragter Delegation durch separate Prüfagenten.
+  Jede Aufgabe zuerst selbst lösen; Korrekturen kommen als exakte Ersetzungen.
 - `python -I tools\lernpaket\skripte\apply_pruefung.py <Arbeitsordner>`; danach beide Prüfskripte erneut.
 - Gemeldete Punkte entscheidet der Koordinator; Grundsatzfragen gehen an den Nutzer.
 
@@ -133,23 +155,28 @@ python -I tools\lernpaket\skripte\check_quiz.py --modul <modul.json> --pool <Arb
 
 ### 10 · Einspielen
 ```powershell
-node %USERPROFILE%\.newhope\brain-api.mjs pull <Arbeitsordner>\einspielen\vorher.json
-copy <Arbeitsordner>\einspielen\vorher.json %USERPROFILE%\.newhope\backups\<JJJJ-MM-TT_HHMM>-vor-<zweck>.json
+node --experimental-strip-types --env-file=.env.brain tools/lernpaket/brain-api.mjs pull <Arbeitsordner>\einspielen\vorher.json
 python -I tools\lernpaket\skripte\build_nachher.py <Arbeitsordner> <…>\vorher.json <…>\nachher.json
 node --experimental-strip-types tools\lernpaket\skripte\validate.mjs <…>\nachher.json
-node %USERPROFILE%\.newhope\brain-api.mjs push <…>\nachher.json
-node %USERPROFILE%\.newhope\brain-api.mjs pull <…>\kontrolle.json
+node --experimental-strip-types --env-file=.env.brain tools/lernpaket/brain-api.mjs push <…>\nachher.json
+node --experimental-strip-types --env-file=.env.brain tools/lernpaket/brain-api.mjs pull <…>\kontrolle.json
 ```
-- `build_nachher.py` bricht ab, wenn sich eine geänderte Karte oder Notiz seit dem Entwurf verändert hat.
-- `validate.mjs` prüft mit dem Schema der App und meldet Felder, die das Schema stillschweigend verwerfen würde (es
-  verwirft unbekannte Felder beim Speichern). Erwartet: gültig, 0 verworfene Zeichen.
-- Vor dem Push prüfen: gleiche Schlüssel, Übungsrunden unverändert, Lernstand bestehender Karten unverändert. Nach dem
-  Push: Kontroll-Pull identisch mit dem Push; Sicherung „nach“ ablegen.
+- `build_nachher.py` vergleicht Entwurf und frischen Pull mit `stand.json`. Es übernimmt nur beabsichtigte Änderungen,
+  erhält parallele Änderungen an anderen Feldern und bricht bei Konflikten ab, auch bei Testaufgaben. Lernstandfelder
+  bestehender Karten dürfen nicht über die Änderungsliste überschrieben werden. Ohne `pool-final.json` bleibt der
+  frische Aufgabenpool unverändert. Eine bereits vorhandene Ausgabedatei wird nicht überschrieben.
+- `validate.mjs` prüft Schema und Speicherlimit und bricht auch ab, wenn Eingabefelder verloren gingen oder Werte beim
+  Parsen verändert würden. Ergänzte Schema-Standardwerte sind erlaubt.
+- Der API-Helfer verlangt die Herkunft der eigenen Instanz aus dem Pull, prüft die Revision, sichert vorher und nachher
+  unter `.data/brain-api-backups/` und vergleicht einen Kontroll-Pull mit der Speicherantwort. Bei Konflikten erfolgt kein
+  automatischer Wiederholungsversuch. Bereits vorhandene Pull-Dateien bleiben erhalten; für Folgeläufe neue Namen wählen.
+- Vor dem Push fachlichen Änderungsumfang prüfen; Übungsrunden und Lernstand bestehender Karten müssen erhalten bleiben.
+  Die JSON-Sicherungen des Helfers enthalten Bildreferenzen. Für eine vollständige Mediensicherung zusätzlich ZIP exportieren.
 
 ### 11 · Abschluss
 - Im Modulordner: Entscheidung (was, warum, Zahlen), README der Testvorbereitung, Änderungs- und Aufgabenliste.
-- TaskPilot: `document_completed_work` im passenden Projekt; offene Punkte als bekannte Grenzen.
-- Gedächtnis: Stand des Second Brain (Revision, Zahlen, Speicher) aktualisieren.
+- Optional das eigene Aufgabenwerkzeug oder Gedächtnis aktualisieren (Revision, Zahlen, Speicher, bekannte Grenzen).
+  Einträge in externen Diensten nur bei entsprechendem Auftrag erstellen.
 
 ## Verbindliche Regeln
 

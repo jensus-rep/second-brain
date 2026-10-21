@@ -32,6 +32,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.brain.example
 
 # vercel
 .vercel
@@ -53,3 +54,7 @@ next-env.d.ts
 # Local data and builds
 /.data/
 /deploy/
+
+# Python helper caches
+__pycache__/
+*.py[cod]

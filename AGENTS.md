@@ -16,6 +16,10 @@
 - Nach Änderungen: Typecheck, passende Modelltests, bei Verhaltensänderungen lokale Browsertests gegen `npm run dev`. Browsertests dürfen ausschließlich localhost verändern; lokal wird nie die Azure-Datenbank verwendet.
 - Keine Zugangsdaten im Quelltext. Geheimnisse liegen in den App-Einstellungen der Web App bzw. in GitHub-Secrets.
 
+## Kursmaterial und Übergabe
+
+- Für Kursimport, Lernpakete und Einrichtung für weitere Nutzer zuerst `tools/lernpaket/UEBERGABE.md` und `tools/lernpaket/README.md` lesen. Persönliche Pfade und Ressourcen aus Beispielen nicht übernehmen; fehlende externe Werkzeuge ausdrücklich benennen.
+
 ## Visuelle Wissenspflege
 
 - Visuelle und grafische Darstellungen sind ausdrücklich gewollt. Neue und überarbeitete Wissenseinträge zu komplexen Inhalten erhalten passende Grafiken, die Zusammenhänge erklären, Orientierung geben und das Erinnern unterstützen.

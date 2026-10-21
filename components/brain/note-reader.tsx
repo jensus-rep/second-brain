@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Archive, ChevronDown, ChevronRight, Clock3, FileText, Layers3, Link2, List, MoreHorizontal, Pencil, Star, X } from "lucide-react";
+import { Archive, ArrowRight, ChevronDown, ChevronRight, Clock3, FileText, Layers3, Link2, List, MoreHorizontal, Pencil, Star, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -16,8 +16,10 @@ type Heading = { id: string; title: string; level: number };
 let mountedReaders = 0;
 const date = (value: string) => new Intl.DateTimeFormat("de-DE", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/Berlin" }).format(new Date(value));
 
-export function NoteReader({ note, workspace, saving, onClose, onOpen, onEdit, onFlashcard, onFavorite, onArchive, onTopic, onTag }: {
+export function NoteReader({ note, nextNote, closeLabel = "Zur Übersicht", workspace, saving, onClose, onOpen, onEdit, onFlashcard, onFavorite, onArchive, onTopic, onTag }: {
   note: Note; workspace: Workspace; saving: boolean; onClose: () => void; onOpen: (id: string) => void;
+  nextNote?: Pick<Note, "id" | "title">;
+  closeLabel?: string;
   onEdit: () => void; onFlashcard: () => void; onFavorite: () => void; onArchive: () => void;
   onTopic: (id: string) => void; onTag: (tag: string) => void;
 }) {
@@ -56,7 +58,7 @@ export function NoteReader({ note, workspace, saving, onClose, onOpen, onEdit, o
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
-      scrollRef.current?.scrollTo({ top: 0 });
+      scrollRef.current?.scrollTo({ top: 0, behavior: "instant" });
       const items = Array.from(articleRef.current?.querySelectorAll<HTMLElement>('[id^="entry-section-"]') ?? []);
       setHeadings(items.map(element => ({ id: element.id, title: element.textContent ?? "", level: Number(element.tagName.slice(1)) })));
       setActiveHeading(items[0]?.id ?? "");
@@ -119,6 +121,9 @@ export function NoteReader({ note, workspace, saving, onClose, onOpen, onEdit, o
             {headings.length > 2 && <Collapsible className="mobile-outline" open={outlineOpen} onOpenChange={setOutlineOpen}><CollapsibleTrigger asChild><button className="details-trigger"><List size={16} />In diesem Eintrag<ChevronDown size={16} /></button></CollapsibleTrigger><CollapsibleContent>{outline}</CollapsibleContent></Collapsible>}
             <Markdown content={note.content || "Diese Notiz wartet noch auf deinen ersten Gedanken."} headingPrefix="entry-section" />
             <footer className="entry-context">
+              <nav className="entry-continuation" aria-label="Weiterlesen in deiner Auswahl">
+                {nextNote ? <><div><span>Als Nächstes</span><p>{nextNote.title}</p></div><Button type="button" onClick={() => onOpen(nextNote.id)} aria-label={`Nächsten Eintrag öffnen: ${nextNote.title}`}>Nächster Eintrag<ArrowRight size={17} aria-hidden="true" /></Button></> : <><p>Am Ende dieses Eintrags angekommen.</p><Button type="button" variant="outline" onClick={requestClose}>{closeLabel}</Button></>}
+              </nav>
               {related.length > 0 && <section className="entry-related"><h3><Link2 size={16} />Weiterlesen <span>{related.length}</span></h3><div>{related.map(n => <button key={n.id} onClick={() => onOpen(n.id)}><FileText size={17} /><span>{n.title}{n.archived && <small>Archiviert</small>}</span></button>)}</div></section>}
               <Collapsible className="entry-details"><CollapsibleTrigger asChild><button className="details-trigger">Details zum Eintrag<ChevronDown size={16} /></button></CollapsibleTrigger><CollapsibleContent>
                 <dl className="entry-dates"><div><dt>Erstellt</dt><dd>{date(note.createdAt)}</dd></div><div><dt>Bearbeitet</dt><dd>{date(note.updatedAt)}</dd></div></dl>

@@ -19,15 +19,17 @@ try {
   const base = { summary: "Ein Eintrag mit klarer Gliederung.", tags: ["lesepruefung"], relatedIds: [], favorite: false, archived: false, createdAt: now, updatedAt: now };
   const second = { ...base, id: crypto.randomUUID(), title: "QA Weiterführender Gedanke", content: "Ein zweiter Gedanke.", topicId: null };
   const note = { ...base, id: crypto.randomUUID(), title: "QA Lesefokus", topicId: topic.id, relatedIds: [second.id], content: "## Überblick\n\nEin Gedanke in eigenen Worten.\n\n```text\n## Kein Abschnitt\n```\n\n## Vertiefen\n\nEine klare Erklärung.\n\n### Ein Beispiel\n\nEine Anwendung.\n\n## Vertiefen\n\nEin weiterer Blickwinkel." };
+  const nextNote = { ...base, id: crypto.randomUUID(), title: "QA Nächster Leseeintrag", topicId: topic.id, tags: [], content: "## Nächster Gedanke\n\n" + "Eine weitere Erklärung zum gemeinsamen Thema.\n\n".repeat(24) };
   const archived = { ...base, id: crypto.randomUUID(), title: "QA Archivgedanke", content: "Archivierter Eintrag.", topicId: null, archived: true, tags: ["nurimarchiv"] };
-  assert.equal((await page.request.put(origin + "/api/brain", { data: { revision: snapshot.revision, workspace: { ...snapshot.workspace, topics: [...snapshot.workspace.topics, topic], notes: [...snapshot.workspace.notes, note, second, archived] } } })).status(), 200);
+  const collection = { id: crypto.randomUUID(), title: "QA Lesereihenfolge", description: "Eine gezielte Auswahl in eigener Reihenfolge.", noteIds: [nextNote.id, note.id], cardIds: [], questionIds: [], pathIds: [] };
+  assert.equal((await page.request.put(origin + "/api/brain", { headers: { Origin: origin }, data: { revision: snapshot.revision, workspace: { ...snapshot.workspace, topics: [...snapshot.workspace.topics, topic], notes: [...snapshot.workspace.notes, note, second, nextNote, archived], learningCollections: [...snapshot.workspace.learningCollections, collection] } } })).status(), 200);
   await page.reload({ waitUntil: "networkidle" });
   await mkdir(".sites-runtime/qa", { recursive: true });
 
   await page.getByRole("button", { name: "Themen", exact: true }).click();
   await page.screenshot({ path: ".sites-runtime/qa/redesign-topics.png", fullPage: true });
   await page.locator(".topic-browser .topic-tree-open").filter({ hasText: topic.title }).click();
-  await expect(page.locator(".note-card")).toHaveCount(1);
+  await expect(page.locator(".note-card")).toHaveCount(2);
   await expect(page.getByRole("button", { name: "Themenfilter entfernen" })).toBeVisible();
   await page.getByRole("heading", { name: note.title, exact: true }).click();
   let reader = page.getByRole("dialog", { name: note.title, exact: true });
@@ -45,6 +47,16 @@ try {
   await editor.getByRole("button", { name: "Notiz speichern", exact: true }).click();
   await expect(reader).toBeVisible();
   await expect(reader.getByText("Gespeicherte Ergänzung.", { exact: true })).toBeVisible();
+  await reader.getByRole("button", { name: `Nächsten Eintrag öffnen: ${nextNote.title}`, exact: true }).click();
+  const nextReader = page.getByRole("dialog", { name: nextNote.title, exact: true });
+  await expect(nextReader).toBeVisible();
+  await expect.poll(() => nextReader.locator(".entry-scroll").evaluate(element => element.scrollTop)).toBe(0);
+  await expect(nextReader.locator(".entry-article")).toBeFocused();
+  await expect(nextReader.getByRole("button", { name: /^Nächsten Eintrag öffnen:/ })).toHaveCount(0);
+  await nextReader.getByRole("button", { name: "Zur Übersicht", exact: true }).click();
+  await expect(nextReader).toHaveCount(0);
+  await page.getByRole("heading", { name: note.title, exact: true }).click();
+  await expect(reader).toBeVisible();
   await reader.getByRole("button", { name: second.title, exact: true }).click();
   await expect(page.getByRole("dialog", { name: second.title, exact: true })).toBeVisible();
   await page.goBack();
@@ -72,6 +84,17 @@ try {
   await page.keyboard.press("Escape");
   await expect(page.locator(".note-card")).toHaveCount(1);
 
+  await page.getByRole("button", { name: "Lernsammlungen", exact: true }).click();
+  await page.locator(".collection-card").filter({ has: page.getByRole("heading", { name: collection.title, exact: true }) }).click();
+  await page.getByRole("combobox", { name: "Inhalte der Lernsammlung nach Thema", exact: true }).selectOption(topic.id);
+  await page.locator(".collection-note-list").getByRole("button", { name: nextNote.title + " " + topic.title, exact: true }).click();
+  await expect(nextReader).toBeVisible();
+  await nextReader.getByRole("button", { name: `Nächsten Eintrag öffnen: ${note.title}`, exact: true }).click();
+  await expect(reader).toBeVisible();
+  await expect(reader.getByRole("button", { name: /^Nächsten Eintrag öffnen:/ })).toHaveCount(0);
+  await reader.getByRole("button", { name: "Zur Übersicht", exact: true }).click();
+  await expect(reader).toHaveCount(0);
+
   await page.goto(origin + "/#note=" + note.id, { waitUntil: "networkidle" });
   await page.screenshot({ path: ".sites-runtime/qa/redesign-reader-desktop.png", animations: "disabled" });
   await page.setViewportSize({ width: 390, height: 844 });
@@ -84,15 +107,29 @@ try {
   await reader.locator(".mobile-outline").getByRole("button", { name: "In diesem Eintrag", exact: true }).click();
   await reader.locator(".mobile-outline nav button").last().click();
   assert.equal(await page.evaluate(() => document.activeElement?.id), ids.at(-1));
+  const mobileNext = reader.getByRole("button", { name: `Nächsten Eintrag öffnen: ${nextNote.title}`, exact: true });
+  await mobileNext.scrollIntoViewIfNeeded();
+  const nextBounds = await mobileNext.boundingBox();
+  const actionsBounds = await reader.locator(".reader-mobile-actions").boundingBox();
+  assert.ok(nextBounds && actionsBounds && nextBounds.y + nextBounds.height <= actionsBounds.y + 1, "Next-entry button stays reachable above the mobile toolbar");
+  await expect(page).toHaveURL(origin + "/#note=" + note.id);
+  await mobileNext.click();
+  await expect(nextReader).toBeVisible();
+  await expect.poll(() => nextReader.locator(".entry-scroll").evaluate(element => element.scrollTop)).toBe(0);
+  await expect(nextReader.locator(".entry-article")).toBeFocused();
+  await expect(page).toHaveURL(origin + "/#note=" + nextNote.id);
+  await page.goBack();
+  await expect(page).toHaveURL(origin + "/#note=" + note.id);
+  await expect(reader).toBeVisible();
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.addStyleTag({ content: "html { font-size: 32px; }" });
   assert.equal(await reader.locator(".entry-scroll").evaluate(element => element.scrollWidth > element.clientWidth), false, "Reading view must reflow with enlarged text");
   assert.deepEqual(errors, []);
-  console.log("PASS: topic discovery, unassigned and archive filters, progressive details, rendered heading outline, repeated headings, editor return, related-entry history, deep links, mobile outline and enlarged text.");
+  console.log("PASS: topic discovery, filters, reader continuation in the current selection and collection order, final-entry return, scroll and focus reset, mobile next button, progressive details, heading outline, editor return, related-entry history, deep links and enlarged text.");
 } finally {
   if (initial) {
     const latest = await (await page.request.get(origin + "/api/brain")).json();
-    assert.equal((await page.request.put(origin + "/api/brain", { data: { revision: latest.revision, workspace: initial } })).status(), 200);
+    assert.equal((await page.request.put(origin + "/api/brain", { headers: { Origin: origin }, data: { revision: latest.revision, workspace: initial } })).status(), 200);
   }
   await browser.close();
 }

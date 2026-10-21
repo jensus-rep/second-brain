@@ -126,6 +126,7 @@ export function BrainApp() {
   const [query, setQuery] = useState("");
   const [tag, setTag] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [readingNoteIds, setReadingNoteIds] = useState<string[] | undefined>();
   const [editingNote, setEditingNote] = useState<Note | null>(null);
   const [editingTopic, setEditingTopic] = useState<Topic | null>(null);
   const [editingPath, setEditingPath] = useState<LearningPath | null>(null);
@@ -144,13 +145,26 @@ export function BrainApp() {
   const childTopics = w.topics.filter(t => t.parentId === topicId);
   const scopeNotes = w.notes.filter(n => n.archived === (view === "archive") && (view !== "favorites" || n.favorite));
   const filtered = searchNotes(scopeNotes.filter(n => matchesTopic(n) && (!tag || n.tags.includes(tag))), query, w.topics);
+  const readingIds = readingNoteIds ?? (note ? searchNotes(w.notes.filter(n => n.topicId === note.topicId && n.archived === note.archived), "", w.topics).map(n => n.id) : []);
+  const readingIndex = note ? readingIds.indexOf(note.id) : -1;
+  const nextNote = readingIndex < 0 ? undefined : readingIds.slice(readingIndex + 1).map(id => w.notes.find(n => n.id === id)).find(n => n !== undefined);
   const firstPath = w.paths.find(p => pathProgress(p, w.completedStepIds).percent < 100) ?? w.paths[0];
   const firstProgress = firstPath ? pathProgress(firstPath, w.completedStepIds) : null;
   const allTags = [...new Set(scopeNotes.filter(matchesTopic).flatMap(n => n.tags))].sort();
   const freshNote = (): Note => ({ id: crypto.randomUUID(), title: "", summary: "", content: "", topicId: topicId && topicId !== UNASSIGNED ? topicId : null, tags: [], relatedIds: [], favorite: false, archived: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
   function go(v: View) { if (quizPending.current) { toast.info("Speichere zuerst die offenen Antworten in deiner Lernrunde."); return false; } navigationVersion.current += 1; setOverviewClock(Date.now()); setStudying(false); setCardStartRequest(0); setCardResumeRequest(0); setQuizLaunchRequest(undefined); setQuizResultRequest(undefined); if (v === "collections") setLearningCollectionId(""); setView(v); setTopicId(""); setTag(""); setQuery(""); setSelectedPathId(null); window.scrollTo({ top: 0, behavior: "instant" }); return true; }
-  function openNote(id: string) { if (id === selectedId) return; setSelectedId(id); window.history.pushState(null, "", "#note=" + encodeURIComponent(id)); }
-  function closeNote() { setSelectedId(null); window.history.replaceState(null, "", window.location.pathname + window.location.search); }
+  function openNote(id: string, sequence?: string[]) {
+    if (id === selectedId) return;
+    if (!selectedId || sequence) {
+      const target = w.notes.find(n => n.id === id);
+      const ids = sequence ?? (view === "paths" && selectedPath ? selectedPath.steps.map(step => step.noteId)
+        : ["home", "library", "favorites", "archive"].includes(view) && filtered.some(n => n.id === id) ? filtered.map(n => n.id)
+          : searchNotes(w.notes.filter(n => n.topicId === target?.topicId && n.archived === target?.archived), "", w.topics).map(n => n.id));
+      setReadingNoteIds([...new Set(ids)]);
+    }
+    setSelectedId(id); window.history.pushState(null, "", "#note=" + encodeURIComponent(id));
+  }
+  function closeNote() { setSelectedId(null); setReadingNoteIds(undefined); window.history.replaceState(null, "", window.location.pathname + window.location.search); }
   function setTopic(id: string) { if (go("library")) setTopicId(id); }
   function openCollection(id: string) { go("collections"); setLearningCollectionId(id); }
   function startCollectionCards(id: string | null, mode: "due" | "all" = "due", cardIds?: string[]) { if (!go("flashcards")) return; setLearningCollectionId(id ?? ""); setCardStartMode(mode); setCardStartIds(cardIds); setCardStartRequest(value => value + 1); }
@@ -194,7 +208,7 @@ export function BrainApp() {
   function createTopic(parentId: string | null = null) { setEditingTopic({ id: crypto.randomUUID(), title: "", description: "", color: "blue", parentId }); }
   function toggleFavorite(n: Note) { void save(state => ({ ...state, notes: state.notes.map(item => item.id === n.id ? { ...item, favorite: !item.favorite } : item) }), n.favorite ? "Favorit entfernt" : "Als Favorit gespeichert"); }
   useEffect(() => {
-    const readHash = () => { try { setSelectedId(window.location.hash.startsWith("#note=") ? decodeURIComponent(window.location.hash.slice(6)) : null); } catch { setSelectedId(null); } };
+    const readHash = () => { try { const id = window.location.hash.startsWith("#note=") ? decodeURIComponent(window.location.hash.slice(6)) : null; setSelectedId(id); if (!id) setReadingNoteIds(undefined); } catch { setSelectedId(null); setReadingNoteIds(undefined); } };
     readHash(); window.addEventListener("hashchange", readHash); window.addEventListener("popstate", readHash);
     const keyboard = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key === "k") { e.preventDefault(); if (quizPending.current) { toast.info("Speichere zuerst die offenen Antworten in deiner Lernrunde."); return; } navigationVersion.current += 1; setSelectedId(null); window.history.replaceState(null, "", window.location.pathname + window.location.search); setView("library"); requestAnimationFrame(() => searchRef.current?.focus()); } };
     window.addEventListener("keydown", keyboard);
@@ -296,7 +310,7 @@ export function BrainApp() {
       </>}
     </div>
   </SidebarInset>{!focusedLearning && !note && !editingNote && !editingTopic && !editingPath && !editingCard && !showTransfer && !showKeys && <MobileNavigation view={view} go={go} loading={loading} newNote={() => setEditingNote(freshNote())} openTransfer={() => setShowTransfer(true)} openKeys={() => setShowKeys(true)} signOut={() => void signOut()} />}<Toaster position="bottom-right" richColors />
-  {note && !editingNote && !editingCard && <NoteReader key={note.id} note={note} workspace={w} saving={saving} onClose={closeNote} onOpen={openNote} onEdit={() => setEditingNote(note)} onFlashcard={() => setEditingCard(newFlashcard(note))} onFavorite={() => toggleFavorite(note)} onArchive={() => void save(state => ({ ...state, notes: state.notes.map(n => n.id === note.id ? { ...n, archived: !n.archived } : n) }), note.archived ? "Notiz wiederhergestellt" : "Notiz archiviert")} onTopic={id => { closeNote(); go(note.archived ? "archive" : "library"); setTopicId(id); }} onTag={value => { closeNote(); go(note.archived ? "archive" : "library"); setTag(value); }} />}
+  {note && !editingNote && !editingCard && <NoteReader key={note.id} note={note} nextNote={nextNote} closeLabel={view === "flashcards" || view === "quizzes" ? "Zurück zum Lernen" : "Zur Übersicht"} workspace={w} saving={saving} onClose={closeNote} onOpen={openNote} onEdit={() => setEditingNote(note)} onFlashcard={() => setEditingCard(newFlashcard(note))} onFavorite={() => toggleFavorite(note)} onArchive={() => void save(state => ({ ...state, notes: state.notes.map(n => n.id === note.id ? { ...n, archived: !n.archived } : n) }), note.archived ? "Notiz wiederhergestellt" : "Notiz archiviert")} onTopic={id => { closeNote(); go(note.archived ? "archive" : "library"); setTopicId(id); }} onTag={value => { closeNote(); go(note.archived ? "archive" : "library"); setTag(value); }} />}
   {editingCard && <FlashcardEditor card={editingCard} workspace={w} save={save} saving={saving} collectionId={view === "flashcards" ? learningCollectionId : undefined} onClose={() => setEditingCard(null)} />}
   {editingNote && <NoteEditor note={editingNote} workspace={w} save={save} saving={saving} onClose={() => setEditingNote(null)} />}
   {editingTopic && <TopicEditor topic={editingTopic} workspace={w} save={save} saving={saving} onClose={() => setEditingTopic(null)} />}

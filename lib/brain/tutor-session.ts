@@ -1,6 +1,7 @@
 import type { Flashcard, QuizQuestion, QuizRun, TutorSession, Workspace } from "./model.ts";
 import { tutorSessionSchema } from "./model.ts";
 import { collectionItems, flashcardPriority, learningCollections } from "./learning-collections.ts";
+import { activateFlashcardSession, resumableDeckSession } from "./flashcard-decks.ts";
 import { resumableFlashcardSession, runMatchesLearningCollection, selectCheckpointQuestions, type LearningAction, type LearningRecommendation } from "./learning-resume.ts";
 import { tutorCardContentFingerprint } from "./learning-tutor.ts";
 import { latestQuestionResults, preparationAreas, selectAdaptivePreparationQuestions } from "./quiz-preparation.ts";
@@ -138,8 +139,13 @@ function reviewedSessionCards(workspace: Workspace, session: TutorSession, now: 
 
 export function tutorSessionInsights(workspace: Workspace, recommendation: LearningRecommendation, now = Date.now()): TutorSessionInsights {
   const active = workspace.quizRuns.find(run => !run.finishedAt);
-  const paused = resumableFlashcardSession(workspace);
   const saved = workspace.tutorSession;
+  // A manually parked tutor round is still resumable when its own deck is
+  // selected. Other parked decks must not interrupt this deck's short quiz.
+  const parked = saved && saved.collectionId === recommendation.collectionId && saved.subject === recommendation.subject
+    ? resumableDeckSession(workspace, saved.collectionId, new Date(now)) : null;
+  const paused = resumableFlashcardSession(workspace) ?? (parked?.id === saved?.id && parked
+    ? resumableFlashcardSession({ ...workspace, flashcardSession: parked }) : null);
   // The general recommendation keeps deleted-source rounds launchable with a
   // null collection. Their historical scope must still constrain evidence;
   // it does not authorize borrowing the user's unrelated global task bank.
@@ -212,9 +218,10 @@ export function startTutorSession(workspace: Workspace, recommendation: Learning
   const session = tutorSessionSchema.parse({ id: sessionId, collectionId: proposal.collectionId, subject: proposal.subject,
     concept: proposal.concept, reason: proposal.reason, cardIds: proposal.cardIds, questionIds: proposal.questionIds, startedAt });
   const cards = session.cardIds.map(id => workspace.cards.find(card => card.id === id)!);
-  return { ...workspace, tutorSession: session,
-    flashcardSession: cards.length ? { id: session.id, collectionId: session.collectionId, mode: "all",
-      queue: cards.map(card => ({ id: card.id, reviews: card.reviews, dueAt: card.dueAt })), index: 0, startedAt, updatedAt: startedAt } : null,
+  const updated = cards.length ? activateFlashcardSession(workspace, { id: session.id, collectionId: session.collectionId, mode: "all",
+    queue: cards.map(card => ({ id: card.id, reviews: card.reviews, dueAt: card.dueAt })), index: 0, startedAt, updatedAt: startedAt })
+    : { ...workspace, flashcardSession: workspace.flashcardSession ?? null };
+  return { ...updated, tutorSession: session,
     learningFocus: { collectionId: session.collectionId, subject: session.subject, updatedAt: startedAt } };
 }
 

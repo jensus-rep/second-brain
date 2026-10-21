@@ -79,6 +79,7 @@ Der Entwicklungsserver läuft unter http://127.0.0.1:5173. Lokal meldet sich der
 ~~~sh
 npm run typecheck
 npm test
+npm run test:lernpaket
 npm run test:browser
 npm run test:visual
 npm run test:reading
@@ -115,6 +116,8 @@ Im Überblick steht der zuletzt gespeicherte Lernfokus vor der Wissenssuche. Ein
 Die optionalen Workspace-Felder `learningFocus` und `flashcardSession` speichern Auswahl und Kartenposition serverseitig mit Revision und werden in Sicherungen übernommen. Beim Fortsetzen werden gelöschte, aus einer vorhandenen Sammlung entfernte oder inzwischen anders bewertete Karten übersprungen. Eine neue Kartenrunde ersetzt eine gespeicherte Runde erst nach ausdrücklicher Auswahl. Historische Referenzen dürfen bestehen bleiben; sie ändern keine vorhandenen IDs und benötigen keine Tabellenmigration.
 
 ## Lernsammlungen und Umfang
+
+Im Lernkartenbereich öffnet „Deck wechseln“ eine durchsuchbare Auswahl mit Kartenzahl, fälligen Karten und gespeicherten Runden. Während einer Runde startet oder setzt die Auswahl das Zieldeck direkt fort; beim Zurückwechseln bleiben Position und Reihenfolge je Deck erhalten. Die Runden liegen serverseitig im optionalen Workspace-Feld `pausedFlashcardSessions`. Karten, die inzwischen in einer anderen Sammlung bewertet wurden, werden beim Fortsetzen übersprungen. Unbewertete Antworten brauchen vor dem Wechsel eine Bestätigung; während einer Speicherung bleibt der Wechsel gesperrt. `npm run test:decks` prüft den Ablauf ausschließlich gegen localhost und die ausgewählte lokale SQLite-Datei.
 
 Auf der Startseite und unter „Lernsammlungen“ stehen Sammlungen für konkrete Lernziele. Ein Klick öffnet direkt die Detailansicht mit allen enthaltenen Notizen, Fachthemen, Karten, Testaufgaben und Lernpfaden. „Jetzt lernen“ startet die fälligen Karten der Sammlung; wenn keine fällig ist, werden alle Karten geübt. „Lernkarten öffnen“ führt zur Sammlungsauswahl mit zusätzlichen Filtern. Dieselbe Auswahl gilt beim Wechsel zu Tests. Eigene Sammlungen lassen sich aus vorhandenen Inhalten zusammenstellen und mit ihrem Lernziel speichern. Karten zu ausgewählten Notizen gehören automatisch dazu; zusätzliche Karten, Testaufgaben und Lernpfade werden ausdrücklich ausgewählt. Neue Karten und Testaufgaben aus einer ausgewählten Sammlung werden ihr beim Speichern direkt zugeordnet. Ein Inhalt kann mehreren Sammlungen angehören und behält dabei einen gemeinsamen Lernfortschritt.
 
@@ -206,6 +209,10 @@ Erinnerungen sind in der App sichtbar. Für einen Alarm außerhalb der App kann 
 Das generierte Second-Brain-Logo liegt in `public/brand/second-brain-mark.png` und wird in Navigation, Login und als Browser-Icon verwendet. Es verbindet zwei abstrakte Gehirnhälften mit einem offenen Buch. Der endgültige Imagegen-Prompt steht in `public/brand/second-brain-mark.prompt.txt`.
 
 Der Produktname lautet Second Brain. Bestehende technische Bezeichner (`newhope_*`, `NEWHOPE_*`, Session-Cookie und SQLite-Pfad) bleiben für die Kompatibilität mit gespeicherten Daten und der Serverkonfiguration erhalten.
+
+## Übergabe und Kursimport
+
+Für die Einrichtung bei einem weiteren Nutzer und den Ablauf vom Moodle-Link über den separaten Downloader bis zu Notizen, Lernkarten und Tests siehe [Übergabeanleitung](tools/lernpaket/UEBERGABE.md) und [Lernpaket-Verfahren](tools/lernpaket/README.md). API-Helfer und Konfigurationsvorlage liegen im Repo; die Anleitung erklärt die eigene Einrichtung und die Grenzen des Ablaufs. `test:lernpaket` benötigt zusätzlich Python ab 3.10.
 
 ## Gemeinsam Wissen pflegen
 

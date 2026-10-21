@@ -76,6 +76,8 @@ async function start(workspace = fixture) {
 }
 
 const reveal = () => page.getByRole("button", { name: "Antwort aufdecken", exact: true });
+const checkChoices = () => page.getByRole("button", { name: "Auswahl prüfen", exact: true });
+const choice = letter => page.locator(".study-choice").nth(letter.charCodeAt(0) - 65);
 const rating = known => page.getByRole("group", { name: "Bewertung der Lernkarte", exact: true }).getByRole("button", { name: known ? /^Gewusst/ : /^Noch üben/ });
 
 // The request stays blocked until assertions prove that the current card stays stable.
@@ -285,10 +287,177 @@ try {
   await expect(page.locator(".study-answer")).not.toContainText("Deine Erklärung enthält die eigene Anwendung.");
   comparisonHandler = async (route, body) => route.fulfill({ json: referenceComparison(body) });
 
+  console.log("Checking clickable choices, keyboard selection and explicit manual progress");
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  const choiceFixture = { ...fixture, cards: [cards[0], { ...cards[0], id: "next-choices", dueAt: cards[1].dueAt }] };
+  await start(choiceFixture);
+  const beforeSelection = await snapshot();
+  const requestsBeforeSelection = comparisonRequests.length;
+  await expect(page.locator(".study-choices .study-choice")).toHaveCount(4);
+  await expect(reveal()).toBeVisible();
+  await choice("A").click();
+  await expect(choice("A")).toHaveAttribute("aria-pressed", "true");
+  await choice("B").focus();
+  await page.keyboard.press("Enter");
+  await expect(choice("B")).toHaveAttribute("aria-pressed", "true");
+  await page.keyboard.press("Space");
+  await expect(choice("B")).toHaveAttribute("aria-pressed", "false");
+  await choice("C").click();
+  await choice("D").click();
+  await expect(checkChoices()).toBeVisible();
+  await expect(page.locator(".study-choice-feedback")).toHaveCount(0);
+  await expect(page.locator('.study-choice[data-state="correct"], .study-choice[data-state="incorrect"], .study-choice[data-state="missed"]')).toHaveCount(0);
+  await expect(page.locator(".study-answer")).toHaveCount(0);
+  assert.equal((await snapshot()).revision, beforeSelection.revision, "Choosing options alone must not save, reveal or rate the card.");
+  const choiceExplanation = "Ich verbinde Beispiele mit aktivem Erinnern.";
+  await page.getByLabel("Deine Antwort in eigenen Worten", { exact: true }).fill(choiceExplanation);
+  await page.waitForTimeout(1400);
+  assert.equal(comparisonRequests.length, requestsBeforeSelection, "A selected choice also suppresses speculative comparisons while writing an explanation.");
+  await checkChoices().click();
+  const choiceFeedback = page.locator(".study-choice-feedback");
+  await expect(choiceFeedback).toHaveAttribute("role", "status");
+  await expect(choiceFeedback).toContainText("Richtig gewählt.");
+  for (const letter of ["A", "C", "D"]) await expect(choice(letter)).toHaveAttribute("data-state", "correct");
+  for (const letter of ["A", "B", "C", "D"]) await expect(choice(letter)).toBeDisabled();
+  await expect(page.locator(".study-answer-comparison")).toHaveCount(0);
+  assert.equal(comparisonRequests.length, requestsBeforeSelection, "Choice checking uses the explicit saved answer, without an AI comparison request.");
+  assert.equal((await snapshot()).revision, beforeSelection.revision, "Correct feedback still waits for the learner's own rating.");
+  await rating(false).click();
+  await expect(page.locator(".study-topline")).toContainText("2 von 2");
+  await expect(page.locator(".save-state")).toHaveText("Gespeichert");
+  for (const letter of ["A", "B", "C", "D"]) {
+    await expect(choice(letter)).toHaveAttribute("aria-pressed", "false");
+    await expect(choice(letter)).toBeEnabled();
+  }
+  await expect(choiceFeedback).toHaveCount(0);
+  await expect(reveal()).toBeFocused();
+  await expect(page.getByLabel("Deine Antwort in eigenen Worten", { exact: true })).toHaveValue("");
+  const selectedReview = (await snapshot()).workspace.cardReviewEvents.at(-1);
+  assert.match(selectedReview.response, /^Auswahl: A, C, D(?:\n\n|$)/);
+  assert.ok(selectedReview.response.includes(choiceExplanation), "A selected answer and the optional own explanation are both saved.");
+  assert.equal(selectedReview.known, false, "The learner's manual rating controls progress even after a correct selection.");
+  assert.equal((await snapshot()).workspace.cards[0].reviews, 1);
+
+  console.log("Checking pause/resume clears the selection and its optional explanation together");
+  const pausedChoiceSession = (await snapshot()).workspace.flashcardSession;
+  await choice("B").click();
+  await page.getByLabel("Deine Antwort in eigenen Worten", { exact: true }).fill("Diese unbewertete Auswahl wird beim Fortsetzen neu begonnen.");
+  await page.getByRole("button", { name: "Beenden", exact: true }).click();
+  await page.getByRole("button", { name: "Lernrunde fortsetzen", exact: true }).click();
+  await expect(page.locator(".study-topline")).toContainText("2 von 2");
+  await expect(page.locator(".save-state")).toHaveText("Gespeichert");
+  const resumedChoiceSession = (await snapshot()).workspace.flashcardSession;
+  assert.equal(resumedChoiceSession.id, pausedChoiceSession.id, "Resuming keeps the same saved round.");
+  assert.equal(resumedChoiceSession.index, pausedChoiceSession.index);
+  for (const letter of ["A", "B", "C", "D"]) await expect(choice(letter)).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByLabel("Deine Antwort in eigenen Worten", { exact: true })).toHaveValue("");
+  await expect(reveal()).toBeFocused();
+  await expect(choiceFeedback).toHaveCount(0);
+  assert.deepEqual((await snapshot()).workspace.cards.map(card => card.reviews), [1, 0], "Pausing and resuming never rates the unanswered card.");
+
+  console.log("Checking selected-answer persistence at the response length limit");
+  await start();
+  const limitedResponseField = page.getByLabel("Deine Antwort in eigenen Worten", { exact: true });
+  const selectionPrefix = "Auswahl: A, B, C, D\n\n";
+  const textLimit = Number(await limitedResponseField.getAttribute("maxlength"));
+  assert.equal(textLimit, 1500 - selectionPrefix.length, "The text field reserves space for every selectable option and the separator.");
+  const limitResponse = "x".repeat(textLimit - 4) + "ENDE";
+  await limitedResponseField.fill(limitResponse);
+  for (const letter of ["A", "B", "C", "D"]) await choice(letter).click();
+  await expect(limitedResponseField).toHaveValue(limitResponse);
+  await checkChoices().click();
+  await holdWrite();
+  await rating(false).click();
+  const limitWrite = await held.request;
+  const savedLimitResponse = limitWrite.workspace.cardReviewEvents.at(-1).response;
+  assert.equal(savedLimitResponse.length, 1500);
+  assert.equal(savedLimitResponse, selectionPrefix + limitResponse, "A maximum-length explanation survives adding all selected options without truncation.");
+  await finishWrite();
+  assert.equal((await snapshot()).workspace.cardReviewEvents.at(-1).response, selectionPrefix + limitResponse);
+
+  console.log("Checking desktop actions stay visible at both ends of a long card");
+  const longCardFixture = { ...fixture, cards: [{ ...cards[1], id: "desktop-long-card",
+    question: "Wie lässt sich dieser lange Lerninhalt anwenden?\n\n" + "Ein konkretes Beispiel verbindet einen neuen Gedanken mit einer bekannten Situation.\n\n".repeat(45),
+  }] };
+  for (const position of ["initial", "bottom"]) {
+    await start(longCardFixture);
+    const longQuestionBounds = await page.locator(".study-question").boundingBox();
+    assert.ok(longQuestionBounds.y + longQuestionBounds.height > page.viewportSize().height, "The fixture extends below the viewport.");
+    if (position === "bottom") await page.evaluate(() => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "instant" }));
+    await expect(reveal()).toBeInViewport({ ratio: 1 });
+    await reveal().click();
+    await expect(rating(false)).toBeInViewport({ ratio: 1 });
+    await expect(rating(true)).toBeInViewport({ ratio: 1 });
+    await page.evaluate(() => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "instant" }));
+    await expect(rating(false)).toBeInViewport({ ratio: 1 });
+    await expect(rating(true)).toBeInViewport({ ratio: 1 });
+  }
+
+  console.log("Checking wrong and missing choices, bare answer keys and unknown truth");
+  await start();
+  await choice("A").click();
+  await choice("B").click();
+  await checkChoices().click();
+  await expect(choiceFeedback).toContainText("Noch nicht ganz.");
+  await expect(choice("A")).toHaveAttribute("data-state", "correct");
+  await expect(choice("B")).toHaveAttribute("data-state", "incorrect");
+  await expect(choice("C")).toHaveAttribute("data-state", "missed");
+  await expect(choice("D")).toHaveAttribute("data-state", "missed");
+  await expect(rating(true)).toBeEnabled();
+
+  await start({ ...fixture, cards: [{ ...cards[0], answer: "**B und C.** A und D helfen in diesem Beispiel nicht weiter." }] });
+  await choice("B").click();
+  await choice("C").click();
+  await checkChoices().click();
+  await expect(choiceFeedback).toContainText("Richtig gewählt.");
+
+  const unknownAnswer = "A ist eine mögliche Hilfe. Bei C kommt es auf den Zusammenhang an.";
+  await start({ ...fixture, cards: [{ ...cards[0], answer: unknownAnswer }] });
+  await choice("A").click();
+  const unknownRevision = (await snapshot()).revision;
+  await checkChoices().click();
+  await expect(choiceFeedback).toContainText("Vergleiche deine Auswahl mit der Musterantwort.");
+  await expect(page.locator('.study-choice[data-state="correct"], .study-choice[data-state="incorrect"], .study-choice[data-state="missed"]')).toHaveCount(0);
+  await expect(page.locator(".study-answer")).toContainText(unknownAnswer);
+  assert.equal((await snapshot()).revision, unknownRevision, "An ambiguous answer must never invent or save an automatic correctness result.");
+
+  console.log("Checking choice and own-answer recovery after a failed rating save");
+  await start();
+  await choice("A").click();
+  await choice("C").click();
+  const failedChoiceExplanation = "Diese Auswahl und Erklärung bleiben nach einem Speicherfehler erhalten.";
+  await page.getByLabel("Deine Antwort in eigenen Worten", { exact: true }).fill(failedChoiceExplanation);
+  await checkChoices().click();
+  await holdWrite(503);
+  await rating(false).click();
+  const failedChoiceWrite = await held.request;
+  assert.match(failedChoiceWrite.workspace.cardReviewEvents.at(-1).response, /^Auswahl: A, C(?:\n\n|$)/);
+  await expect(page.locator(".study-topline")).toContainText("2 von 3");
+  held.release();
+  await held.done;
+  held = null;
+  await expect(page.locator(".study-topline")).toContainText("1 von 3");
+  await expect(page.locator(".study-rating-error")).toContainText("nicht gespeichert");
+  await expect(page.locator(".study-answer")).toBeVisible();
+  for (const letter of ["A", "C"]) {
+    await expect(choice(letter)).toHaveAttribute("aria-pressed", "true");
+    await expect(choice(letter)).toBeDisabled();
+  }
+  await expect(choice("B")).toHaveAttribute("aria-pressed", "false");
+  await expect(choice("D")).toHaveAttribute("data-state", "missed");
+  await expect(page.getByLabel("Deine Antwort in eigenen Worten", { exact: true })).toHaveValue(failedChoiceExplanation);
+  assert.equal((await snapshot()).workspace.cards[0].reviews, 0);
+  await holdWrite();
+  await rating(false).click();
+  const recoveredChoiceWrite = await held.request;
+  assert.equal(recoveredChoiceWrite.workspace.cardReviewEvents.at(-1).response, failedChoiceWrite.workspace.cardReviewEvents.at(-1).response);
+  await finishWrite();
+  assert.equal((await snapshot()).workspace.cards[0].reviews, 1, "Retry saves one review with the restored selection.");
+
   for (const width of [1440, 390, 320]) {
     await page.setViewportSize({ width, height: width === 1440 ? 1000 : 844 });
     await start();
-    const options = page.locator(".study-question .prose-brain > ul");
+    const options = page.locator(".study-choices > ul");
     await expect(options.locator("li")).toHaveCount(4);
     const styles = await options.evaluate(el => ({ font: parseFloat(getComputedStyle(el).fontSize), align: getComputedStyle(el).textAlign, weight: getComputedStyle(el).fontWeight }));
     assert.ok(styles.font <= 16, "Answer choices use compact text on desktop and mobile.");
@@ -416,7 +585,7 @@ try {
   const footer = await page.locator(".study-rating").boundingBox();
   assert.ok(Math.abs(footer.y + footer.height - page.viewportSize().height) < 1, "Reduced-motion controls remain fixed to the viewport.");
   assert.deepEqual(errors, [], "No browser runtime errors.");
-  console.log("PASS: concise own-answer comparison, honest fallback, nonblocking manual ratings, stale-result protection, compact A–D choices at 1440/390/320px, instant next card while ratings save in order, clean next-card focus, fixed mobile controls, reduced motion, duplicate-click protection, truthful completion, failed-save return to the unsaved card with its own answer, retry and revision conflict preservation.");
+  console.log("PASS: clickable choices and keyboard toggles, correct/wrong/missing/unknown feedback, saved selection and failed-save recovery, concise own-answer comparison, honest fallback, nonblocking manual ratings, stale-result protection, compact A–D choices at 1440/390/320px, instant next card while ratings save in order, clean next-card focus, fixed mobile controls, reduced motion, duplicate-click protection, truthful completion, failed-save return to the unsaved card with its own answer, retry and revision conflict preservation.");
 } finally {
   heldComparison?.release();
   if (heldComparison) await heldComparison.done;

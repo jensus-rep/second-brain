@@ -11,7 +11,7 @@ import { getTopicPathLabel } from "@/lib/brain/topics";
 import { withLearningNotes } from "@/lib/brain/quiz-content";
 
 export function CollectionTopicBrowser({ workspace, collection, topicId, onTopicChange, onOpenNote }: {
-  workspace: Workspace; collection: LearningCollection; topicId: string; onTopicChange: (id: string) => void; onOpenNote: (id: string) => void;
+  workspace: Workspace; collection: LearningCollection; topicId: string; onTopicChange: (id: string) => void; onOpenNote: (id: string, sequence?: string[]) => void;
 }) {
   const [showAll, setShowAll] = useState(false);
   const navigation = collectionTopicNavigation(workspace, collection, topicId);
@@ -36,7 +36,7 @@ export function CollectionTopicBrowser({ workspace, collection, topicId, onTopic
     </button>)}</div></div>)}
     {!navigation.current && !navigation.unassigned && navigation.unassignedCount > 0 && <Button className="collection-unassigned-link" variant="outline" onClick={() => choose("::unassigned")}>Ohne Thema · {navigation.unassignedCount} Notizen<ChevronRight size={16} /></Button>}
     <div className="collection-note-heading"><h4>{showAll ? "Alle Einträge dieser Ebene und ihrer Unterthemen" : navigation.branches.length ? "Einträge auf dieser Ebene" : "Einträge"} <span>({displayedNotes.length})</span></h4>{!!navigation.branches.length && <Button type="button" variant="ghost" size="sm" onClick={() => setShowAll(value => !value)}>{showAll ? "Nur diese Ebene anzeigen" : `Alle ${navigation.scopedNotes.length} Einträge anzeigen`}</Button>}</div>
-    <div className="collection-note-list">{displayedNotes.map(note => <article key={note.id}><button type="button" onClick={() => onOpenNote(note.id)}><strong>{note.title}</strong><span>{note.topicId ? getTopicPathLabel(workspace.topics, note.topicId) : "Ohne Thema"}{note.archived ? " · Archiviert" : ""}</span></button><p>{items.cards.filter(card => card.noteId === note.id).length} Lernkarten · {items.questions.filter(question => withLearningNotes(question).noteIds?.includes(note.id)).length} verknüpfte Testaufgaben</p></article>)}</div>
+    <div className="collection-note-list">{displayedNotes.map(note => <article key={note.id}><button type="button" onClick={() => onOpenNote(note.id, displayedNotes.map(item => item.id))}><strong>{note.title}</strong><span>{note.topicId ? getTopicPathLabel(workspace.topics, note.topicId) : "Ohne Thema"}{note.archived ? " · Archiviert" : ""}</span></button><p>{items.cards.filter(card => card.noteId === note.id).length} Lernkarten · {items.questions.filter(question => withLearningNotes(question).noteIds?.includes(note.id)).length} verknüpfte Testaufgaben</p></article>)}</div>
     {!displayedNotes.length && !!navigation.branches.length && <p className="small-note">Die Einträge liegen in den Unterthemen. Öffne die nächste Ebene oder zeige alle Einträge an.</p>}
     {!displayedNotes.length && !navigation.branches.length && !!items.notes.length && <p className="small-note">Auf dieser Ebene sind in der Sammlung noch keine Notizen enthalten.</p>}
     {!items.notes.length && <p className="collection-empty">Diese Sammlung enthält noch keine Wissensnotizen. Über „Sammlung bearbeiten“ kannst du passende Grundlagen ergänzen.</p>}
