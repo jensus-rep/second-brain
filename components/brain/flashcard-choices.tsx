@@ -42,4 +42,3 @@ export function FlashcardChoices({ choices, selectedIds, revealed, onToggle }: {
     </div>}
   </fieldset>;
 }
-
