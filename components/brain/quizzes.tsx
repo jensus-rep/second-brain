@@ -318,6 +318,8 @@ function QuizSession({ run, workspace, save, saving, onOpenNote, onBackToOvervie
 }
 
 export function Quizzes({ workspace, save, saving, onStudyChange, onOpenNote, collectionId = "", onCollectionChange, launchRequest, onLaunchConsumed, resultRequest, onResultRequestConsumed, onBackToOverview, onOpenTutor, onPendingChange, onLearningAction }: Props & { onStudyChange?: (studying: boolean) => void; collectionId?: string; onCollectionChange?: (id: string) => void; launchRequest?: QuizLaunchRequest; onLaunchConsumed?: () => void; resultRequest?: { id: string; runId: string; collectionId?: string }; onResultRequestConsumed?: () => void; onBackToOverview?: () => void; onOpenTutor?: (mode: "guided" | "exam") => void; onPendingChange?: (pending: boolean) => void }) {
+  const [mistakeReview, setMistakeReview] = useState<{ runId: string; index: number } | null>(null);
+  const reviewRef = useRef<HTMLElement>(null);
   const requestedResult = resultRequest ? workspace.quizRuns.find(run => run.id === resultRequest.runId && run.finishedAt) : undefined;
   const requestedResultCollectionId = requestedResult ? matchingQuizCollection(workspace, requestedResult, resultRequest?.collectionId ?? collectionId)?.id ?? "" : "";
   const [subjectChoice, setSubject] = useState(() => requestedResult?.subject ?? launchRequest?.subject ?? workspace.learningFocus?.subject ?? workspace.quizQuestions[0]?.subject ?? "Projektmanagement");
@@ -491,6 +493,9 @@ export function Quizzes({ workspace, save, saving, onStudyChange, onOpenNote, co
   }
   if (result) {
     const shown = result.questions.map(question => restoreQuestion(question, workspace.quizQuestions));
+    const mistakes = result.questions.flatMap((question, index) => isCorrect(question, result.answers.find(answer => answer.questionId === question.id)?.selectedOptionIds ?? []) ? [] : [index]);
+    const reviewIndex = mistakeReview?.runId === result.id ? mistakeReview.index : null;
+    const visibleIndices = reviewIndex === null ? shown.map((_, index) => index) : [mistakes[reviewIndex]].filter(index => index !== undefined);
     const resultCollection = resultRequest?.runId === result.id
       ? matchingQuizCollection(workspace, result, resultRequest.collectionId ?? collectionId)
       : collections.find(item => item.id === (result.collectionId ?? collectionId) && runMatchesLearningCollection(result, item));
@@ -525,7 +530,7 @@ export function Quizzes({ workspace, save, saving, onStudyChange, onOpenNote, co
     }
     function openTestOverview() { setSubject(result!.subject); onCollectionChange?.(resultCollection?.id ?? ""); setResultId(null); }
     return <div key={result.id} className="quizzes quiz-result-enter">
-      <QuizResultSummary key={result.id} run={result} questions={shown} nextStep={result.tutorSessionId ? <>
+      <QuizResultSummary key={result.id} run={result} questions={shown} onReviewMistakes={() => { setMistakeReview({ runId: result.id, index: 0 }); requestAnimationFrame(() => reviewRef.current?.scrollIntoView({ block: "start", behavior: "smooth" })); }} nextStep={result.tutorSessionId ? <>
         <h3>Deine Lernrunde ist abgeschlossen</h3>
         <p>{guidedResult?.session?.id === result.tutorSessionId ? guidedResult.description : "Kartenbewertungen und Testergebnis sind gespeichert. Der Tutor bereitet daraus deinen nächsten Schritt vor."}</p>
         {onBackToOverview && <Button disabled={saving} onClick={onBackToOverview}>Rückmeldung im Tutor ansehen<ArrowRight size={16} /></Button>}
@@ -548,7 +553,10 @@ export function Quizzes({ workspace, save, saving, onStudyChange, onOpenNote, co
       </>} />
       {simulation && <ExamSimulationReport report={simulation} onOpenNote={onOpenNote} />}
       {!result.tutorSessionId && <div className="quiz-actions quiz-result-navigation">{onBackToOverview && <Button variant="ghost" onClick={onBackToOverview} disabled={saving || continuing}>Zum Lernüberblick</Button>}<Button variant="ghost" onClick={openTestOverview} disabled={saving || continuing}>Zur Testübersicht</Button></div>}
-      {shown.map((question, index) => <article key={question.id} className="quiz-panel"><h3>Aufgabe {index + 1}: {question.prompt}</h3><Feedback question={question} answer={result.answers.find(answer => answer.questionId === question.id)} run={result} workspace={workspace} save={save} saving={saving} onOpenNote={onOpenNote} /></article>)}
+      <section ref={reviewRef} aria-label="Aufgaben der Auswertung">
+        {reviewIndex !== null && <div className="quiz-panel"><h2>Falsche und offene Aufgaben</h2><p aria-live="polite">Aufgabe {reviewIndex + 1} von {mistakes.length}</p><div className="quiz-actions"><Button variant="outline" disabled={reviewIndex === 0} onClick={() => setMistakeReview({ runId: result.id, index: reviewIndex - 1 })}>Vorherige Aufgabe</Button><Button variant="outline" disabled={reviewIndex >= mistakes.length - 1} onClick={() => setMistakeReview({ runId: result.id, index: reviewIndex + 1 })}>Nächste Aufgabe</Button><Button variant="ghost" onClick={() => setMistakeReview(null)}>Alle Aufgaben anzeigen</Button></div></div>}
+        {visibleIndices.map(index => { const question = shown[index]; return <article key={question.id} className="quiz-panel"><h3>Aufgabe {index + 1}: {question.prompt}</h3><Feedback question={question} answer={result.answers.find(answer => answer.questionId === question.id)} run={result} workspace={workspace} save={save} saving={saving} onOpenNote={onOpenNote} /></article>; })}
+      </section>
       {!result.tutorSessionId && <ReminderForm subject={result.subject} workspace={workspace} save={save} saving={saving} />}
     </div>;
   }

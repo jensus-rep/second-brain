@@ -4,14 +4,15 @@ import { useEffect, useId, useRef, type CSSProperties, type ReactNode } from "re
 import { Check, CircleHelp, Compass, X } from "lucide-react";
 import type { QuizQuestion, QuizRun } from "@/lib/brain/model";
 import { isCorrect } from "@/lib/brain/quiz";
+import { Button } from "@/components/ui/button";
 
-type Props = { run: QuizRun; questions?: QuizQuestion[]; nextStep?: ReactNode };
+type Props = { run: QuizRun; questions?: QuizQuestion[]; nextStep?: ReactNode; onReviewMistakes?: () => void };
 
 const finishedDate = (date: string) => new Intl.DateTimeFormat("de-DE", {
   day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin",
 }).format(new Date(date));
 
-export function QuizResultSummary({ run, questions = run.questions, nextStep }: Props) {
+export function QuizResultSummary({ run, questions = run.questions, nextStep, onReviewMistakes }: Props) {
   const headingId = useId();
   const summaryRef = useRef<HTMLElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -74,5 +75,6 @@ export function QuizResultSummary({ run, questions = run.questions, nextStep }: 
       <div className="quiz-result-stat is-unanswered"><dt><CircleHelp size={16} aria-hidden="true" />Offen</dt><dd>{unanswered}</dd></div>
     </dl>
     <p className="quiz-result-grading">Nur vollständig richtige Aufgaben zählen. Offene Aufgaben zählen nicht als richtig.</p>
+    {incorrect + unanswered > 0 && onReviewMistakes && <Button variant="outline" onClick={onReviewMistakes}>Falsche und offene Aufgaben ansehen ({incorrect + unanswered})</Button>}
   </section>;
 }
