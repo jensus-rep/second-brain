@@ -21,8 +21,8 @@ export const metadata: Metadata = {
   title: "Second Brain · Dein Wissensatelier",
   description: "Dein persönlicher Ort für Wissen, neue Verbindungen und eigene Lernpfade.",
   icons: {
-    icon: "/brand/second-brain-mark.png",
-    shortcut: "/brand/second-brain-mark.png",
+    icon: { url: "/brand/second-brain-mark.svg", type: "image/svg+xml" },
+    shortcut: "/brand/second-brain-mark.svg",
   },
 };
 

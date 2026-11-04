@@ -5,6 +5,7 @@ Eine private, deutschsprachige Second-Brain-Web-App. Wissen wird als Markdown mi
 ## Funktionen
 
 - Notizen erstellen, bearbeiten, favorisieren, archivieren und wiederherstellen.
+- Übersetzungen direkt am Wort: indonesischer Grundwortschatz in erkennbar indonesischen Texten automatisch, eigene Wörter und Ausdrücke mit `[Wort](#translation "Übersetzung")`. Per Maus, Tastatur oder Antippen; auf noch verdeckten Lernkarten bleiben die Hilfen ausgeblendet.
 - Eigene Fachthemen und verschachtelte Unterthemen, Tags sowie Verbindungen und automatisch sichtbare Rückverweise.
 - Volltextsuche über Titel, Zusammenfassung, Inhalt, Tags und Themennamen; kombinierbare Filter.
 - Karten- und Listenansicht sowie responsive Navigation.

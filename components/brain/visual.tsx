@@ -47,7 +47,7 @@ export function Diagram({ source }: { source: string }) {
         if (!isAllowedDiagram(source)) throw new Error("Bitte ein eigenständiges Ablaufdiagramm, Sequenzdiagramm oder eine Mindmap verwenden.");
         const [{ default: mermaid }, { default: DOMPurify }] = await Promise.all([import("mermaid"), import("dompurify")]);
         if (cancelled) return;
-        mermaid.initialize({ startOnLoad: false, securityLevel: "strict", htmlLabels: false, suppressErrorRendering: true, theme: "base", fontFamily: "Segoe UI, sans-serif", themeVariables: { primaryColor: "#eef3ff", primaryTextColor: "#344761", primaryBorderColor: "#9fb6e4", lineColor: "#8c9db5", tertiaryColor: "#f6f8fc", background: "#ffffff" }, flowchart: { htmlLabels: false, useMaxWidth: true }, maxTextSize: 12000, maxEdges: 150 });
+        mermaid.initialize({ startOnLoad: false, securityLevel: "strict", htmlLabels: false, suppressErrorRendering: true, theme: "base", fontFamily: "Segoe UI, sans-serif", themeVariables: { primaryColor: "#edf2e8", primaryTextColor: "#2b332d", primaryBorderColor: "#6e8962", secondaryColor: "#f5eee7", secondaryTextColor: "#465248", secondaryBorderColor: "#b47755", lineColor: "#7d877e", tertiaryColor: "#faf9f6", tertiaryTextColor: "#465248", tertiaryBorderColor: "#c8d6bf", background: "#ffffff" }, flowchart: { htmlLabels: false, useMaxWidth: true }, maxTextSize: 12000, maxEdges: 150 });
         const { svg: raw } = await mermaid.render(elementId, source);
         const clean = DOMPurify.sanitize(raw, { USE_PROFILES: { svg: true, svgFilters: true }, FORBID_TAGS: ["foreignObject", "script", "a", "image"], FORBID_ATTR: ["href", "xlink:href"] });
         // Mermaid uses percentage dimensions for inline SVG. An SVG loaded as an

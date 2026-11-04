@@ -14,7 +14,7 @@
 
 .study-controls-heading > p {
   margin-bottom: 15px;
-  color: #65758d;
+  color: var(--muted-foreground);
   font-size: 13px;
 }
 
@@ -39,9 +39,9 @@
     gap: 10px;
     margin: 0;
     padding: 12px max(12px, env(safe-area-inset-right, 0px)) calc(12px + env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px));
-    border-top: 1px solid #dfe6f0;
+    border-top: 1px solid var(--border);
     background: #fff;
-    box-shadow: 0 -4px 20px #2431490a;
+    box-shadow: 0 -4px 20px color-mix(in srgb, var(--foreground) 3.92%, transparent);
   }
 
   .quiz-session .quiz-session-controls {
@@ -127,7 +127,7 @@
   .study-controls-heading > p {
     flex: 1;
     margin: 0;
-    color: #536783;
+    color: var(--foreground-soft);
     font-size: 12px;
     line-height: 1.5;
   }
@@ -136,7 +136,7 @@
     min-width: 44px;
     padding: 10px 8px;
     gap: 5px;
-    color: #536783;
+    color: var(--foreground-soft);
   }
 
   .study-rating .study-rating-buttons {

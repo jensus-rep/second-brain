@@ -81,11 +81,11 @@ function ComparisonCard({ headers, cells, index }: { headers: Cell[]; cells: Cel
   const { fields, height: y } = layoutFields(headers, cells, width, measure);
   return <div ref={ref} className="comparison-card">
     <svg viewBox={`0 0 ${width} ${y}`} width={width} height={y} role="img" aria-label={fields.map((field, i) => `${field.label}: ${cells[i].text || "Keine Angabe"}`).join(". ")}>
-      <rect x="0.5" y="0.5" width={width - 1} height={y - 1} rx="14" fill="#f7f9fd" stroke="#dce4f0" />
-      <rect x="0" y="18" width="4" height="30" rx="2" fill={index % 2 ? "#a38ccb" : "#789bdb"} />
+      <rect x="0.5" y="0.5" width={width - 1} height={y - 1} rx="14" fill="var(--surface-subtle)" stroke="var(--border)" />
+      <rect x="0" y="18" width="4" height="30" rx="2" fill={index % 2 ? "#b47755" : "var(--accent-emphasis)"} />
       {fields.map((field, i) => <g key={i} fontFamily="Segoe UI, sans-serif" fontSize="16">
-        {field.labels.map((line, j) => <text key={`label-${j}`} x="20" y={field.top + j * 24} fontWeight="600" fill="#344761">{line}</text>)}
-        {field.values.map((line, j) => <text key={`value-${j}`} x="20" y={field.top + (field.labels.length + j) * 24} fill="#4f5e75">{line}</text>)}
+        {field.labels.map((line, j) => <text key={`label-${j}`} x="20" y={field.top + j * 24} fontWeight="600" fill="var(--foreground-soft)">{line}</text>)}
+        {field.values.map((line, j) => <text key={`value-${j}`} x="20" y={field.top + (field.labels.length + j) * 24} fill="var(--muted-foreground)">{line}</text>)}
       </g>)}
     </svg>
   </div>;

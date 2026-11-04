@@ -132,7 +132,7 @@ export function findGlossaryTerms(text: string, glossary: Glossary): GlossaryMat
 }
 
 export type TreeNode = { type: string; tagName?: string; value?: string; properties?: Record<string, unknown>; children?: TreeNode[] };
-const UNLINKED_TAGS = new Set(["a", "button", "code", "pre", "svg", "glossary-term"]);
+const UNLINKED_TAGS = new Set(["a", "button", "code", "pre", "svg", "glossary-term", "translation-term"]);
 export const GLOSSARY_TAG = "glossary-term";
 
 /** Marks the first mention of each glossary term in a rendered Markdown tree. "Scrum" and "Product Owner" open different parts of one note, so both stay links. */
