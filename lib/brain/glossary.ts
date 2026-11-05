@@ -39,8 +39,14 @@ const keyOf = (value: string) => normalize(value).toLocaleLowerCase("de");
 const termSource = (term: string) => normalize(term).split(" ").map(escapeRegExp).join(GAP);
 
 export function splitNoteTitle(title: string): { head: string; subtitle: string } {
+  // "Begriff: Untertitel" names the concept before the colon. Numbered lesson titles
+  // ("Indonesisch 04 · Alltag und Orte") name it before the first " · ", so the words of
+  // a lesson theme ("Fragen", "Verneinung") never become glossary terms.
   const colon = title.indexOf(":");
-  return colon > 0 ? { head: title.slice(0, colon).trim(), subtitle: title.slice(colon + 1).trim() } : { head: title.trim(), subtitle: "" };
+  const dot = title.indexOf(" · ");
+  const at = [colon, dot].filter(index => index > 0).sort((a, b) => a - b)[0] ?? -1;
+  if (at < 0) return { head: title.trim(), subtitle: "" };
+  return { head: title.slice(0, at).trim(), subtitle: title.slice(at + (at === colon ? 1 : 3)).trim() };
 }
 
 /** Terms derived from a title alone. Each group holds one concept with its short forms ("Product Vision Board", "Vision Board"). */

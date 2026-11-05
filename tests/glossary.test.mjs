@@ -26,6 +26,13 @@ test("concepts come from the part of a note title before the colon", () => {
   assert.deepEqual(noteTerms("Design Science und Design Research Methodology (DRM)"), ["Design Science", "Design Research Methodology", "DRM"]);
 });
 
+test("numbered lesson titles name the lesson before the dot, not the theme words", () => {
+  assert.deepEqual(splitNoteTitle("Indonesisch 04 · Alltag und Orte"), { head: "Indonesisch 04", subtitle: "Alltag und Orte" });
+  assert.deepEqual(splitNoteTitle("Französisch 07 · Erlebnisse und Pläne: gestern, heute, morgen"), { head: "Französisch 07", subtitle: "Erlebnisse und Pläne: gestern, heute, morgen" });
+  assert.deepEqual(noteTerms("Indonesisch 03 · Einfache Sätze, Verneinung und Fragen"), ["Indonesisch 03"]);
+  assert.deepEqual(noteTerms("Indonesisch: vom ersten Satz zum Alltagsgespräch"), ["Indonesisch"]);
+});
+
 test("generic words in listed titles never become links", () => {
   assert.deepEqual(noteTerms("Produkt und Projekt: Produktteams, DevOps und Betrieb"), []);
   assert.deepEqual(noteTerms("Projekte, Produkte und Zusammenarbeit"), []);
