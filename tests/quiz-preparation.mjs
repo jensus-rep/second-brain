@@ -154,8 +154,8 @@ try {
   const material = page.getByRole("region", { name: "Passender Lerninhalt", exact: true });
   await expect(material.locator(".diagram-zoom img")).toBeVisible();
   await expect.poll(() => material.locator(".diagram-zoom img").evaluate(image => image.complete && image.naturalWidth > 0)).toBe(true);
-  await expect(material.locator(".comparison-visual")).toHaveCount(1);
-  await expect(material.locator(".comparison-visual svg[role='img']")).toHaveCount(3);
+  await expect(material.locator(".markdown-table-scroll table")).toHaveCount(1);
+  await expect(material.locator("table tbody tr")).toHaveCount(3);
   await mobileFits("Practice feedback with diagram and comparison");
   await click("Lerninhalt öffnen", material.locator(".quiz-learning-note").filter({ hasText: notes[0].title }));
   reader = page.getByRole("dialog", { name: notes[0].title, exact: true });

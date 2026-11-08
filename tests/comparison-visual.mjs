@@ -35,8 +35,8 @@ try {
   await page.reload({ waitUntil: "networkidle" });
   const reader = page.getByRole("dialog", { name: note.title, exact: true });
   await expect(reader).toBeVisible();
-  await expect(reader.locator(".comparison-card svg")).toHaveCount(4);
-  await expect(reader.locator("table")).toHaveCount(0);
+  await expect(reader.locator("table")).toHaveCount(3);
+  await expect(reader.locator(".comparison-card")).toHaveCount(0);
   await expect(reader.getByRole("img", { name: "Diagramm", exact: true })).toHaveCount(3, { timeout: 60000 });
   await expect(reader.locator(".diagram-error")).toHaveCount(0);
   assert.deepEqual(await reader.locator('.diagram-figure img').evaluateAll(images => images.flatMap(image => {
@@ -54,47 +54,40 @@ try {
       return clipped ? [svg.id] : [];
     } finally { svg.remove(); }
   })), [], "Reduced motion preserves all diagram nodes inside the SVG viewBox");
-  assert.match(await reader.locator(".comparison-card svg").first().getAttribute("aria-label"), /Ansatz: Sammeln.*Quelle: Quelle.*Leer: Keine Angabe/);
-  await reader.locator(".comparison-text summary").first().click();
   await expect(reader.getByRole("link", { name: "Quelle", exact: true })).toHaveAttribute("href", "https://example.org/wissen");
-  await expect(reader.locator(".comparison-text strong")).toHaveText("Sammeln");
-  await expect(reader.locator(".comparison-text code")).toHaveText("eigene Worte");
-  await expect(reader.locator(".comparison-text em")).toHaveText("Beispiele");
+  await expect(reader.locator("table strong")).toHaveText("Sammeln");
+  await expect(reader.locator("table code")).toHaveText("eigene Worte");
+  await expect(reader.locator("table em")).toHaveText("Beispiele");
+  await expect(reader.locator("table").first().locator("tbody tr")).toHaveCount(2);
   await mkdir(".sites-runtime/qa", { recursive: true });
   for (const width of [1440, 390, 320, 768]) {
     await page.setViewportSize({ width, height: 1000 });
-    await expect.poll(() => reader.locator(".comparison-card").first().evaluate(element => {
-      const svg = element.querySelector("svg");
-      return Math.abs(element.getBoundingClientRect().width - svg.viewBox.baseVal.width) < 1;
-    })).toBe(true);
     assert.equal(await reader.locator(".entry-scroll").evaluate(element => element.scrollWidth > element.clientWidth), false, `No horizontal overflow at ${width}px`);
-    assert.deepEqual(await reader.locator(".comparison-card svg").evaluateAll(elements => elements.flatMap(svg => {
-      const box = svg.viewBox.baseVal;
-      return Array.from(svg.querySelectorAll("text")).filter(text => {
-        const bounds = text.getBBox();
-        return bounds.x < 0 || bounds.x + bounds.width > box.width || bounds.y + bounds.height > box.height;
-      }).map(text => text.textContent);
-    })), [], `All SVG text fits at ${width}px`);
-    assert.equal(await reader.locator(".comparison-card svg text").first().evaluate(element => getComputedStyle(element).fontSize), "16px");
+    await expect(reader.locator(".markdown-table-scroll").first()).toBeVisible();
+    assert.ok(await reader.locator("table th").first().evaluate(element => element.getBoundingClientRect().width >= 127), `Columns remain readable at ${width}px`);
+    if (width === 320) {
+      const scroller = reader.locator(".markdown-table-scroll").first();
+      assert.equal(await scroller.evaluate(element => element.scrollWidth > element.clientWidth), true, "Wide tables scroll within the article");
+      await scroller.focus();
+      await page.keyboard.press("ArrowRight");
+      await expect.poll(() => scroller.evaluate(element => element.scrollLeft)).toBeGreaterThan(0);
+    }
     if (width === 390 || width === 1440) await reader.locator(".entry-scroll").screenshot({ path: `.sites-runtime/qa/comparison-${width}.png` });
   }
   await reader.getByRole("button", { name: "Bearbeiten", exact: true }).click();
   const editor = page.getByRole("dialog", { name: "Notiz bearbeiten", exact: true });
   assert.equal(await editor.getByRole("textbox", { name: /^Inhalt/ }).inputValue(), note.content, "Rendering preserves stored Markdown");
   await editor.getByRole("tab", { name: "Vorschau", exact: true }).click();
-  await expect(editor.locator(".comparison-card svg")).toHaveCount(4);
-  await expect(editor.locator("table")).toHaveCount(0);
+  await expect(editor.locator("table")).toHaveCount(3);
   await page.goto(origin, { waitUntil: "networkidle" });
   await page.reload({ waitUntil: "networkidle" });
   await page.getByRole("button", { name: "Lernkarten", exact: true }).click();
   await page.getByRole("button", { name: "Lernrunde starten", exact: true }).click();
-  await expect(page.locator(".comparison-card svg")).toHaveCount(4);
-  await expect(page.locator("table")).toHaveCount(0);
+  await expect(page.locator("table")).toHaveCount(3);
   await page.getByRole("button", { name: "Antwort aufdecken", exact: true }).click();
-  await expect(page.locator(".comparison-card svg")).toHaveCount(8);
-  await expect(page.locator("table")).toHaveCount(0);
+  await expect(page.locator("table")).toHaveCount(6);
   assert.deepEqual(errors, []);
-  console.log("PASS: SVG comparisons, rich text and links, empty cells and headers, long words, responsive reflow, seed diagrams, editor preview and flashcards; stored content preserved.");
+  console.log("PASS: semantic tables, rich text and links, empty cells and headers, long words, responsive scrolling, seed diagrams, editor preview and flashcards; stored content preserved.");
 } finally {
   if (initial) {
     const latest = await (await page.request.get(origin + "/api/brain")).json();

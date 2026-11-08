@@ -219,7 +219,6 @@ body, .brain-main { background: var(--surface-subtle); }
 .prose-brain .translation-term:focus-visible { outline: 2px solid var(--accent-emphasis); outline-offset: 3px; }
 .translation-tooltip { z-index: 120; display: grid; gap: .25rem; max-width: min(22rem, calc(100vw - 24px)); padding: .65rem .85rem; font-size: .9rem; line-height: 1.45; overflow-wrap: anywhere; }
 .translation-caption { font-size: .68rem; font-weight: 500; opacity: .75; }
-.entry-reader .comparison-visual { margin: 1.5em 0; }
 .knowledge-figure figcaption { color: var(--foreground-soft); font-size: 0.875rem; }
 .entry-outline { position: sticky; top: 40px; align-self: start; padding: 5px 0 0 20px; border-left: 1px solid var(--border); max-height: calc(100dvh - 190px); overflow-y: auto; }
 .outline-label { font-size: 0.75rem; letter-spacing: .65px; color: var(--muted-foreground); font-weight: 600; display: block; margin-bottom: 15px; }

@@ -25,11 +25,11 @@ Die Projektkonventionen in [AGENTS.md](../AGENTS.md) gelten für alle Arbeiten. 
 | Prozess, Entscheidung, Ursache und Wirkung | Mermaid-Flussdiagramm mit beschrifteten Beziehungen; meist von oben nach unten |
 | Zusammenspiel von Personen, Rollen oder Systemen | Mermaid-Sequenzdiagramm |
 | Begriffsstruktur und Überblick über Teilgebiete | Mermaid-Mindmap oder gegliedertes Flussdiagramm |
-| Unterschiede, Kriterien, Vor- und Nachteile | Markdown-Tabelle; die App stellt sie als responsive SVG-Vergleichskarten dar |
+| Unterschiede, Kriterien, Vor- und Nachteile | Übersichtlich gegliederte Markdown-Tabelle; bei komplexen Zusammenhängen eine eigenständige Grafik |
 | Räumlicher Zusammenhang, anschauliches Beispiel, visuelle Eselsbrücke | Hochgeladene Illustration oder beschriftete Abbildung |
 | Messwerte, Verteilungen oder Entwicklung über die Zeit | Aus belegten Daten erzeugtes Diagramm als hochgeladenes Bild, mit Achsen, Einheiten und Quelle |
 
-Nutze editierbare Mermaid-Diagramme und Markdown-Vergleiche, wenn sie das Lernziel gut ausdrücken. Erstelle passende Illustrationen, wenn diese den Sachverhalt anschaulicher machen; nutze für KI-generierte Bilder die verfügbare Bildgenerierung. Erzeuge quantitative Diagramme mit geeigneten Plot-Werkzeugen aus nachvollziehbaren Daten. Prüfe bei generierten Bildern insbesondere Beschriftungen, Symbole und fachliche Details.
+Nutze vorhandene aussagekräftige Abbildungen und SVG-Diagramme vorrangig für die visuelle Erklärung. Ergänze editierbare Mermaid-Diagramme oder passende Illustrationen, wenn sie einen Zusammenhang besser verständlich machen; nutze für KI-generierte Bilder die verfügbare Bildgenerierung. Tabellen eignen sich für knappe Vergleiche. Vermeide dekorative Piktogramme und wiederholte Karten oder Grafiken ohne zusätzlichen Erkenntnisgewinn. Erzeuge quantitative Diagramme mit geeigneten Plot-Werkzeugen aus nachvollziehbaren Daten. Prüfe bei generierten Bildern insbesondere Beschriftungen, Symbole und fachliche Details.
 
 ## Gestaltung und didaktische Qualität
 

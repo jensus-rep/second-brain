@@ -3,7 +3,6 @@ import { Children, isValidElement, memo, useMemo } from "react";
 import ReactMarkdown, { type Components, type Options } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Diagram, Figure } from "./visual";
-import { ComparisonVisual } from "./comparison-visual";
 import { GlossaryTerm, rehypeGlossary, useGlossary } from "./glossary-context";
 import { isPrivateImage } from "@/lib/brain/media";
 import { GLOSSARY_TAG } from "@/lib/brain/glossary";
@@ -48,6 +47,6 @@ export const Markdown = memo(function Markdown({ content, headingPrefix, linkTer
         if (isValidElement<{ className?: string; children?: unknown }>(child) && child.props.className === "language-mermaid") return <Diagram source={String(child.props.children ?? "").trim()} />;
         return <pre>{children}</pre>;
       },
-      table: ({ children }) => <ComparisonVisual>{children}</ComparisonVisual>,
+      table: ({ children }) => <div className="markdown-table-scroll" role="region" aria-label="Tabelle, bei Bedarf horizontal scrollen" tabIndex={0}><table>{children}</table></div>,
     }}>{content}</ReactMarkdown></div></TranslationProvider>;
 });

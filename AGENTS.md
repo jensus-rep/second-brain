@@ -23,4 +23,5 @@
 ## Visuelle Wissenspflege
 
 - Visuelle und grafische Darstellungen sind ausdrücklich gewollt. Neue und überarbeitete Wissenseinträge zu komplexen Inhalten erhalten passende Grafiken, die Zusammenhänge erklären, Orientierung geben und das Erinnern unterstützen.
+- Für die visuelle Aufbereitung aussagekräftige vorhandene PNG-Abbildungen und SVG-Diagramme bevorzugen. Karten und Piktogramme sparsam einsetzen; redundante Darstellungen vermeiden und Anzahl und Form am Lernziel ausrichten.
 - Der Agent für visuelle Wissenspflege arbeitet nach [agents/grafik-agent.md](agents/grafik-agent.md). Er prüft die Sammlung systematisch, ergänzt fehlende Visualisierungen und verbessert vorhandene Grafiken hinsichtlich Aussage, Gestaltung und Lesbarkeit.

@@ -74,17 +74,14 @@
 .diagram-zoom > img { width: 100%; min-height: 90px; max-height: 500px; object-fit: contain; }
 .diagram-loading { text-align: center; color: var(--muted-foreground); padding: 35px; font-size: 14px; }
 .diagram-error { color: var(--muted-foreground); font-size: 14px; line-height: 1.7; }.diagram-error > p { margin: 10px 0; }.diagram-error summary { cursor: pointer; }.diagram-error pre { font-size: 12px; white-space: pre-wrap; }
-.comparison-visual { margin: 24px 0; min-width: 0; }
-.comparison-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); align-items: start; gap: 14px; }
-.comparison-card { min-width: 0; }
-.comparison-card svg { display: block; max-width: 100%; height: auto; }
-.comparison-text { margin-top: 12px; font-size: 0.9375rem; }
-.comparison-text summary { width: fit-content; cursor: pointer; color: var(--foreground-soft); text-decoration: underline; text-underline-offset: 3px; }
-.comparison-text summary:focus-visible { outline: 2px solid var(--accent-emphasis); outline-offset: 4px; }
-.comparison-text dl { margin: 14px 0; padding: 16px; border: 1px solid var(--border); border-radius: 10px; }
-.comparison-text dl > div + div { margin-top: 12px; }
-.comparison-text dt { font-weight: 600; color: var(--foreground); }
-.comparison-text dd { margin: 4px 0 0; }
+.markdown-table-scroll { max-width: 100%; min-width: 0; overflow-x: auto; margin: 1.5em 0; }
+.markdown-table-scroll:focus-visible { outline: 2px solid var(--accent-emphasis); outline-offset: 3px; }
+.markdown-table-scroll table { width: 100%; border-collapse: collapse; font-size: 0.9375rem; line-height: 1.6; text-align: left; }
+.markdown-table-scroll th, .markdown-table-scroll td { min-width: 8rem; padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; overflow-wrap: anywhere; }
+.markdown-table-scroll th:only-child, .markdown-table-scroll td:only-child { min-width: 0; }
+.markdown-table-scroll th { color: var(--foreground); font-weight: 650; border-bottom: 2px solid var(--border); }
+.markdown-table-scroll th:first-child, .markdown-table-scroll td:first-child { padding-left: 0; }
+.markdown-table-scroll th:last-child, .markdown-table-scroll td:last-child { padding-right: 0; }
 .prose-brain input[type="checkbox"] { margin-right: 8px; }.prose-brain hr { border-top: 1px solid var(--border); margin: 22px 0; }
 .flashcards-intro { display: flex; justify-content: space-between; align-items: center; gap: 30px; padding: 30px 32px; border: 1px solid var(--accent); background: linear-gradient(115deg,var(--accent),var(--surface-subtle)); border-radius: 15px; margin-bottom: 34px; }
 .flashcards-intro .eyebrow { font-size: 11px; color: var(--muted-foreground); margin-bottom: 13px; }
