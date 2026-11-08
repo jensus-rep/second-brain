@@ -115,7 +115,7 @@ test("the model selects only a server-generated candidate and gets compact scope
 });
 
 test("Azure schema compatibility preserves local text limits and avoids unsupported reasoning parameters on other deployments", async () => {
-  for (const deployment of ["gpt-6.1-sol", "gpt-4.1", "custom-deployment"]) {
+  for (const deployment of ["gpt-6.1-sol", "gpt-6.1-terra", "gpt-4.1", "custom-deployment"]) {
     const { runtime, state } = harness({ deployment, fetcher: async (_url, options) => {
       const body = JSON.parse(options.body);
       const messageSchema = body.text.format.schema.properties.message;

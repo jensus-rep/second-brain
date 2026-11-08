@@ -115,10 +115,15 @@ test("Responses API sends only explicit question, reference and response with st
   assert.deepEqual(state.workspace, before);
 });
 
-test("custom deployments do not receive model-specific reasoning options", async () => {
-  const { runtime, state } = harness({ deployment: "custom-deployment" });
-  await runtime("owner", input);
-  assert.equal(Object.hasOwn(JSON.parse(state.calls[0][1].body), "reasoning"), false);
+test("Terra and custom deployments do not receive Sol-specific reasoning options", async () => {
+  for (const deployment of ["gpt-6.1-terra", "custom-deployment"]) {
+    const { runtime, state } = harness({ deployment });
+    const result = await runtime("owner", input);
+    assert.equal(result.source, "llm");
+    const body = JSON.parse(state.calls[0][1].body);
+    assert.equal(body.model, deployment);
+    assert.equal(Object.hasOwn(body, "reasoning"), false);
+  }
 });
 
 test("equivalent phrasing, contradictory response and unclear response preserve the provider's bounded verdict", async () => {
