@@ -52,6 +52,7 @@ export const quizRunSchema = z.object({
   tutorWeekStartedOn: calendarDate.optional(),
   tutorWeekCheckpoint: z.object({ startedOn: calendarDate, stage: z.enum(["baseline", "midpoint", "final"]) }).optional(),
   tutorSessionId: id.optional(),
+  dailyPackageId: id.optional(),
   examSimulation: z.literal(true).optional(),
   deadlineAt: z.string().datetime().nullable(), finishedAt: z.string().datetime().nullable(),
   questions: z.array(quizQuestionSchema).min(1).max(30),
@@ -59,6 +60,9 @@ export const quizRunSchema = z.object({
 }).superRefine((run, ctx) => {
   if (run.tutorSessionId && (run.mode !== "exam" || run.questions.length > 3 || run.cardCheckpoint || run.tutorWeekCheckpoint || run.preparationConcept || run.questions.some(question => question.subject !== run.subject))) {
     ctx.addIssue({ code: "custom", path: ["tutorSessionId"], message: "Eine Tutor-Einheit braucht einen eigenen Kurztest mit höchstens drei Aufgaben." });
+  }
+  if (run.dailyPackageId && (run.mode !== "exam" || run.questions.length > 3 || run.tutorSessionId || run.cardCheckpoint || run.tutorWeekCheckpoint || run.tutorWeekStartedOn || run.preparationConcept || run.examSimulation || run.questions.some(question => question.subject !== run.subject))) {
+    ctx.addIssue({ code: "custom", path: ["dailyPackageId"], message: "Die Abschlussfragen eines Tagespakets brauchen einen eigenen Kurztest mit höchstens drei Aufgaben." });
   }
   if (run.cardCheckpoint && (run.mode !== "exam" || Date.parse(run.cardCheckpoint.reviewedAt) > Date.parse(run.startedAt))) {
     ctx.addIssue({ code: "custom", path: ["cardCheckpoint"], message: "Ein Kartentest braucht einen Testmodus und bereits gespeicherte Bewertungen." });
@@ -108,6 +112,25 @@ export const tutorSessionSchema = z.object({
     ctx.addIssue({ code: "custom", message: "Die Aufgaben einer Tutor-Einheit müssen eindeutig sein." });
   }
 });
+// Cards of a daily package form their own round beside the saved decks, so a
+// package never replaces a paused round and never changes the learning focus.
+export const DAILY_PACKAGE_DECK = "daily-package";
+export const dailyPackageSchema = z.object({
+  id, date: calendarDate, number: z.number().int().min(1).max(100), short: z.boolean(),
+  cardIds: z.array(id).max(10), newCards: z.number().int().min(0).max(10),
+  reading: z.object({ noteId: id, section: z.string().max(200) }).nullable(),
+  subject: title.nullable(), questionIds: z.array(id).max(3),
+  startedAt: z.string().datetime(), readAt: z.string().datetime().nullable(), completedAt: z.string().datetime().nullable(),
+}).superRefine((item, ctx) => {
+  if (!item.cardIds.length && !item.reading && !item.questionIds.length || item.questionIds.length && !item.subject || item.newCards > item.cardIds.length) {
+    ctx.addIssue({ code: "custom", message: "Ein Tagespaket braucht Karten, einen Inhalt oder passende Fragen." });
+  }
+  if (new Set(item.cardIds).size !== item.cardIds.length || new Set(item.questionIds).size !== item.questionIds.length) {
+    ctx.addIssue({ code: "custom", message: "Die Inhalte eines Tagespakets müssen eindeutig sein." });
+  }
+});
+export const dailyPackageDaySchema = z.object({ date: calendarDate, completed: z.number().int().min(0), newCards: z.number().int().min(0) });
+export const noteReadSchema = z.object({ noteId: id, section: z.string().max(200), readAt: z.string().datetime() });
 export const tutorWeekSchema = z.object({
   startedOn: calendarDate, collectionId: id.nullable(), subject: title,
   checkpointQuestionIds: z.array(id).min(1).max(6),
@@ -183,6 +206,9 @@ export const workspaceSchema = z.object({
   tutorPlan: tutorPlanSchema.optional(),
   tutorSession: tutorSessionSchema.optional(),
   tutorWeek: tutorWeekSchema.optional(),
+  dailyPackage: dailyPackageSchema.optional(),
+  dailyPackageDays: z.array(dailyPackageDaySchema).max(800).optional(),
+  noteReads: z.array(noteReadSchema).max(1000).optional(),
   cardReviewDays: z.array(cardReviewDaySchema).max(3000).optional(),
   cardReviewEvents: z.array(cardReviewEventSchema).max(1500).optional(),
   tutorCheckpointDecisions: z.array(tutorCheckpointDecisionSchema).max(300).optional(),
@@ -272,6 +298,7 @@ export type FlashcardSession = z.infer<typeof flashcardSessionSchema>;
 export type TutorPlan = z.infer<typeof tutorPlanSchema>;
 export type TutorSession = z.infer<typeof tutorSessionSchema>;
 export type TutorWeek = z.infer<typeof tutorWeekSchema>;
+export type DailyPackage = z.infer<typeof dailyPackageSchema>;
 export type CardReviewDay = z.infer<typeof cardReviewDaySchema>;
 export type CardReviewEvent = z.infer<typeof cardReviewEventSchema>;
 export type TutorCheckpointDecision = z.infer<typeof tutorCheckpointDecisionSchema>;

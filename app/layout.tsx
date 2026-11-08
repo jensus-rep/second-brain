@@ -9,6 +9,7 @@ import "./topic-hierarchy.css";
 import "./workspace-redesign.css";
 import "./learning-overview.css";
 import "./learning-tutor.css";
+import "./daily-package.css";
 import "./exam-simulation.css";
 import "./workspace-composition.css";
 import "./learning-transitions.css";

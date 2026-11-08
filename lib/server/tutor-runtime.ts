@@ -42,6 +42,7 @@ function explainAction(action: LearningAction | null, recommendation: LearningRe
   if (!action) return "Wähle eine Lernsammlung mit Karten oder Testaufgaben. Dann kannst du mit einer kurzen Einheit anfangen.";
   switch (action.kind) {
     case "tutor-session": return "Beginne mit einer überschaubaren Lernrunde aus Karten, einem kurzen Test und einer Rückmeldung zum nächsten Schritt.";
+    case "daily-package": return "Dein Tagespaket bündelt fällige Karten, einen kurzen Inhalt und ein paar Fragen für etwa zehn Minuten.";
     case "resume-quiz": return "Dein unterbrochener Test ist gespeichert. Steige direkt an der nächsten offenen Aufgabe wieder ein.";
     case "resume-cards": return `Deine Kartenrunde ist gespeichert. ${action.remaining} Karten warten noch auf deine Bewertung.`;
     case "review-concept": return `Zu „${short(action.concept)}“ sind zuletzt Antworten falsch geblieben. Greife die Erklärung auf und prüfe sie mit vorhandenen Aufgaben.`;

@@ -9,8 +9,9 @@ import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, A
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
-import { reviewCard, type Flashcard, type FlashcardSession, type Note, type Workspace } from "@/lib/brain/model";
+import { DAILY_PACKAGE_DECK, reviewCard, type Flashcard, type FlashcardSession, type Note, type Workspace } from "@/lib/brain/model";
 import { recordCardReview } from "@/lib/brain/learning-tutor";
+import { settleDailyPackage } from "@/lib/brain/daily-package";
 import type { SaveWorkspace } from "@/lib/brain/use-brain";
 import { addToLearningCollection, collectionItems, flashcardPriority, learningCollections, priorityDescriptions, priorityLabels, removeFlashcard } from "@/lib/brain/learning-collections";
 import { flattenTopics, getTopicDescendantIds, getTopicPathLabel } from "@/lib/brain/topics";
@@ -108,10 +109,10 @@ export function FlashcardEditor({ card, workspace, save, saving, onClose, collec
   </>;
 }
 
-export function Flashcards({ workspace, revision = -1, save, saving, onEdit, onStudyChange, collectionId, onCollectionChange, onOpenNote, onBackToCollection, onBackToTutor, onLearningAction, startRequest, startMode = "due", startCardIds, resumeRequest, onResumeRequestConsumed }: {
+export function Flashcards({ workspace, revision = -1, save, saving, onEdit, onStudyChange, collectionId, onCollectionChange, onOpenNote, onBackToCollection, onBackToTutor, onDailyContinue, onBackToDaily, onLearningAction, startRequest, startMode = "due", startCardIds, resumeRequest, onResumeRequestConsumed }: {
   workspace: Workspace; save: SaveWorkspace; saving: boolean; onEdit: (card: Flashcard) => void; onStudyChange: (studying: boolean) => void;
   revision?: number; onLearningAction?: (action: LearningAction) => void;
-  collectionId?: string; onCollectionChange?: (id: string) => void; onOpenNote?: (id: string) => void; onBackToCollection?: () => void; onBackToTutor?: () => void; startRequest?: number; startMode?: "due" | "all"; startCardIds?: string[]; resumeRequest?: number; onResumeRequestConsumed?: () => void;
+  collectionId?: string; onCollectionChange?: (id: string) => void; onOpenNote?: (id: string) => void; onBackToCollection?: () => void; onBackToTutor?: () => void; onDailyContinue?: () => void; onBackToDaily?: () => void; startRequest?: number; startMode?: "due" | "all"; startCardIds?: string[]; resumeRequest?: number; onResumeRequestConsumed?: () => void;
 }) {
   const [queue, setQueue] = useState<{ id: string; reviews: number; dueAt: string }[] | null>(null);
   const [index, setIndex] = useState(0);
@@ -146,6 +147,7 @@ export function Flashcards({ workspace, revision = -1, save, saving, onEdit, onS
   const consumedStartRequest = useRef<number | undefined>(undefined);
   const consumedResumeRequest = useRef<number | undefined>(undefined);
   const advancedTutorSession = useRef<string | null>(null);
+  const advancedDailyRound = useRef<string | null>(null);
   const revealRef = useRef<HTMLButtonElement>(null);
   const answerRef = useRef<HTMLDivElement>(null);
   const sessionRef = useRef<HTMLElement>(null);
@@ -203,9 +205,10 @@ export function Flashcards({ workspace, revision = -1, save, saving, onEdit, onS
   const studying = queue !== null || !!launchMode || pendingStart;
   const guidedSession = studiedSessionId && workspace.tutorSession?.id === studiedSessionId ? workspace.tutorSession : null;
   const guided = guidedSession ? tutorSessionInsights(workspace, recommendLearning(workspace, clock), clock) : null;
+  const dailyRound = sessionCollectionId === DAILY_PACKAGE_DECK;
   const hasFilters = !!topicFilter || priorityFilter !== "all" || !!filter.trim();
   const activeFilterCount = Number(!!topicFilter) + Number(priorityFilter !== "all") + Number(!!filter.trim());
-  const scopeTitle = queue ? (sessionCollectionId ? collections.find(item => item.collection.id === sessionCollectionId)?.collection.title ?? "Gespeicherte Lernrunde" : "Alle Lernkarten") : selectedCollection?.collection.title ?? "Alle Lernkarten";
+  const scopeTitle = queue && dailyRound ? "Dein Paket für heute" : queue ? (sessionCollectionId ? collections.find(item => item.collection.id === sessionCollectionId)?.collection.title ?? "Gespeicherte Lernrunde" : "Alle Lernkarten") : selectedCollection?.collection.title ?? "Alle Lernkarten";
   const pausedSession = flashcardSessionForCollection(workspace, activeCollectionId || null);
   const pausedCards = pausedSession ? sessionCards(workspace, pausedSession) : [];
   const pausedCardsById = new Map(pausedCards.map(card => [card.id, card]));
@@ -283,6 +286,7 @@ export function Flashcards({ workspace, revision = -1, save, saving, onEdit, onS
       const updated = resumed ? activateFlashcardSession(w, resumed) : { ...w,
         ...(w.pausedFlashcardSessions ? { pausedFlashcardSessions: w.pausedFlashcardSessions.filter(session => session.id !== stored.id) } : {}),
         ...(w.flashcardSession?.id === stored.id ? { flashcardSession: null } : {}) };
+      if (stored.collectionId === DAILY_PACKAGE_DECK) return updated;
       return { ...updated, learningFocus: { collectionId: targetCollectionId, subject: w.learningFocus?.collectionId === targetCollectionId ? w.learningFocus.subject : null, updatedAt: now } };
     }, "");
     if (ok && resumed) {
@@ -391,6 +395,11 @@ export function Flashcards({ workspace, revision = -1, save, saving, onEdit, onS
     advancedTutorSession.current = guidedSession.id;
     onLearningAction(guided.action);
   }, [queue, card, pendingReview, saving, guidedSession, guided, onLearningAction]);
+  useEffect(() => {
+    if (!queue || card || pendingReview || saving || !dailyRound || !onDailyContinue || !studiedSessionId || advancedDailyRound.current === studiedSessionId) return;
+    advancedDailyRound.current = studiedSessionId;
+    onDailyContinue();
+  }, [queue, card, pendingReview, saving, dailyRound, onDailyContinue, studiedSessionId]);
   useEffect(() => { const timer = setInterval(() => setClock(Date.now()), 30000); return () => clearInterval(timer); }, []);
   useLayoutEffect(() => {
     if (!currentCardKey) { presentedCard.current = null; return; }
@@ -413,6 +422,7 @@ export function Flashcards({ workspace, revision = -1, save, saving, onEdit, onS
     setQueue(null);
     setRevealed(false);
     setCurrentSession(null);
+    if (dailyRound) onBackToDaily?.();
   }
   function leaveLaunch() {
     setExternalLaunch(null);
@@ -433,7 +443,8 @@ export function Flashcards({ workspace, revision = -1, save, saving, onEdit, onS
     const advanced = nextIndex < session.queue.length ? { ...session, index: nextIndex, updatedAt } : null;
     const ok = await save(w => {
       if (!sameSession(w.flashcardSession, session)) throw new Error("Die Lernrunde wurde inzwischen geändert. Bitte lade den aktuellen Lernstand neu.");
-      return { ...w, flashcardSession: advanced };
+      const skipped = { ...w, flashcardSession: advanced };
+      return session.collectionId === DAILY_PACKAGE_DECK ? settleDailyPackage(skipped) : skipped;
     }, "");
     if (ok) { setCurrentSession(advanced); setIndex(nextIndex); setRevealed(false); setResponse(""); setChoiceSelection(null); }
     setPendingReviews(count => count - 1);
@@ -468,7 +479,9 @@ export function Flashcards({ workspace, revision = -1, save, saving, onEdit, onS
       if (!currentCard || currentCard.reviews !== entry.reviews || currentCard.dueAt !== entry.dueAt) throw new Error("Diese Karte wurde inzwischen geändert. Bitte lade den aktuellen Lernstand neu.");
       const focusCollectionId = collections.some(item => item.collection.id === session.collectionId) ? session.collectionId : null;
       const recorded = recordCardReview(w, { collectionId: session.collectionId, known, cardId: card.id, sessionId: session.id, response: reviewResponse, ...(comparison ? { comparison } : {}) }, reviewTime);
-      return { ...recorded, cards: recorded.cards.map(c => c.id === card.id ? reviewCard(c, known, reviewTime) : c), flashcardSession: advanced, learningFocus: { collectionId: focusCollectionId, subject: w.learningFocus?.collectionId === focusCollectionId ? w.learningFocus.subject : null, updatedAt } };
+      const reviewed = { ...recorded, cards: recorded.cards.map(c => c.id === card.id ? reviewCard(c, known, reviewTime) : c), flashcardSession: advanced };
+      if (session.collectionId === DAILY_PACKAGE_DECK) return settleDailyPackage(reviewed, reviewTime);
+      return { ...reviewed, learningFocus: { collectionId: focusCollectionId, subject: w.learningFocus?.collectionId === focusCollectionId ? w.learningFocus.subject : null, updatedAt } };
     }, "", { queue: true });
     if (!ok) {
       // A failed write cancels the ratings queued after it. Return to the
@@ -489,16 +502,17 @@ export function Flashcards({ workspace, revision = -1, save, saving, onEdit, onS
     }
   }}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Pausierte Lernrunde ersetzen?</AlertDialogTitle><AlertDialogDescription>Deine bisherige Runde in „{pausedTitle}“ wird durch die neue Auswahl ersetzt. Bereits gespeicherte Bewertungen und Wiederholungstermine bleiben erhalten.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={saving || pendingStart}>Abbrechen</AlertDialogCancel><AlertDialogAction disabled={saving || pendingStart} onClick={event => { event.preventDefault(); if (replacement) void start(replacement.cards, replacement.mode, true, replacement.collectionId, replacement.previousSession); }}>{pendingStart ? "Wird vorbereitet …" : "Neue Runde beginnen"}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>;
   const deckSwitchDialog = <AlertDialog open={deckSwitch !== null} onOpenChange={open => { if (!open && !pendingStart) setDeckSwitch(null); }}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Antwort noch nicht bewertet</AlertDialogTitle><AlertDialogDescription>Deine unbewertete Antwort wird beim Deckwechsel verworfen. Du kannst sie zuerst prüfen und bewerten. Deine bisherigen Bewertungen und die Position dieser Runde bleiben gespeichert.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={switchBusy}>Weiterlernen</AlertDialogCancel><AlertDialogAction disabled={switchBusy} onClick={event => { event.preventDefault(); if (deckSwitch !== null) void switchDeck(deckSwitch); }}>{pendingStart ? "Wird gewechselt …" : "Deck wechseln"}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>;
-  const deckNavigation = <div className="flashcard-study-deck-bar"><div><span>AKTUELLES DECK</span><strong>{scopeTitle}</strong></div>{deckPicker}{deckSwitchDialog}</div>;
+  const deckNavigation = dailyRound ? null : <div className="flashcard-study-deck-bar"><div><span>AKTUELLES DECK</span><strong>{scopeTitle}</strong></div>{deckPicker}{deckSwitchDialog}</div>;
   if (!queue && launchMode) return <LearningTransition title={startError ? "Die Kartenrunde wartet auf dich" : launchMode === "resume" ? "Deine Kartenrunde wird fortgesetzt" : "Deine Kartenrunde wird vorbereitet"} description={startError || "Gleich geht es mit deiner nächsten Karte weiter. Dein Lernstand bleibt gespeichert."} error={!!startError}>
     {startError && <><Button disabled={saving || pendingStart} onClick={() => { setStartError(""); if (launchMode === "resume") void resume(); else void launchCards(); }}>Erneut versuchen</Button><Button variant="outline" disabled={saving || pendingStart} onClick={leaveLaunch}>{onBackToTutor ? "Zum Tutor" : "Zur Kartenübersicht"}</Button></>}
     {replacementDialog}
   </LearningTransition>;
   if (queue) {
-    const tutorPrompt = !guidedSession && !pendingReview && onLearningAction && studiedSessionId
+    const tutorPrompt = !guidedSession && !dailyRound && !pendingReview && onLearningAction && studiedSessionId
       ? <TutorCardPrompt workspace={workspace} revision={revision} save={save} saving={saving} sessionId={studiedSessionId} now={clock} onAction={onLearningAction} /> : null;
     if (!pendingReview && currentSession && !sameSession(workspace.flashcardSession, currentSession)) return <section className="study-finished"><Clock3 size={30} /><h2>Deine Lernrunde hat sich geändert.</h2><p>Der aktuelle Lernstand wurde in einem anderen Fenster gespeichert. Öffne die gespeicherte Runde erneut.</p><Button onClick={pause}>Zur Kartenübersicht</Button></section>;
     if (changed || entry && !card) return <>{deckNavigation}<section className="study-finished"><Clock3 size={30} /><h2>{changed ? "Dieser Gedanke wurde schon wiederholt." : "Diese Karte ist nicht mehr verfügbar."}</h2><p>Geänderte oder entfernte Karten werden übersprungen. Der gespeicherte Lernstand bleibt erhalten.</p><div className="study-finished-actions"><Button disabled={saving || pendingReview} onClick={() => void skipUnavailable()}>Mit nächster Karte fortfahren</Button><Button variant="outline" disabled={saving || pendingReview} onClick={pause}>Beenden</Button></div></section></>;
+    if (!card && dailyRound) return <section className="study-finished" aria-busy="true"><span className="study-complete-icon"><LoaderCircle size={32} className="animate-spin" /></span><h2>{pendingReview ? "Dein Fortschritt wird gespeichert …" : "Weiter in deinem Paket …"}</h2><p>Deine Karten für dieses Paket sind durch.</p></section>;
     if (!card && guidedSession) return <section className="study-finished" aria-busy={pendingReview || guided?.phase === "quiz"}><span className="study-complete-icon">{pendingReview || guided?.phase === "quiz" ? <LoaderCircle size={32} className="animate-spin" /> : <Check size={32} />}</span><h2>{pendingReview ? "Dein Fortschritt wird gespeichert …" : guided?.phase === "quiz" ? "Weiter zum Kurztest …" : "Deine Kartenrunde ist gespeichert."}</h2><p>{pendingReview ? "Deine letzte Bewertung wird gespeichert. Danach geht deine Lernrunde weiter." : guided?.phase === "quiz" ? `Jetzt prüfen wir mit ${guidedSession.questionIds.length} Aufgaben, was hängen geblieben ist.` : guided?.description}</p>{onBackToTutor && guided?.phase !== "quiz" && <Button disabled={saving || pendingReview} onClick={onBackToTutor}>Rückmeldung im Tutor ansehen<ArrowRight size={16} /></Button>}</section>;
     if (!card) return <>{deckNavigation}<section className="study-finished" aria-busy={pendingReview}><span className="study-complete-icon">{pendingReview ? <LoaderCircle size={32} className="animate-spin" /> : <Check size={32} />}</span><h2>{pendingReview ? "Dein Fortschritt wird gespeichert …" : "Ein Stück Wissen bleibt."}</h2><p>Lernrunde mit {queue.length} {queue.length === 1 ? "Karte" : "Karten"} in „{scopeTitle}“ abgeschlossen. {pendingReview ? "Einen Moment, die letzte Bewertung wird noch gespeichert." : "Dein Fortschritt ist gespeichert."}</p>{tutorPrompt}<div className="study-finished-actions"><Button disabled={pendingReview} onClick={pause}>Zur Kartenübersicht</Button>{onBackToTutor && <Button variant="outline" disabled={saving || pendingReview} onClick={onBackToTutor}>Zum Tutor<ArrowRight size={16} /></Button>}{selectedCollection && onBackToCollection && <Button variant="outline" disabled={saving || pendingReview} onClick={onBackToCollection}><ArrowLeft size={16} />Zur Lernsammlung</Button>}</div></section></>;
     const linked = card.noteId ? notesById.get(card.noteId) : undefined;
@@ -506,8 +520,8 @@ export function Flashcards({ workspace, revision = -1, save, saving, onEdit, onS
     return <section ref={sessionRef} className={"study-session" + (revealed ? " is-revealed" : "") + (pendingReview ? " is-saving" : "")}>
       {deckNavigation}<div className="study-topline"><Button variant="ghost" size="sm" disabled={saving && !pendingReview} onClick={pause} title="Lernrunde pausieren; dein Stand bleibt gespeichert"><ArrowLeft size={16} />Beenden</Button><span key={currentCardKey} className="study-position">{index + 1} von {queue.length}</span>{pendingReview ? <span className="study-save-status" role="status"><LoaderCircle size={14} className="animate-spin" />Speichert …</span> : <span className="study-note">{linked?.title ?? "Deine Lernkarte"}</span>}</div><Progress value={index / queue.length * 100} aria-label="Fortschritt dieser Lernrunde" />
       {ratingError && <p className="study-rating-error" role="status">{ratingError}</p>}
-      <p className="study-scope-line"><span>{studyMode === "all" ? "Alle ausgewählten Karten üben" : "Fällige Karten wiederholen"}</span></p>
-      <p className="study-resume-hint">Beim Deckwechsel bleibt deine Runde an dieser Stelle gespeichert.</p>
+      <p className="study-scope-line"><span>{dailyRound ? "Dein Paket für heute" : studyMode === "all" ? "Alle ausgewählten Karten üben" : "Fällige Karten wiederholen"}</span></p>
+      {!dailyRound && <p className="study-resume-hint">Beim Deckwechsel bleibt deine Runde an dieser Stelle gespeichert.</p>}
       {tutorPrompt}
       <CardContext note={linked} topicTitle={linked?.topicId ? getTopicPathLabel(workspace.topics, linked.topicId) : "Ohne Thema"} collectionTitles={memberships.get(card.id) ?? []} priority={priorities.get(card.id) ?? null} suggested={card.priority === undefined && priorities.get(card.id) != null} onOpenNote={onOpenNote} />
       <article key={currentCardKey} className={"study-card " + (revealed ? "revealed" : "")}><div className="study-label"><Layers3 size={17} />ERINNERN STATT NACHLESEN</div><div ref={questionRef} className="study-question"><Markdown content={choices?.prompt ?? card.question} translations={revealed} linkTerms skipTermNoteId={revealed ? null : card.noteId} />

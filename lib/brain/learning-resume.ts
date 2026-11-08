@@ -1,4 +1,5 @@
 import type { Flashcard, FlashcardSession, LearningCollection, QuizQuestion, QuizRun, Workspace } from "./model.ts";
+import { DAILY_PACKAGE_DECK } from "./model.ts";
 import { collectionItems, learningCollections } from "./learning-collections.ts";
 import { latestQuestionResults, preparationAreas, selectAdaptivePreparationQuestions, type PreparationArea } from "./quiz-preparation.ts";
 import { withLearningNotes } from "./quiz-content.ts";
@@ -14,12 +15,13 @@ export type LearningResult = {
 type ActionScope = { collectionId: string | null };
 export type LearningAction = ActionScope & (
   | { kind: "tutor-session" }
+  | { kind: "daily-package"; short?: boolean }
   | { kind: "resume-quiz"; runId: string }
   | { kind: "resume-cards"; sessionId: string; remaining: number }
   | { kind: "review-concept"; subject: string; concept: string; noteIds: string[] }
   | { kind: "review-cards"; mode: "due" | "all"; cardIds?: string[] }
   | { kind: "preparation"; subject: string; concept: string; tutorWeekStartedOn?: string }
-  | { kind: "checkpoint"; subject: string; questionCount: number; questionIds?: string[]; cardCheckpoint?: { sessionId: string; reviewedAt: string }; tutorWeekCheckpoint?: QuizRun["tutorWeekCheckpoint"]; tutorSessionId?: string }
+  | { kind: "checkpoint"; subject: string; questionCount: number; questionIds?: string[]; cardCheckpoint?: { sessionId: string; reviewedAt: string }; tutorWeekCheckpoint?: QuizRun["tutorWeekCheckpoint"]; tutorSessionId?: string; dailyPackageId?: string }
   | { kind: "exam-simulation"; subject: string; questionCount: number; minutes: number }
   | { kind: "open-collection" }
 );
@@ -60,7 +62,8 @@ export function runMatchesLearningCollection(run: QuizRun, collection: LearningC
 
 export function resumableFlashcardSession(workspace: Workspace): { session: FlashcardSession; remaining: Flashcard[] } | null {
   const session = workspace.flashcardSession;
-  if (!session || session.index >= session.queue.length) return null;
+  // A daily package has its own entry point and never interrupts the Tutor.
+  if (!session || session.collectionId === DAILY_PACKAGE_DECK || session.index >= session.queue.length) return null;
   const collection = session.collectionId ? learningCollections(workspace).find(item => item.id === session.collectionId) : null;
   // A deleted collection does not destroy its saved queue. Only original card
   // IDs with unchanged scheduling snapshots can be resumed in that case.

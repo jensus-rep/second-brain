@@ -7,8 +7,8 @@ import { Input } from "@/components/ui/input";
 import type { Workspace } from "@/lib/brain/model";
 import { KnowledgeOrientation } from "./knowledge-orientation";
 
-export function HomeWorkspace({ workspace, focus, notes, collections, path, reminders, searchRef, onSearch, onTopic, onNavigate }: {
-  workspace: Workspace; focus: ReactNode; notes: ReactNode; collections: ReactNode;
+export function HomeWorkspace({ workspace, daily, focus, notes, collections, path, reminders, searchRef, onSearch, onTopic, onNavigate }: {
+  workspace: Workspace; daily: ReactNode; focus: ReactNode; notes: ReactNode; collections: ReactNode;
   path: ReactNode; reminders: ReactNode;
   searchRef: RefObject<HTMLInputElement | null>;
   onSearch: (query: string) => void; onTopic: (id: string) => void;
@@ -16,6 +16,7 @@ export function HomeWorkspace({ workspace, focus, notes, collections, path, remi
 }) {
   return <div className="home-workspace">
     <div className="home-main-column">
+      {daily}
       {focus}
       <section className="home-recent" aria-label="Zuletzt in deinem Wissensraum">
         <div className="section-heading"><div><span className="eyebrow">ANKNÜPFEN & WEITERDENKEN</span><h2>Zuletzt in deinem Wissensraum</h2></div><button onClick={() => onNavigate("library")} aria-label="Alle Notizen ansehen"><ArrowRight size={18} /></button></div>

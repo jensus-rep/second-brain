@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
-import { Archive, BookOpen, Check, ChevronRight, Compass, Download, FileText, FolderOpen, GitBranch, GraduationCap, KeyRound, LayoutGrid, Link2, List, LockKeyhole, LogOut, Network, Pencil, Plus, Search, Star, X, Layers3, ChevronDown } from "lucide-react";
+import { Archive, BookOpen, CalendarCheck, Check, ChevronRight, Compass, Download, FileText, FolderOpen, GitBranch, GraduationCap, KeyRound, LayoutGrid, Link2, List, LockKeyhole, LogOut, Network, Pencil, Plus, Search, Star, X, Layers3, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
@@ -13,7 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Empty, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 import { Toaster } from "@/components/ui/sonner";
 import { useBrain } from "@/lib/brain/use-brain";
-import { searchNotes, pathProgress, tutorPlanSchema, type Note, type Topic, type LearningPath, type Workspace, type Flashcard } from "@/lib/brain/model";
+import { DAILY_PACKAGE_DECK, searchNotes, pathProgress, tutorPlanSchema, type Note, type Topic, type LearningPath, type Workspace, type Flashcard } from "@/lib/brain/model";
 import { NoteEditor, TopicEditor, PathEditor } from "./editors";
 import { NoteReader } from "./note-reader";
 import { KnowledgeFilters } from "./knowledge-filters";
@@ -29,6 +29,8 @@ import { LearningTutor, type TutorMode } from "./learning-tutor";
 import { LearningTransition } from "./learning-transition";
 import { recommendLearning, type LearningAction } from "@/lib/brain/learning-resume";
 import { startTutorSession, tutorSessionInsights } from "@/lib/brain/tutor-session";
+import { dailyPackageStatus, startDailyPackage } from "@/lib/brain/daily-package";
+import { DailyPackageCard, DailyPackageView } from "./daily-package";
 import { examSimulationInsights } from "@/lib/brain/exam-simulation";
 import { LearningCollectionsOverview } from "./learning-collections";
 import { firstImage, noteExcerpt } from "@/lib/brain/media";
@@ -42,6 +44,7 @@ const nav = [
   { id: "home" as View, label: "Mein Überblick", icon: Compass },
   { id: "library" as View, label: "Wissensbibliothek", icon: BookOpen },
   { id: "topics" as View, label: "Themen", icon: FolderOpen },
+  { id: "today" as View, label: "Heute", icon: CalendarCheck },
   { id: "tutor" as View, label: "Tutor", icon: GraduationCap },
   { id: "collections" as View, label: "Lernsammlungen", icon: Layers3 },
   { id: "paths" as View, label: "Lernpfade", icon: GraduationCap },
@@ -49,7 +52,7 @@ const nav = [
   { id: "quizzes" as View, label: "Tests & Übungen", icon: Check },
   { id: "connections" as View, label: "Verbindungen", icon: Network },
 ];
-const labels: Record<View, string> = { home: "Mein Überblick", tutor: "Tutor", library: "Wissensbibliothek", topics: "Themen", collections: "Lernsammlungen", paths: "Lernpfade", connections: "Verbindungen", favorites: "Favoriten", archive: "Archiv", flashcards: "Lernkarten", quizzes: "Tests & Übungen" };
+const labels: Record<View, string> = { home: "Mein Überblick", today: "Heute", tutor: "Tutor", library: "Wissensbibliothek", topics: "Themen", collections: "Lernsammlungen", paths: "Lernpfade", connections: "Verbindungen", favorites: "Favoriten", archive: "Archiv", flashcards: "Lernkarten", quizzes: "Tests & Übungen" };
 const UNASSIGNED = "::unassigned";
 const getDate = (date: string) => new Intl.DateTimeFormat("de-DE", { day: "numeric", month: "short", timeZone: "Europe/Berlin" }).format(new Date(date));
 
@@ -99,6 +102,7 @@ export function BrainApp() {
   const [studying, setStudying] = useState(false);
   const quizPending = useRef(false);
   const tutorStarting = useRef(false);
+  const dailyStarting = useRef(false);
   const [tutorLaunching, setTutorLaunching] = useState(false);
   const navigationVersion = useRef(0);
   const [hasQuizPending, setHasQuizPending] = useState(false);
@@ -110,7 +114,7 @@ export function BrainApp() {
   const [cardResumeRequest, setCardResumeRequest] = useState(0);
   const [quizLaunchRequest, setQuizLaunchRequest] = useState<QuizLaunchRequest | undefined>();
   const [quizResultRequest, setQuizResultRequest] = useState<{ id: string; runId: string; collectionId?: string } | undefined>();
-  const [learningReturnView, setLearningReturnView] = useState<"home" | "tutor">("home");
+  const [learningReturnView, setLearningReturnView] = useState<"home" | "today" | "tutor">("home");
   const [tutorMode, setTutorMode] = useState<TutorMode>("guided");
   const consumeCardResume = useCallback(() => setCardResumeRequest(0), []);
   const consumeQuizLaunch = useCallback(() => setQuizLaunchRequest(undefined), []);
@@ -118,7 +122,7 @@ export function BrainApp() {
   const onCardStudyChange = useCallback((active: boolean) => { setStudying(active); if (active) setCardStartRequest(0); }, []);
   const [overviewClock, setOverviewClock] = useState(() => Date.now());
   useEffect(() => {
-    if (view !== "home" && view !== "tutor") return;
+    if (view !== "home" && view !== "today" && view !== "tutor") return;
     const timer = setInterval(() => setOverviewClock(Date.now()), 30000);
     return () => clearInterval(timer);
   }, [view]);
@@ -173,7 +177,22 @@ export function BrainApp() {
   function startCollectionCards(id: string | null, mode: "due" | "all" = "due", cardIds?: string[]) { if (!go("flashcards")) return; setLearningCollectionId(id ?? ""); setCardStartMode(mode); setCardStartIds(cardIds); setCardStartRequest(value => value + 1); }
   async function handleLearningAction(action: LearningAction) {
     if (quizPending.current) { toast.info("Speichere zuerst die offenen Antworten in deiner Lernrunde."); return; }
-    setLearningReturnView(view === "tutor" || view === "flashcards" || action.kind === "tutor-session" || action.kind === "exam-simulation" || action.kind === "checkpoint" && action.tutorSessionId ? "tutor" : "home");
+    const dailyFlow = action.kind === "daily-package" || action.kind === "resume-cards" && action.collectionId === DAILY_PACKAGE_DECK || action.kind === "checkpoint" && !!action.dailyPackageId || action.kind === "resume-quiz" && !!w.quizRuns.find(run => run.id === action.runId)?.dailyPackageId;
+    setLearningReturnView(dailyFlow ? "today" : view === "tutor" || view === "flashcards" || action.kind === "tutor-session" || action.kind === "exam-simulation" || action.kind === "checkpoint" && action.tutorSessionId ? "tutor" : "home");
+    if (action.kind === "daily-package") {
+      if (saving || dailyStarting.current) return;
+      dailyStarting.current = true;
+      const packageId = crypto.randomUUID();
+      let started: Workspace | null = null;
+      try {
+        const ok = await save(current => {
+          started = startDailyPackage(current, packageId, action.short ?? false);
+          return started;
+        }, "");
+        if (ok && started) continueDaily(started);
+      } finally { dailyStarting.current = false; }
+      return;
+    }
     if (action.kind === "tutor-session") {
       if (saving || tutorStarting.current) return;
       tutorStarting.current = true;
@@ -205,7 +224,12 @@ export function BrainApp() {
       setQuizLaunchRequest({ id: crypto.randomUUID(), subject: action.subject, collectionId: action.collectionId ?? undefined, mode: "exam-simulation", questionCount: action.questionCount, minutes: action.minutes });
       return;
     }
-    setQuizLaunchRequest({ id: crypto.randomUUID(), subject: action.subject, collectionId: action.collectionId ?? undefined, mode: action.kind === "checkpoint" ? "checkpoint" : "preparation", ...(action.kind === "checkpoint" ? { questionCount: action.questionCount, questionIds: action.questionIds, cardCheckpoint: action.cardCheckpoint, tutorWeekCheckpoint: action.tutorWeekCheckpoint, tutorSessionId: action.tutorSessionId } : { concept: action.concept, ...(action.kind === "preparation" ? { tutorWeekStartedOn: action.tutorWeekStartedOn } : {}) }) });
+    setQuizLaunchRequest({ id: crypto.randomUUID(), subject: action.subject, collectionId: action.collectionId ?? undefined, mode: action.kind === "checkpoint" ? "checkpoint" : "preparation", ...(action.kind === "checkpoint" ? { questionCount: action.questionCount, questionIds: action.questionIds, cardCheckpoint: action.cardCheckpoint, tutorWeekCheckpoint: action.tutorWeekCheckpoint, tutorSessionId: action.tutorSessionId, dailyPackageId: action.dailyPackageId } : { concept: action.concept, ...(action.kind === "preparation" ? { tutorWeekStartedOn: action.tutorWeekStartedOn } : {}) }) });
+  }
+  function continueDaily(state: Workspace) {
+    const next = dailyPackageStatus(state, Date.now()).action;
+    if (next) void handleLearningAction(next);
+    else go("today");
   }
   function viewLearningResult(runId: string, collectionId: string | null) { setLearningReturnView(view === "tutor" ? "tutor" : "home"); go("quizzes"); setQuizResultRequest({ id: crypto.randomUUID(), runId, collectionId: collectionId ?? undefined }); }
   function createTopic(parentId: string | null = null) { setEditingTopic({ id: crypto.randomUUID(), title: "", description: "", color: "blue", parentId }); }
@@ -272,11 +296,11 @@ export function BrainApp() {
   // Child effects report later updates, such as pausing a card round.
   const focusedLearning = view === "flashcards" && (studying || !!cardStartRequest || !!cardResumeRequest)
     || view === "quizzes" && (studying || !!quizLaunchRequest || !!quizResultRequest || w.quizRuns.some(run => !run.finishedAt));
-  const learningScene = view === "tutor" || view === "flashcards" || view === "quizzes";
+  const learningScene = view === "today" || view === "tutor" || view === "flashcards" || view === "quizzes";
   return <GlossaryProvider notes={w.notes} topics={w.topics} onOpenNote={openNote}><SidebarProvider style={{ "--sidebar-width": "250px" } as CSSProperties}><Navigation view={view} go={go} workspace={w} topicId={topicId} setTopic={setTopic} newTopic={() => createTopic()} openKeys={() => setShowKeys(true)} onSignOut={() => { if (quizPending.current) toast.info("Speichere zuerst die offenen Antworten in deiner Lernrunde."); else void signOut(); }} /><SidebarInset className={"brain-main" + (focusedLearning ? " is-studying" : "")}>
     <header className="topbar"><div className="breadcrumb"><SidebarTrigger className="mobile-toggle" aria-label="Navigation öffnen" /><span>Wissensatelier</span><ChevronRight size={14} /><strong>{topic?.title ?? labels[view]}</strong></div><div className="topbar-right"><span className="save-state"><Check size={14} className={saving ? "pulse" : ""} />{saving ? "Speichert …" : loading ? "Lädt …" : brain.error ? "Bitte prüfen" : hasQuizPending ? "Antworten offen" : "Gespeichert"}</span><Button variant="ghost" size="icon" aria-label="Import & Datensicherung" disabled={hasQuizPending} onClick={() => setShowTransfer(true)}><Download size={18} /></Button></div></header>
     <div key={view} className={"workspace-content" + (learningScene ? " learning-scene" : "")}>
-      {!focusedLearning && <><div className="page-heading"><div><div className="eyebrow">{view === "home" ? "PLATZ FÜR DEINE GEDANKEN" : "DEIN PERSÖNLICHER WISSENSRAUM"}</div><h1>{topic?.title ?? (topicId === UNASSIGNED ? "Ohne Thema" : view === "home" ? "Dein Wissen" : labels[view])}</h1><p>{topic?.description ?? ({ home: "Gedanken festhalten. Zusammenhänge entdecken.", tutor: "Deinen Plan umsetzen, kurz üben und den nächsten Schritt aus deinem Lernstand ableiten.", library: "Deine Einträge an einem Ort.", topics: "Fachthemen und Unterthemen ordnen dein Wissen. Öffne eine Ebene, um alle zugehörigen Einträge zu sehen.", collections: "Stelle Wissen, Lernkarten und Aufgaben für ein konkretes Lernziel zusammen.", paths: "Aus einzelnen Gedanken wird ein Weg. Lerne in deinem Tempo.", connections: "Entdecke, wie deine Gedanken zusammengehören.", favorites: "Die Gedanken, zu denen du gern zurückkommst.", archive: "Aufbewahrt für später. Hier geht kein Gedanke verloren.", flashcards: "Weniger nachlesen. Mehr im Gedächtnis behalten.", quizzes: "Wissen prüfen, Denkfehler verstehen und gezielt weiterüben." }[view])}</p></div><div className="heading-actions">{topic && <Button variant="outline" onClick={() => setEditingTopic(topic)} aria-label="Thema bearbeiten"><Pencil size={16} /></Button>}{view !== "quizzes" && view !== "collections" && view !== "tutor" && <Button className="primary-action" disabled={loading} onClick={() => view === "flashcards" ? setEditingCard(newFlashcard()) : view === "topics" ? createTopic() : view === "paths" ? setEditingPath({ id: crypto.randomUUID(), title: "", description: "", steps: [] }) : setEditingNote(freshNote())}><Plus size={18} />{view === "flashcards" ? "Neue Lernkarte" : view === "topics" ? "Neues Thema" : view === "paths" ? "Neuer Lernpfad" : "Neue Notiz"}</Button>}</div></div>
+      {!focusedLearning && <><div className="page-heading"><div><div className="eyebrow">{view === "home" ? "PLATZ FÜR DEINE GEDANKEN" : "DEIN PERSÖNLICHER WISSENSRAUM"}</div><h1>{topic?.title ?? (topicId === UNASSIGNED ? "Ohne Thema" : view === "home" ? "Dein Wissen" : labels[view])}</h1><p>{topic?.description ?? ({ home: "Gedanken festhalten. Zusammenhänge entdecken.", today: "Zehn Minuten Karten, ein Inhalt und ein paar Fragen. Danach ist für heute Schluss.", tutor: "Deinen Plan umsetzen, kurz üben und den nächsten Schritt aus deinem Lernstand ableiten.", library: "Deine Einträge an einem Ort.", topics: "Fachthemen und Unterthemen ordnen dein Wissen. Öffne eine Ebene, um alle zugehörigen Einträge zu sehen.", collections: "Stelle Wissen, Lernkarten und Aufgaben für ein konkretes Lernziel zusammen.", paths: "Aus einzelnen Gedanken wird ein Weg. Lerne in deinem Tempo.", connections: "Entdecke, wie deine Gedanken zusammengehören.", favorites: "Die Gedanken, zu denen du gern zurückkommst.", archive: "Aufbewahrt für später. Hier geht kein Gedanke verloren.", flashcards: "Weniger nachlesen. Mehr im Gedächtnis behalten.", quizzes: "Wissen prüfen, Denkfehler verstehen und gezielt weiterüben." }[view])}</p></div><div className="heading-actions">{topic && <Button variant="outline" onClick={() => setEditingTopic(topic)} aria-label="Thema bearbeiten"><Pencil size={16} /></Button>}{view !== "quizzes" && view !== "collections" && view !== "tutor" && view !== "today" && <Button className="primary-action" disabled={loading} onClick={() => view === "flashcards" ? setEditingCard(newFlashcard()) : view === "topics" ? createTopic() : view === "paths" ? setEditingPath({ id: crypto.randomUUID(), title: "", description: "", steps: [] }) : setEditingNote(freshNote())}><Plus size={18} />{view === "flashcards" ? "Neue Lernkarte" : view === "topics" ? "Neues Thema" : view === "paths" ? "Neuer Lernpfad" : "Neue Notiz"}</Button>}</div></div>
       {topic && <div className="topic-context">
         <nav className="topic-breadcrumbs" aria-label="Themenpfad"><button onClick={() => go("topics")}>Alle Themen</button>{[...topicAncestors, topic].map(t => <span key={t.id}><ChevronRight size={14} />{t.id === topic.id ? <strong aria-current="page">{t.title}</strong> : <button onClick={() => setTopic(t.id)}>{t.title}</button>}</span>)}</nav>
         <div className="topic-scope-summary"><span>{topicScope.size > 1 ? `Dieses Thema umfasst ${topicScope.size - 1} Unterthemen. Alle zugehörigen Einträge werden gemeinsam angezeigt.` : "Die Einträge sind diesem Thema direkt zugeordnet."}</span><Button variant="ghost" size="sm" onClick={() => createTopic(topic.id)}><Plus size={15} />Unterthema anlegen</Button></div>
@@ -287,7 +311,9 @@ export function BrainApp() {
       {brain.error && <div className="error-banner" role="alert"><p>{brain.error}</p><Button variant="outline" size="sm" disabled={saving || loading} onClick={() => void brain.load()}>Aktuellen Stand laden</Button></div>}
       {loading && brain.revision < 0 ? <div className="card-grid loading-grid" aria-label="Wissenssammlung wird geladen">{[1, 2, 3].map(i => <Skeleton key={i} className="h-56 rounded-xl" />)}</div> : <>
       {view === "tutor" && (tutorLaunching ? <LearningTransition title="Deine kurze Lernrunde wird vorbereitet …" description="Dein Tutor stellt die passenden Karten und Fragen zusammen." /> : <LearningTutor mode={tutorMode} onModeChange={setTutorMode} revision={brain.revision} onOpenCollections={() => go("collections")} workspace={w} save={save} saving={saving} now={overviewClock} onAction={handleLearningAction} onOpenNote={openNote} onOpenCollection={openCollection} onViewResult={viewLearningResult} />)}
+      {view === "today" && <DailyPackageView workspace={w} save={save} saving={saving} now={overviewClock} onAction={handleLearningAction} onContinue={continueDaily} onOpenNote={openNote} />}
       {view === "home" && <HomeWorkspace workspace={w}
+        daily={<DailyPackageCard workspace={w} saving={saving} now={overviewClock} onAction={handleLearningAction} onOpen={() => go("today")} />}
         focus={<LearningOverview workspace={w} save={save} saving={saving} now={overviewClock} onAction={handleLearningAction} onOpenNote={openNote} onOpenCollection={openCollection} onViewResult={viewLearningResult} />}
         notes={filtered.length ? <NoteRows notes={filtered.slice(0, 5)} topics={w.topics} saving={saving} onOpen={openNote} onFavorite={toggleFavorite} /> : <p className="home-empty-notes">Dein Wissensraum beginnt mit einer Frage oder einem Gedanken. Lege deine erste Notiz an.</p>}
         collections={<LearningCollectionsOverview workspace={w} save={save} saving={saving} collectionId={learningCollectionId} onCollectionChange={setLearningCollectionId} onOpenNote={openNote} onOpenCards={id => { setLearningCollectionId(id); go("flashcards"); }} onOpenQuizzes={id => { setLearningCollectionId(id); go("quizzes"); }} onOpenPath={id => { go("paths"); setSelectedPathId(id); }} compact onOpenCollection={openCollection} onStartCards={startCollectionCards} onOpenAllCollections={() => go("collections")} />}
@@ -298,7 +324,7 @@ export function BrainApp() {
       {view === "collections" && <LearningCollectionsOverview workspace={w} save={save} saving={saving} collectionId={learningCollectionId} onCollectionChange={setLearningCollectionId} onOpenNote={openNote} onOpenCards={id => { setLearningCollectionId(id); go("flashcards"); }} onOpenQuizzes={id => { setLearningCollectionId(id); go("quizzes"); }} onOpenPath={id => { go("paths"); setSelectedPathId(id); }} onOpenCollection={openCollection} onStartCards={startCollectionCards} onOpenAllCollections={() => go("collections")} />}
       {view === "topics" && <section className="topic-browser" aria-label="Themenstruktur"><div className="structure-intro"><FolderOpen size={22} /><div><h2>Vom Fachthema zum Detail</h2><p>Unterthemen gehören zu ihrem übergeordneten Thema. Einträge bleiben ihrer konkreten Ebene zugeordnet und erscheinen auch beim übergeordneten Thema.</p></div></div><TopicTree topics={w.topics} notes={w.notes} onSelect={setTopic} onEdit={setEditingTopic} onCreateChild={parentId => createTopic(parentId)} /><button className="unassigned-topic" onClick={() => setTopic(UNASSIGNED)}><FileText size={18} /><span>Ohne Thema<small>Einträge, die noch einen Platz suchen.</small></span><strong>{activeNotes.filter(n => !n.topicId).length}</strong><ChevronRight size={16} /></button>{!w.topics.length && <p className="topic-empty-hint">Lege ein Fachthema an und ergänze darunter passende Unterthemen.</p>}<div className="structure-collection-link"><div><h3>Für ein Lernziel bündeln</h3><p>Lernsammlungen verbinden Inhalte aus mehreren Themen mit Karten und Übungen.</p></div><Button variant="outline" onClick={() => go("collections")}>Lernsammlungen öffnen<ChevronRight size={16} /></Button></div></section>}
       {view === "quizzes" && <Quizzes onLearningAction={handleLearningAction} workspace={w} save={save} saving={saving} onStudyChange={setStudying} onOpenNote={openNote} collectionId={learningCollectionId} onCollectionChange={setLearningCollectionId} launchRequest={quizLaunchRequest} onLaunchConsumed={consumeQuizLaunch} resultRequest={quizResultRequest} onResultRequestConsumed={consumeQuizResult} onBackToOverview={() => go(learningReturnView)} onOpenTutor={mode => { if (go("tutor")) setTutorMode(mode); }} onPendingChange={onQuizPendingChange} />}
-      {view === "flashcards" && <Flashcards revision={brain.revision} onLearningAction={handleLearningAction} onBackToTutor={() => go("tutor")} workspace={w} save={save} saving={saving} onEdit={setEditingCard} onStudyChange={onCardStudyChange} onOpenNote={openNote} collectionId={learningCollectionId} onCollectionChange={setLearningCollectionId} startRequest={cardStartRequest} startMode={cardStartMode} startCardIds={cardStartIds} resumeRequest={cardResumeRequest} onResumeRequestConsumed={consumeCardResume} onBackToCollection={learningCollectionId ? () => openCollection(learningCollectionId) : undefined} />}
+      {view === "flashcards" && <Flashcards revision={brain.revision} onLearningAction={handleLearningAction} onBackToTutor={() => go("tutor")} onDailyContinue={() => continueDaily(w)} onBackToDaily={() => go("today")} workspace={w} save={save} saving={saving} onEdit={setEditingCard} onStudyChange={onCardStudyChange} onOpenNote={openNote} collectionId={learningCollectionId} onCollectionChange={setLearningCollectionId} startRequest={cardStartRequest} startMode={cardStartMode} startCardIds={cardStartIds} resumeRequest={cardResumeRequest} onResumeRequestConsumed={consumeCardResume} onBackToCollection={learningCollectionId ? () => openCollection(learningCollectionId) : undefined} />}
       {["library", "favorites", "archive"].includes(view) && <section className="library-section">
         <div className="section-heading"><h2>{view === "home" ? "Zuletzt in deinem Wissensraum" : query ? "Suchergebnisse" : topic ? "Notizen in diesem Thema" : view === "archive" ? "Archivierte Notizen" : view === "favorites" ? "Deine Favoriten" : "Alle Notizen"} <span>{filtered.length}</span></h2>{view === "home" && <button onClick={() => go("library")}>Alle Notizen ansehen</button>}</div>
         <Tabs defaultValue="cards"><div className="library-toolbar"><div className="library-controls">{view !== "home" && <KnowledgeFilters topics={w.topics} tags={allTags} topicId={topicId} tag={tag} onTopic={id => { setTopicId(id); setTag(""); }} onTag={setTag} reset={() => { setTopicId(""); setTag(""); }} />}<span className="result-order">{query ? `Ergebnisse für „${query}“` : entryFirst ? "Einstieg zuerst, dann zuletzt bearbeitet" : "Zuletzt bearbeitet"}</span></div><TabsList aria-label="Darstellung"><TabsTrigger value="cards" aria-label="Kartenansicht"><LayoutGrid size={16} /></TabsTrigger><TabsTrigger value="list" aria-label="Listenansicht"><List size={16} /></TabsTrigger></TabsList></div>

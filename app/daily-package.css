@@ -1,0 +1,33 @@
+.daily-card { display: flex; align-items: center; gap: 16px; margin: 0 0 18px; padding: 20px 22px; background: var(--accent); border: 1px solid var(--accent-border, var(--border)); border-radius: 16px; }
+.daily-card.is-done { background: #fff; border-color: var(--border); }
+.daily-card-mark { flex-shrink: 0; display: grid; place-items: center; width: 46px; height: 46px; color: #fff; background: var(--primary); border-radius: 12px; }
+.daily-card.is-done .daily-card-mark { color: var(--primary); background: var(--accent); }
+.daily-card-copy { min-width: 0; flex: 1; }
+.daily-card-copy h2 { margin: 4px 0 2px; color: var(--foreground); font-size: 20px; font-weight: 650; line-height: 1.35; }
+.daily-card-copy p { color: var(--foreground-soft); font-size: 13px; line-height: 1.6; }
+.daily-card-actions { flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.daily-card-actions [data-slot="button"] { min-height: 44px; }
+.daily-short-link { padding: 4px 0; color: var(--foreground-soft); font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
+.daily-short-link:disabled { opacity: .6; }
+.daily-view { max-width: 760px; }
+.daily-steps { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 18px; padding: 0; list-style: none; }
+.daily-steps li { display: flex; align-items: center; gap: 6px; padding: 5px 11px; color: var(--muted-foreground); background: var(--surface-subtle); border: 1px solid var(--border); border-radius: 999px; font-size: 12px; }
+.daily-steps li.is-current { color: #fff; background: var(--primary); border-color: var(--primary); }
+.daily-steps li.is-done { color: var(--primary); background: var(--accent); border-color: var(--accent); }
+.daily-reading { padding: 26px; background: #fff; border: 1px solid var(--border); border-radius: 16px; }
+.daily-reading h2 { margin: 6px 0 16px; color: var(--foreground); font-size: 24px; font-weight: 650; line-height: 1.35; overflow-wrap: anywhere; }
+.daily-reading-body { font-size: 15px; line-height: 1.75; overflow-wrap: anywhere; }
+.daily-reading-body img, .daily-reading-body table { max-width: 100%; }
+.daily-reading-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--surface-muted); }
+.daily-reading-actions [data-slot="button"] { min-height: 44px; }
+.daily-empty { color: var(--muted-foreground); font-size: 13px; }
+
+@media (max-width: 640px) {
+  .daily-card { flex-wrap: wrap; padding: 18px; }
+  .daily-card-copy { flex-basis: calc(100% - 62px); }
+  .daily-card-actions { width: 100%; align-items: stretch; }
+  .daily-short-link { text-align: center; }
+  .daily-reading { padding: 18px; }
+  .daily-reading h2 { font-size: 21px; }
+  .daily-reading-actions [data-slot="button"] { width: 100%; }
+}

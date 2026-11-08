@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Archive, BookOpen, Check, Compass, Download, FolderOpen, GraduationCap, KeyRound, Layers3, LockKeyhole, LogOut, Menu, Network, Plus, Star, X } from "lucide-react";
+import { Archive, BookOpen, CalendarCheck, Check, Compass, Download, FolderOpen, GraduationCap, KeyRound, Layers3, LockKeyhole, LogOut, Menu, Network, Plus, Star, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 
-export type BrainView = "home" | "tutor" | "library" | "topics" | "collections" | "paths" | "connections" | "favorites" | "archive" | "flashcards" | "quizzes";
+export type BrainView = "home" | "today" | "tutor" | "library" | "topics" | "collections" | "paths" | "connections" | "favorites" | "archive" | "flashcards" | "quizzes";
 
 const shortcuts = [
   { id: "home", label: "Start", name: "Mein Überblick", icon: Compass },
@@ -16,6 +16,7 @@ const shortcuts = [
 ] as const;
 
 const moreViews = [
+  { id: "today", label: "Heute", icon: CalendarCheck },
   { id: "topics", label: "Themen", icon: FolderOpen },
   { id: "collections", label: "Lernsammlungen", icon: Layers3 },
   { id: "paths", label: "Lernpfade", icon: GraduationCap },
