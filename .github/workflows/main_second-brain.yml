@@ -113,6 +113,11 @@ jobs:
           slot-name: Production
           package: release.zip
 
+      # OneDeploy can expose new manifests while an existing Node worker still
+      # holds API modules in memory. Recycle it before checking the new release.
+      - name: Restart deployed server
+        run: az webapp restart -g "${{ steps.app.outputs.resource_group }}" -n "$APP_NAME"
+
       - name: Smoke test
         run: |
           HOST="https://${{ steps.app.outputs.host }}"

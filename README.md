@@ -2,6 +2,8 @@
 
 Eine private, deutschsprachige Second-Brain-Web-App. Wissen wird als Markdown mit strukturierten Metadaten gespeichert und als Bibliothek, Notizleser, Verknüpfungskarte und Lernpfad dargestellt.
 
+Das Azure-Deployment startet nach dem Paketwechsel den Node-Server ausdrücklich neu, damit auch bereits geladene API-Module die neue Version verwenden. Danach prüft der Workflow Anmeldeseite und Zugriffsschutz der Daten-API.
+
 ## Funktionen
 
 - Notizen erstellen, bearbeiten, favorisieren, archivieren und wiederherstellen.
