@@ -44,7 +44,7 @@ export function useBrain() {
       if (applied) {
         // Every save trims older quiz runs, so stored runs shrink on the next save as well.
         // The previous state lets trimmed runs keep their wording when the bank changes.
-        const workspace = workspaceSchema.parse(compactQuizRuns(updated, previous.workspace));
+        const workspace = workspaceSchema.parse({ ...compactQuizRuns(updated, previous.workspace), scripts: updated.scripts ?? [] });
         const serialized = JSON.stringify(workspace);
         if (new TextEncoder().encode(serialized).length > MAX_WORKSPACE_BYTES) throw new Error("Deine Sammlung überschreitet 4 MB. Bitte sichere und verkleinere sie vor dem Speichern.");
         const body = `{"workspace":${serialized},"revision":${previous.revision}}`;

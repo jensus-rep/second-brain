@@ -13,6 +13,7 @@ Eine private, deutschsprachige Second-Brain-Web-App. Wissen wird als Markdown mi
 - Großzügige Eintragsansicht mit moderner Lesetypografie, Gliederung aus den tatsächlichen Markdown-Überschriften und einklappbaren Metadaten.
 - Verwandte Einträge mit Browsernavigation; nach dem Bearbeiten oder Erstellen einer Lernkarte zurück zum gelesenen Eintrag.
 - Lernpfade mit sortierbaren Schritten, eigenen Aufgaben und dauerhaftem Fortschritt.
+- Skripte als eigener Inhaltstyp: Einführung, geordnete Markdown-Kapitel, Fachnotizen als Quellen, Bearbeitungsstand und gespeicherte Leseposition. Kapitel- und Gesamtansicht, Markdown-Export, Volltextsuche und Zuordnung zu Lernsammlungen.
 - JSON-Export und validierter Import mit ausdrücklicher Ersetzungsbestätigung.
 - Bilder (PNG, JPEG, WebP, GIF) mit Beschriftung, Kartenvorschau und vergrößerbarer Ansicht; private Speicherung in der Datenbank.
 - Sichere Mermaid-Ablaufdiagramme, Sequenzdiagramme und Mindmaps direkt im Markdown.
@@ -36,6 +37,7 @@ Eine private, deutschsprachige Second-Brain-Web-App. Wissen wird als Markdown mi
 | Bereich | Ort |
 | --- | --- |
 | Typen, Datenvalidierung, Suche, Fortschritt | lib/brain/model.ts |
+| Skripte, Quellenstände, Leseposition und Lesefassung | lib/brain/scripts.ts, components/brain/scripts.tsx, app/scripts.css |
 | Themenhierarchie, Themenpfade und aufklappbare Struktur | lib/brain/topics.ts, components/brain/topic-tree.tsx |
 | Editierbare Startinhalte für neue Sammlungen | lib/brain/seed.ts |
 | Datenbankzugriff | lib/brain/storage.ts, lib/server/store*.ts |
@@ -84,6 +86,7 @@ npm run test:lernpaket
 npm run test:browser
 npm run test:visual
 npm run test:reading
+npm run test:scripts
 npm run test:quizzes
 npm run test:preparation
 npm run test:collections
@@ -107,6 +110,18 @@ Die Vorbereitungsprüfung ergänzt Themenabdeckung, kurze und vollständige Übu
 Die Sammlungsprüfung testet Umfang und Quellenzuordnung, gemeinsame Auswahl in Lernkarten und Tests, drei Prioritätsstufen, exakt gefilterte fällige Karten, Speichern und Neuladen, eigene Sammlungen und konsistente Verweise beim Kartenlöschen. `BRAIN_TEST_URL` muss auf localhost zeigen; `BRAIN_TEST_SQLITE_PATH` benennt die tatsächliche lokale SQLite-Datei. Vor jeder Testdatenänderung wird geprüft, dass API und diese Datei denselben Ausgangsbestand enthalten. Screenshots prüfen auch 320 und 390 Pixel Breite; anschließend wird der Ausgangsbestand wiederhergestellt.
 
 Die Wiedereinstiegsprüfung (`test:reentry`) prüft gespeicherte Kartenpositionen nach Pause und Neuladen, direkte Vorbereitungseinheiten, Speicherfehler und gezielte Wiederholung unsicherer Lernbereiche. Sie kontrolliert Auswertungslinks, vergleichbare Ergebnisse sowie kurze Tests mit verborgenen Lösungen bis zur Abgabe. Sie nutzt dieselben lokalen Umgebungsvariablen, prüft die SQLite-Datei vor Schreibvorgängen und stellt den Ausgangsbestand wieder her.
+
+## Skripte
+
+„Skripte“ ist ein eigener Bereich neben der Wissensbibliothek und auch mobil erreichbar. Ein Skript enthält ein Lernziel, eine Einführung und geordnete Kapitel mit eigenem Markdown-Text. Im Editor lassen sich Kapitel ergänzen, verschieben und entfernen, Fachnotizen verknüpfen und deren Texte ausdrücklich übernehmen. Bearbeitungsstand: Entwurf oder Lesefassung. Fachnotizen bleiben eigenständige Wissensbausteine.
+
+Jeder Quellenverweis enthält die Notiz-ID und einen Fingerabdruck aus Titel und Inhalt. Geänderte, archivierte und fehlende Fachnotizen lösen einen Prüfhinweis aus; sie ändern keinen Kapiteltext automatisch. Nach fachlicher Prüfung kann der Quellenstand übernommen werden. Die Kapitelansicht speichert Kapitel und relative Scrollposition serverseitig; Lesen verändert nicht das redaktionelle Änderungsdatum. Skripte sind über `#script=<id>` direkt erreichbar und lassen sich als ganzes Dokument lesen oder als Markdown exportieren.
+
+Die optionalen Workspace-Felder `scripts` und `learningCollections[].scriptIds` erweitern bestehende Sammlungen ohne Tabellenmigration. JSON- und ZIP-Sicherungen enthalten Kapitel, Quellen und Leseposition; auch ausschließlich in Skripten verwendete Bilder werden gesichert und beim Import umgeschrieben. Dabei bleiben bereits überholte Quellenstände als solche erkennbar. Alte Clients, die vorhandene Skripte beim Speichern weglassen würden, werden von der API abgewiesen. Der aktuelle Import kann ältere Sicherungen weiterhin ausdrücklich wiederherstellen.
+
+Für vorhandene Fachnotizen zu Forschungsmethoden bietet der Bereich eine vorbereitete Lesefassung mit zehn Kapiteln und verbindenden Einordnungen an. Der Vorschlag nutzt ausschließlich die aktuellen Notizen des jeweiligen Kontos; private Kursinhalte werden nicht mit dem Quelltext ausgeliefert. Er wird erst durch Speichern Teil des Bestands. Weitere Skripte lassen sich frei erstellen.
+
+`npm run test:scripts` prüft Anlegen, Kapitelreihenfolge, Quellenänderungen, Weiterlesen nach Neuladen, Wissenssuche, Lernsammlungen, Markdown-/JSON-/ZIP-Export, Wiederherstellung mit ausschließlich im Skript verwendeten Bildern, mobile Breite, Altclientschutz, Revisionskonflikte und Löschen. Der Test ist auf localhost beschränkt und prüft vor Datenänderungen, dass API und `BRAIN_TEST_SQLITE_PATH` denselben lokalen SQLite-Bestand verwenden. Er stellt den Ausgangsbestand wieder her.
 
 ## Lernüberblick und Wiedereinstieg
 

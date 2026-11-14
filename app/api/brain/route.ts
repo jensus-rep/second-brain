@@ -37,6 +37,12 @@ export async function PUT(request: Request) {
     const input = z.object({ revision: z.number().int().nonnegative(), workspace: workspaceSchema }).safeParse(JSON.parse(text));
     if (!input.success) return response({ error: input.error.issues[0]?.message ?? "Ungültige Daten." }, 400);
     if (new TextEncoder().encode(JSON.stringify(input.data.workspace)).length > MAX_WORKSPACE_BYTES) return response({ error: "Die Sammlung ist zu groß (maximal 4 MB)." }, 413);
+    // Older clients do not know the script type. Never let them silently drop it.
+    if (input.data.workspace.scripts === undefined) {
+      const current = await readWorkspace(user.userId);
+      if (current.revision !== input.data.revision) return response({ error: "Die Sammlung wurde inzwischen geändert. Lade den aktuellen Stand neu.", conflict: true }, 409);
+      if (current.workspace.scripts?.length) return response({ error: "Diese Sammlung enthält Skripte. Lade die Anwendung neu, bevor du speicherst. Beim bewussten Wiederherstellen einer älteren Sicherung die aktuelle Importfunktion verwenden." }, 400);
+    }
     const saved = await writeWorkspace(user.userId, input.data.workspace, input.data.revision);
     if (!saved) return response({ error: "Die Sammlung wurde in einem anderen Fenster geändert. Deine Eingabe bleibt erhalten. Sichere sie und lade den aktuellen Stand neu.", conflict: true }, 409);
     if (request.headers.get("prefer")?.split(",").some(preference => preference.trim().toLowerCase() === "return=minimal")) {

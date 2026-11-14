@@ -12,7 +12,7 @@ export function HomeWorkspace({ workspace, daily, focus, notes, collections, pat
   path: ReactNode; reminders: ReactNode;
   searchRef: RefObject<HTMLInputElement | null>;
   onSearch: (query: string) => void; onTopic: (id: string) => void;
-  onNavigate: (view: "library" | "topics" | "flashcards" | "tutor") => void;
+  onNavigate: (view: "library" | "topics" | "flashcards" | "tutor" | "scripts") => void;
 }) {
   return <div className="home-workspace">
     <div className="home-main-column">
@@ -32,6 +32,7 @@ export function HomeWorkspace({ workspace, daily, focus, notes, collections, pat
         <p>Wiederhole einen Gedanken oder lass dich durch deine Vorbereitung führen.</p>
         <Button variant="outline" onClick={() => onNavigate("tutor")}><GraduationCap size={18} />Zum Tutor<ArrowRight size={15} /></Button>
         <button className="home-card-access" onClick={() => onNavigate("flashcards")}><Layers3 size={18} /><span><strong>Wissen wiederholen</strong><small>{workspace.cards.length} Lernkarten</small></span><ArrowRight size={15} /></button>
+        <button className="home-card-access" onClick={() => onNavigate("scripts")}><BookOpen size={18} /><span><strong>Zusammenhängend lesen</strong><small>{workspace.scripts?.length ?? 0} Skripte</small></span><ArrowRight size={15} /></button>
       </section>
       {path}
     </aside>

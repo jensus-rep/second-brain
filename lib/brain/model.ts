@@ -180,15 +180,41 @@ export const flashcardSessionSchema = z.object({
     ctx.addIssue({ code: "custom", path: ["index"], message: "Die Position muss innerhalb der Lernrunde liegen." });
   }
 });
+export const scriptChapterSchema = z.object({
+  id, title, content: z.string().max(80000),
+  sources: z.array(z.object({ noteId: id, fingerprint: z.string().regex(/^[a-f0-9]{8}$/) })).max(100),
+}).superRefine((chapter, ctx) => {
+  if (new Set(chapter.sources.map(source => source.noteId)).size !== chapter.sources.length) {
+    ctx.addIssue({ code: "custom", message: "Eine Fachnotiz darf pro Kapitel nur einmal verknüpft sein." });
+  }
+});
+export const scriptSchema = z.object({
+  id, title, summary: z.string().max(600), introduction: z.string().max(12000),
+  topicId: id.nullable(), tags: z.array(z.string().trim().min(1).max(40)).max(20),
+  status: z.enum(["draft", "ready"]), chapters: z.array(scriptChapterSchema).min(1).max(100),
+  readingPosition: z.object({ chapterId: id, offset: z.number().min(0).max(1), updatedAt: z.string().datetime() }).nullable(),
+  createdAt: z.string().datetime(), updatedAt: z.string().datetime(),
+}).superRefine((script, ctx) => {
+  if (new Set(script.chapters.map(chapter => chapter.id)).size !== script.chapters.length) {
+    ctx.addIssue({ code: "custom", message: "Kapitel brauchen eindeutige IDs." });
+  }
+  if (script.readingPosition && !script.chapters.some(chapter => chapter.id === script.readingPosition?.chapterId)) {
+    ctx.addIssue({ code: "custom", path: ["readingPosition"], message: "Die Leseposition muss zu einem vorhandenen Kapitel gehören." });
+  }
+});
 export const learningCollectionSchema = z.object({
   id, title, description: z.string().max(600),
   noteIds: z.array(id).max(1000), questionIds: z.array(id).max(1000),
   cardIds: z.array(id).max(3000), pathIds: z.array(id).max(100),
+  scriptIds: z.array(id).max(100).optional(),
 }).superRefine((collection, ctx) => {
   for (const key of ["noteIds", "questionIds", "cardIds", "pathIds"] as const) {
     if (new Set(collection[key]).size !== collection[key].length) {
       ctx.addIssue({ code: "custom", path: [key], message: "Die Verknüpfungen einer Lernsammlung müssen eindeutig sein." });
     }
+  }
+  if (collection.scriptIds && new Set(collection.scriptIds).size !== collection.scriptIds.length) {
+    ctx.addIssue({ code: "custom", path: ["scriptIds"], message: "Skriptverknüpfungen müssen eindeutig sein." });
   }
 });
 export const workspaceSchema = z.object({
@@ -200,6 +226,7 @@ export const workspaceSchema = z.object({
   quizRuns: z.array(quizRunSchema).max(200).default([]),
   learningReminders: z.array(learningReminderSchema).max(100).default([]),
   learningCollections: z.array(learningCollectionSchema).max(100).default([]),
+  scripts: z.array(scriptSchema).max(100).optional(),
   learningFocus: learningFocusSchema.nullable().optional(),
   flashcardSession: flashcardSessionSchema.nullable().optional(),
   pausedFlashcardSessions: z.array(flashcardSessionSchema).max(100).optional(),
@@ -214,7 +241,7 @@ export const workspaceSchema = z.object({
   tutorCheckpointDecisions: z.array(tutorCheckpointDecisionSchema).max(300).optional(),
 }).superRefine((data, ctx) => {
   const issue = (message: string) => ctx.addIssue({ code: "custom", message });
-  for (const list of [data.notes, data.topics, data.paths, data.cards, data.quizQuestions, data.quizRuns, data.learningReminders, data.learningCollections]) {
+  for (const list of [data.notes, data.topics, data.paths, data.cards, data.quizQuestions, data.quizRuns, data.learningReminders, data.learningCollections, data.scripts ?? []]) {
     if (new Set(list.map(item => item.id)).size !== list.length) issue("IDs müssen eindeutig sein.");
   }
   if (data.quizRuns.filter(run => !run.finishedAt).length > 1) issue("Bitte die laufende Testrunde zuerst beenden.");
@@ -269,6 +296,11 @@ export const workspaceSchema = z.object({
   const questions = new Set(data.quizQuestions.map(question => question.id));
   const cards = new Set(data.cards.map(card => card.id));
   const paths = new Set(data.paths.map(path => path.id));
+  const scripts = new Set((data.scripts ?? []).map(script => script.id));
+  for (const script of data.scripts ?? []) {
+    if (script.topicId && !topics.has(script.topicId)) issue("Ein Skript verweist auf ein fehlendes Thema.");
+    // Source references survive deleted notes so the reader can report a missing source.
+  }
   const steps = data.paths.flatMap(p => p.steps);
   const stepIds = new Set(steps.map(s => s.id));
   if (data.cards.some(card => card.noteId && !notes.has(card.noteId))) issue("Eine Lernkarte verweist auf eine fehlende Notiz.");
@@ -278,6 +310,7 @@ export const workspaceSchema = z.object({
     if (collection.questionIds.some(id => !questions.has(id))) issue("Eine Lernsammlung verweist auf eine fehlende Testaufgabe.");
     if (collection.cardIds.some(id => !cards.has(id))) issue("Eine Lernsammlung verweist auf eine fehlende Lernkarte.");
     if (collection.pathIds.some(id => !paths.has(id))) issue("Eine Lernsammlung verweist auf einen fehlenden Lernpfad.");
+    if (collection.scriptIds?.some(id => !scripts.has(id))) issue("Eine Lernsammlung verweist auf ein fehlendes Skript.");
   }
   if (stepIds.size !== steps.length) issue("Lernschritte müssen eindeutige IDs haben.");
   for (const n of data.notes) {
@@ -293,6 +326,8 @@ export type LearningPath = z.infer<typeof pathSchema>;
 export type Flashcard = z.infer<typeof flashcardSchema>;
 export type FlashcardPriority = NonNullable<Flashcard["priority"]>;
 export type LearningCollection = z.infer<typeof learningCollectionSchema>;
+export type Script = z.infer<typeof scriptSchema>;
+export type ScriptChapter = z.infer<typeof scriptChapterSchema>;
 export type LearningFocus = z.infer<typeof learningFocusSchema>;
 export type FlashcardSession = z.infer<typeof flashcardSessionSchema>;
 export type TutorPlan = z.infer<typeof tutorPlanSchema>;

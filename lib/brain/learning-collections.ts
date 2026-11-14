@@ -33,7 +33,7 @@ function resolveIds<T extends { id: string }>(items: T[], ids: string[]): T[] {
 }
 
 export function collectionItems(workspace: Workspace, collection: LearningCollection): {
-  notes: Note[]; questions: QuizQuestion[]; cards: Flashcard[]; paths: LearningPath[]; topics: Topic[];
+  notes: Note[]; questions: QuizQuestion[]; cards: Flashcard[]; paths: LearningPath[]; topics: Topic[]; scripts: NonNullable<Workspace["scripts"]>;
 } {
   const notes = resolveIds(workspace.notes, collection.noteIds);
   const questions = resolveIds(workspace.quizQuestions, collection.questionIds);
@@ -43,7 +43,8 @@ export function collectionItems(workspace: Workspace, collection: LearningCollec
   const explicitIds = new Set(explicitCards.map(card => card.id));
   const cards = [...explicitCards, ...workspace.cards.filter(card => !explicitIds.has(card.id) && card.noteId !== null && linkedNotes.has(card.noteId))];
   const topicIds = new Set(notes.flatMap(note => note.topicId ? [note.topicId] : []));
-  return { notes, questions, cards, paths, topics: workspace.topics.filter(topic => topicIds.has(topic.id)) };
+  const scripts = resolveIds(workspace.scripts ?? [], collection.scriptIds ?? []);
+  return { notes, questions, cards, paths, scripts, topics: workspace.topics.filter(topic => topicIds.has(topic.id)) };
 }
 
 function filteredProposal(workspace: Workspace, proposal: LearningCollection): LearningCollection {

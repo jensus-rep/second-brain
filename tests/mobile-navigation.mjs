@@ -25,7 +25,7 @@ const navigation = page.getByRole("navigation", { name: "Hauptnavigation", exact
 const menu = page.getByRole("dialog", { name: "Alle Bereiche", exact: true });
 const directNames = ["Mein Überblick", "Wissensbibliothek", "Lernkarten", "Tests & Übungen"];
 const more = navigation.getByRole("button", { name: "Weitere Bereiche öffnen", exact: true });
-const destinations = ["Themen", "Lernsammlungen", "Lernpfade", "Verbindungen", "Favoriten", "Archiv"];
+const destinations = ["Skripte", "Themen", "Lernsammlungen", "Lernpfade", "Verbindungen", "Favoriten", "Archiv"];
 const current = name => navigation.getByRole("button", { name, exact: true });
 
 async function noOverflow(label) {
@@ -91,7 +91,11 @@ async function readerLayout(note, width, height) {
 
   const scroll = reader.locator(".entry-scroll");
   await scroll.evaluate(el => { el.scrollTop = el.scrollHeight; });
-  await expect(reader.getByText("Lesbarer Schluss der mobilen Prüfnotiz.", { exact: true })).toBeInViewport();
+  // In a short landscape viewport the final paragraph and the footer need not fit together.
+  const finalParagraph = reader.getByText("Lesbarer Schluss der mobilen Prüfnotiz.", { exact: true });
+  await finalParagraph.scrollIntoViewIfNeeded();
+  await expect(finalParagraph).toBeInViewport();
+  await scroll.evaluate(el => { el.scrollTop = el.scrollHeight; });
   const contentEnd = await reader.locator(".entry-context").boundingBox();
   assert.ok(contentEnd.y + contentEnd.height <= dockBounds.y + 1, "Reader's final content stays above its controls");
   assert.equal(await reader.evaluate(el => el.scrollWidth > el.clientWidth + 1), false, "Reader has no horizontal overflow");
@@ -170,6 +174,8 @@ async function learningLayouts(workspace, note) {
     await page.getByRole("group", { name: "Aktionen für die Lernkarte", exact: true }).getByRole("button", { name: "Antwort aufdecken", exact: true }).click();
     await page.getByRole("group", { name: "Bewertung der Lernkarte", exact: true }).getByRole("button", { name: /^Gewusst/ }).click();
     await expect(page.getByRole("heading", { name: "Ein Stück Wissen bleibt.", exact: true })).toBeVisible();
+    await expect(navigation).not.toBeVisible();
+    await page.getByRole("button", { name: "Zur Kartenübersicht", exact: true }).click();
     await expect(navigation).toBeVisible();
     assert.equal((await snapshot()).workspace.cards.find(c => c.id === card.id).reviews, 1, "Rating still persists one review");
   }

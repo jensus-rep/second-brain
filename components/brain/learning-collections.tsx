@@ -26,6 +26,7 @@ type Props = {
   onStartCards?: (id: string) => void;
   onOpenQuizzes: (id: string) => void;
   onOpenPath: (id: string) => void;
+  onOpenScript?: (id: string) => void;
   compact?: boolean;
   onOpenCollection?: (id: string) => void;
   onOpenAllCollections?: () => void;
@@ -64,7 +65,7 @@ function CollectionEditor({ collection, workspace, save, saving, onClose, onSave
     }}>
       <label className="field"><span>Name der Lernsammlung</span><Input required maxLength={160} value={draft.title} onChange={event => setDraft({ ...draft, title: event.target.value })} /></label>
       <label className="field"><span>Umfang und Lernziel</span><Textarea maxLength={600} rows={3} value={draft.description} onChange={event => setDraft({ ...draft, description: event.target.value })} placeholder="Welche Inhalte gehören dazu? Was möchtest du sicher erklären können?" /></label>
-      <p className="collection-editor-count" aria-live="polite">Enthalten: {included.notes.length} Notizen · {included.cards.length} Lernkarten · {included.questions.length} Testaufgaben · {included.paths.length} Lernpfade</p>
+      <p className="collection-editor-count" aria-live="polite">Enthalten: {included.notes.length} Notizen · {included.cards.length} Lernkarten · {included.questions.length} Testaufgaben · {included.paths.length} Lernpfade · {included.scripts.length} Skripte</p>
       <Input aria-label="Inhalte für Lernsammlung filtern" placeholder="Notizen, Fragen oder Themen finden …" value={search} onChange={event => setSearch(event.target.value)} />
       <details open className="collection-picker"><summary>Notizen und Fachthemen ({draft.noteIds.length})</summary>
         <p>Übergeordnete Themen übernehmen auch die aktiven Notizen ihrer Unterthemen.</p>
@@ -81,12 +82,13 @@ function CollectionEditor({ collection, workspace, save, saving, onClose, onSave
       </details>
       <details className="collection-picker"><summary>Zusätzliche Lernkarten ({draft.cardIds.length})</summary><p>Karten aus den gewählten Notizen sind bereits enthalten. Hier kannst du weitere Karten hinzufügen.</p><div className="collection-picker-list">{workspace.cards.filter(card => !draft.noteIds.includes(card.noteId ?? "") && matches(card.question)).map(card => <label key={card.id}><Checkbox checked={draft.cardIds.includes(card.id)} onCheckedChange={checked => toggle("cardIds", card.id, checked === true)} /><span>{card.question.slice(0, 180)}</span></label>)}</div></details>
       <details className="collection-picker"><summary>Lernpfade ({draft.pathIds.length})</summary><div className="collection-picker-list">{workspace.paths.filter(path => matches(path.title)).map(path => <label key={path.id}><Checkbox checked={draft.pathIds.includes(path.id)} onCheckedChange={checked => toggle("pathIds", path.id, checked === true)} /><span>{path.title}</span></label>)}</div></details>
+      <details className="collection-picker"><summary>Skripte ({draft.scriptIds?.length ?? 0})</summary><div className="collection-picker-list">{(workspace.scripts ?? []).filter(script => matches(script.title + " " + script.summary)).map(script => <label key={script.id}><Checkbox checked={draft.scriptIds?.includes(script.id) ?? false} onCheckedChange={checked => setDraft(current => ({ ...current, scriptIds: checked === true ? [...new Set([...(current.scriptIds ?? []), script.id])] : (current.scriptIds ?? []).filter(id => id !== script.id) }))} /><span>{script.title}<small>{script.chapters.length} Kapitel</small></span></label>)}</div></details>
       {error && <p role="alert">{error}</p>}<div className="dialog-actions"><Button type="button" variant="outline" onClick={close}>Abbrechen</Button><Button type="submit" disabled={saving}>Sammlung speichern</Button></div>
     </form>
   </DialogContent></Dialog>;
 }
 
-export function LearningCollectionsOverview({ workspace, save, saving, collectionId, onCollectionChange, onOpenNote, onOpenCards, onStartCards, onOpenQuizzes, onOpenPath, compact = false, onOpenCollection, onOpenAllCollections }: Props) {
+export function LearningCollectionsOverview({ workspace, save, saving, collectionId, onCollectionChange, onOpenNote, onOpenCards, onStartCards, onOpenQuizzes, onOpenPath, onOpenScript, compact = false, onOpenCollection, onOpenAllCollections }: Props) {
   const [editing, setEditing] = useState<LearningCollection | null>(null);
   const [topicFilter, setTopicFilter] = useState("");
   const detailHeading = useRef<HTMLHeadingElement>(null);
@@ -119,7 +121,7 @@ export function LearningCollectionsOverview({ workspace, save, saving, collectio
     <div className="collection-cards">{displayedEntries.map(({ collection, contents }) => {
       return <button type="button" className={`collection-card${selected?.id === collection.id ? " is-selected" : ""}`} key={collection.id} onClick={() => choose(collection.id)} aria-pressed={selected?.id === collection.id}>
         <span className="collection-card-icon"><FolderOpen size={22} aria-hidden="true" /></span><h3>{collection.title}</h3>{collection.description && <p>{collection.description}</p>}
-        <div className="collection-card-counts"><span>{contents.notes.length} Notizen</span><span>{contents.cards.length} Lernkarten</span><span>{contents.questions.length} Testaufgaben</span></div>
+        <div className="collection-card-counts"><span>{contents.notes.length} Notizen</span><span>{contents.cards.length} Lernkarten</span><span>{contents.questions.length} Testaufgaben</span>{contents.scripts.length > 0 && <span>{contents.scripts.length} Skripte</span>}</div>
         <small>{contents.topics.length} Fachthemen · Gesamter Bestand dieser Sammlung</small>
         <span className="collection-card-open">Sammlung öffnen <ArrowRight size={16} aria-hidden="true" /></span>
       </button>;
@@ -137,6 +139,7 @@ export function LearningCollectionsOverview({ workspace, save, saving, collectio
       </div>
       <dl className="collection-inventory">{[["Notizen", items.notes.length], ["Lernkarten", items.cards.length], ["Testaufgaben", items.questions.length], ["Lernpfade", items.paths.length]].map(([label, count]) => <div key={label}><dt>{label}</dt><dd>{count}</dd></div>)}</dl>
       <CollectionTopicBrowser key={selected.id} workspace={workspace} collection={selected} topicId={topicFilter} onTopicChange={setTopicFilter} onOpenNote={onOpenNote} />
+      {!!items.scripts.length && <div className="collection-scripts"><h3>Skripte zum Durchlesen</h3>{items.scripts.map(script => <Button key={script.id} variant="outline" disabled={!onOpenScript} onClick={() => onOpenScript?.(script.id)}>{script.title} · {script.chapters.length} Kapitel</Button>)}</div>}
       {!!items.paths.length && <div className="collection-paths"><h3>Passende Lernpfade</h3>{items.paths.map(path => <Button key={path.id} variant="outline" size="sm" onClick={() => onOpenPath(path.id)}>{path.title}</Button>)}</div>}
       <div className="collection-priorities"><h4>Drei Stufen für deine Lernkarten</h4><div>{([1, 2, 3] as const).map(priority => <article key={priority}><span>STUFE {priority}</span><h5>{priorityLabels[priority]} <strong>{items.cards.filter(card => flashcardPriority(card) === priority).length}</strong></h5><p>{priorityDescriptions[priority]}</p></article>)}</div><p className="small-note">{items.cards.filter(card => flashcardPriority(card) === null).length} Karten sind noch nicht eingestuft.{suggestions.length > 0 && ` Für ${suggestions.length} Karten ist eine fachlich vorbereitete Einstufung vorgeschlagen. Du kannst sie beim Bearbeiten ändern.`}</p>{suggestions.length > 0 && <Button size="sm" variant="outline" disabled={saving} onClick={() => void save(current => {
         const ids = new Set(collectionItems(current, selected).cards.map(card => card.id));

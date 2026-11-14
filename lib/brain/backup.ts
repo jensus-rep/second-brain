@@ -1,6 +1,7 @@
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import { workspaceSchema, MAX_WORKSPACE_BYTES, type Workspace } from "./model";
 import { isPrivateImage, mediaReferences, uploadImage, MAX_IMAGE_BYTES } from "./media";
+import { remapScriptSourceFingerprints } from "./scripts";
 
 const MAX_BACKUP_BYTES = 64 * 1024 * 1024;
 type Asset = { oldUrl: string; bytes: Uint8Array; mime: string };
@@ -64,7 +65,7 @@ export async function prepareImport(bundle: ImportBundle): Promise<Workspace> {
     for (const reference of mediaReferences(bundle.workspace)) {
       if (!(await fetch(reference)).ok) throw new Error("Eine Bildreferenz ist hier nicht verfügbar. Verwende die vollständige ZIP-Sicherung mit Bildern.");
     }
-    return bundle.workspace;
+    return { ...bundle.workspace, scripts: bundle.workspace.scripts ?? [] };
   }
   let encoded = JSON.stringify(bundle.workspace);
   for (const asset of bundle.assets) {
@@ -72,5 +73,6 @@ export async function prepareImport(bundle: ImportBundle): Promise<Workspace> {
     const replacement = await uploadImage(file);
     encoded = encoded.split(asset.oldUrl).join(replacement);
   }
-  return workspaceSchema.parse(JSON.parse(encoded));
+  const restored = workspaceSchema.parse(JSON.parse(encoded));
+  return remapScriptSourceFingerprints(bundle.workspace, { ...restored, scripts: restored.scripts ?? [] });
 }

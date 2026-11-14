@@ -286,7 +286,7 @@ try {
   await editor.getByRole("checkbox", { name: new RegExp(questions[1].prompt.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) }).check();
   await editor.locator("summary").filter({ hasText: /^Zusätzliche Lernkarten/ }).click();
   await editor.getByRole("checkbox", { name: cards[7].question, exact: true }).check();
-  await expect(editor.locator(".collection-editor-count")).toHaveText("Enthalten: 1 Notizen · 3 Lernkarten · 1 Testaufgaben · 0 Lernpfade");
+  await expect(editor.locator(".collection-editor-count")).toHaveText("Enthalten: 1 Notizen · 3 Lernkarten · 1 Testaufgaben · 0 Lernpfade · 0 Skripte");
   await mobileFits("collection-editor", ".collection-editor, .collection-picker, .collection-picker-list");
   const created = await saveUi(() => click("Sammlung speichern", editor), workspace => workspace.learningCollections.length === 3);
   const custom = created.workspace.learningCollections.find(item => item.title === "Eigene Lernsammlung für Produktfragen");
@@ -307,7 +307,7 @@ try {
   await click(`${topics[0].title} hinzufügen`, editor);
   await editor.locator("summary").filter({ hasText: /^Testaufgaben/ }).click();
   await click(`${subject}: alle Aufgaben hinzufügen`, editor);
-  await expect(editor.locator(".collection-editor-count")).toHaveText("Enthalten: 2 Notizen · 8 Lernkarten · 3 Testaufgaben · 0 Lernpfade");
+  await expect(editor.locator(".collection-editor-count")).toHaveText("Enthalten: 2 Notizen · 8 Lernkarten · 3 Testaufgaben · 0 Lernpfade · 0 Skripte");
   const updated = await saveUi(() => click("Sammlung speichern", editor), workspace => workspace.learningCollections.find(item => item.id === custom.id)?.title === "Produktfragen mit gemeinsamen Grundlagen");
   assert.equal(updated.workspace.learningCollections.length, 3, "Updating retains the stable collection ID.");
   assert.deepEqual(updated.workspace.learningCollections.find(item => item.id === custom.id).questionIds.slice().sort(), questions.map(item => item.id).sort());

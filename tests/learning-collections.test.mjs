@@ -359,7 +359,7 @@ test("reading older helper inputs and unresolved items stays safe without guessi
     delete data.learningCollections;
     assert.doesNotThrow(() => learningCollections(data));
     const unresolved = collection("fixture-unresolved", { noteIds: ["missing-note"], questionIds: ["missing-question"], cardIds: ["missing-card"], pathIds: ["missing-path"] });
-    assert.deepEqual(collectionItems(data, unresolved), { notes: [], questions: [], cards: [], paths: [], topics: [] });
+    assert.deepEqual(collectionItems(data, unresolved), { notes: [], questions: [], cards: [], paths: [], topics: [], scripts: [] });
   });
 });
 

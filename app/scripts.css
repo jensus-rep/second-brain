@@ -1,0 +1,64 @@
+.scripts-workspace { min-width: 0; }
+.scripts-workspace .section-heading { flex-wrap: wrap; gap: 20px; }
+.scripts-workspace .section-heading p { color: var(--muted-foreground); margin-top: 8px; line-height: 1.7; }
+.script-proposal { display: flex; align-items: center; gap: 20px; padding: 25px; margin: 25px 0; background: var(--surface-subtle); border: 1px solid var(--border); border-radius: 14px; }
+.script-proposal > svg { flex-shrink: 0; color: var(--primary); }
+.script-proposal > div { flex: 1; min-width: 0; }
+.script-proposal h3 { font-size: 17px; }
+.script-proposal p { margin-top: 6px; color: var(--muted-foreground); line-height: 1.7; }
+.script-filters { display: flex; gap: 18px; margin: 26px 0; flex-wrap: wrap; }
+.script-filters label { display: grid; gap: 6px; font-size: 12px; color: var(--foreground-soft); }
+.script-filters select, .script-editor select { background: white; padding: 10px 12px; border: 1px solid var(--border); border-radius: 7px; max-width: 100%; min-width: 0; color: var(--foreground); }
+.script-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr)); gap: 22px; }
+.script-card { border: 1px solid var(--border); border-radius: 14px; padding: 26px; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; }
+.script-card .eyebrow { display: flex; align-items: center; gap: 8px; }
+.script-card h3 { font-size: 21px; line-height: 1.4; margin: 16px 0 10px; }
+.script-card h3 button { text-align: left; }
+.script-card > p { color: var(--muted-foreground); line-height: 1.8; margin-bottom: 15px; }
+.script-card > small { color: var(--foreground-faint); }
+.script-card-actions { display: flex; align-items: center; gap: 8px; margin-top: auto; padding-top: 24px; flex-wrap: wrap; }
+.script-empty { padding: 45px 15px; color: var(--muted-foreground); line-height: 1.8; }
+.script-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.script-actions > span { margin-right: auto; color: var(--muted-foreground); font-size: 12px; }
+.script-heading { padding: 30px 0; max-width: 880px; }
+.script-heading h2 { font-size: clamp(26px, 3vw, 38px); line-height: 1.25; margin: 12px 0; letter-spacing: -.025em; }
+.script-heading p { color: var(--foreground-soft); line-height: 1.9; }
+.script-heading small { display: block; color: var(--muted-foreground); margin-top: 10px; }
+.script-reading-layout { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 35px; align-items: start; }
+.script-outline { min-width: 0; }
+.script-outline h3 { font-size: 13px; margin-bottom: 12px; }
+.script-outline ol { list-style: none; padding: 0; margin: 0 0 20px; max-height: 65vh; overflow: auto; }
+.script-outline li button { width: 100%; text-align: left; padding: 10px 12px; display: flex; gap: 8px; border-radius: 7px; font-size: 13px; line-height: 1.6; }
+.script-outline li button > span:first-child { flex: 0 0 20px; }
+.script-outline-title { flex: 1; min-width: 0; }
+.script-outline-title small { display: block; }
+.scripts-workspace .script-outline-toggle { display: none; }
+.script-outline li button[aria-current] { background: var(--secondary); color: var(--primary); font-weight: 600; }
+.script-outline li button:hover { background: var(--surface-subtle); }
+.script-outline li button small { width: 100%; color: #8b5c17; }
+.script-outline .small-note { margin-top: 15px; line-height: 1.7; }
+.script-scroll { height: min(75vh, 1000px); min-height: 300px; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding: 25px clamp(15px, 3vw, 45px) 45px; background: white; border: 1px solid var(--border); border-radius: 12px; min-width: 0; overflow-wrap: anywhere; }
+.script-scroll:focus-visible { outline: 2px solid var(--primary); outline-offset: 4px; }
+.script-chapter-title, .script-full-chapter > h3 { font-size: 28px; line-height: 1.35; margin: 16px 0 28px; }
+.script-introduction { margin-bottom: 35px; border-bottom: 1px solid var(--border); padding-bottom: 25px; }
+.script-full-chapter + .script-full-chapter { margin-top: 60px; border-top: 1px solid var(--border); padding-top: 35px; }
+.script-source-warning { padding: 16px; background: #fff9ec; border: 1px solid #ebd8ae; color: #75521b; border-radius: 8px; margin: 16px 0; font-size: 13px; line-height: 1.7; }
+.script-source-warning p { margin: 6px 0 12px; }
+.script-sources { margin-top: 35px; border-top: 1px solid var(--border); padding-top: 22px; }
+.script-sources h4 { font-size: 14px; margin-bottom: 10px; }
+.script-sources > div { padding-bottom: 10px; }
+.script-sources button { white-space: normal; height: auto; padding: 0; text-align: left; justify-content: flex-start; line-height: 1.7; }
+.script-sources small { display: block; font-size: 11px; color: var(--muted-foreground); }
+.script-chapter-navigation { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-top: 35px; }
+.script-chapter-navigation > span { font-size: 12px; color: var(--muted-foreground); }
+.script-editor { max-width: 950px !important; }
+.script-chapter-tools { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; padding-top: 20px; border-top: 1px solid var(--border); }
+.script-chapter-tools .field { flex: 1 1 100%; }
+.script-source-picker { padding: 18px; border: 1px solid var(--border); border-radius: 8px; }
+.script-source-picker summary { cursor: pointer; font-weight: 600; }
+.script-source-picker p { font-size: 13px; line-height: 1.7; color: var(--muted-foreground); margin: 12px 0; }
+.script-source-picker > button { margin-top: 15px; }
+.collection-scripts { margin: 25px 0; display: grid; gap: 10px; }
+.collection-scripts button { white-space: normal; height: auto; padding: 12px; text-align: left; justify-content: flex-start; }
+@media (max-width: 900px) { .script-reading-layout { grid-template-columns: minmax(0, 1fr); gap: 20px; } .script-outline ol { max-height: 220px; overflow: auto; } .script-proposal { flex-wrap: wrap; } .script-outline h3 { display: none; } .scripts-workspace .script-outline-toggle { display: flex; width: 100%; justify-content: flex-start; gap: 10px; } .script-outline-toggle > span { margin-left: auto; font-size: 12px; } .script-outline-content { display: none; padding-top: 10px; } .script-outline-content.is-open { display: block; } }
+@media (max-width: 600px) { .script-card { padding: 20px; } .script-scroll { padding: 22px 15px; height: 72vh; } .script-chapter-title { font-size: 23px; } .scripts-workspace button { white-space: normal; height: auto; min-height: 36px; } .script-actions { gap: 8px; } .script-heading { padding: 24px 0; } .script-editor .form-columns { grid-template-columns: 1fr; } }
