@@ -2,6 +2,7 @@ import { chromium, expect } from "@playwright/test";
 import assert from "node:assert/strict";
 import { mkdir, readFile } from "node:fs/promises";
 import { unzipSync, strFromU8 } from "fflate";
+import { openView, accountItem } from "./navigation.mjs";
 
 const origin = process.env.BRAIN_TEST_URL ?? "http://127.0.0.1:5173";
 if (!["127.0.0.1", "localhost"].includes(new URL(origin).hostname)) throw new Error("Local test data only.");
@@ -74,7 +75,7 @@ try {
   await page.getByRole("dialog", { name: "Ein Gedanke zum Behalten", exact: true }).waitFor({ state: "hidden" });
   await expect(page.getByRole("dialog", { name: "Visuell lernen – Prüfnote", exact: true })).toBeVisible();
   await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "Lernkarten", exact: true }).click();
+  await openView(page, "Lernkarten");
   // Isolate the newly created card without modifying the user's original test data permanently.
   const snapshot = await (await page.request.get(origin + "/api/brain")).json();
   const card = snapshot.workspace.cards.find(c => c.question === "Wie wird aus einer Fundstelle eigenes Wissen?");
@@ -83,7 +84,7 @@ try {
   const isolated = await page.request.put(origin + "/api/brain", { data: { ...snapshot, workspace: { ...snapshot.workspace, cards: [card], learningCollections: [collection] } } });
   assert.equal(isolated.status(), 200, await isolated.text());
   await page.reload({ waitUntil: "networkidle" });
-  await page.getByRole("button", { name: "Lernkarten", exact: true }).click();
+  await openView(page, "Lernkarten");
   await page.getByRole("button", { name: "Lernrunde starten" }).click();
   await expect(page.getByRole("button", { name: /Gewusst/ })).not.toBeVisible();
   await page.getByRole("button", { name: "Antwort aufdecken" }).press("Enter");
@@ -95,7 +96,7 @@ try {
   assert.equal(updated.workspace.cards[0].reviews, 1);
   assert.equal(updated.workspace.cards[0].intervalDays, 1);
   await page.reload({ waitUntil: "networkidle" });
-  await page.getByRole("button", { name: "Lernkarten", exact: true }).click();
+  await openView(page, "Lernkarten");
   await expect(page.getByRole("heading", { name: "In dieser Auswahl ist gerade nichts fällig." })).toBeVisible();
 
   // Rejected file payloads cannot become HTML/SVG assets.
@@ -107,7 +108,7 @@ try {
   assert.ok([401, 302, 303, 307].includes(unauthorized.status()));
   await unauthenticated.close();
 
-  await page.getByRole("button", { name: "Import & Datensicherung" }).click();
+  await (await accountItem(page, "Import & Datensicherung")).click();
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Sicherung herunterladen" }).click();
   const download = await downloadPromise;

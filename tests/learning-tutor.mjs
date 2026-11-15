@@ -4,6 +4,7 @@ import { mkdir, realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { brainBody } from "./brain-request.mjs";
+import { openView } from "./navigation.mjs";
 
 // Every mutation needs loopback and proof of the exact local SQLite store.
 const origin = process.env.BRAIN_TEST_URL ?? "http://127.0.0.1:5173";
@@ -60,7 +61,7 @@ async function write(workspace) {
 async function reloadTutor() {
   const response = await page.goto(origin, { waitUntil: "networkidle" });
   assert.equal(response?.status(), 200);
-  await click("Tutor");
+  await openView(page, "Tutor");
   await expect(tutor()).toBeVisible();
 }
 async function fixture(workspace = mainFixture) { await write(structuredClone(workspace)); await reloadTutor(); }

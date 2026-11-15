@@ -4,6 +4,7 @@ import { mkdir, realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { brainBody } from "./brain-request.mjs";
+import { openView } from "./navigation.mjs";
 
 // Every mutation must target loopback and match the selected local SQLite file.
 const origin = process.env.BRAIN_TEST_URL ?? "http://127.0.0.1:5173";
@@ -58,7 +59,7 @@ async function write(workspace) {
 async function reloadTutor() {
   const response = await page.goto(origin, { waitUntil: "networkidle" });
   assert.equal(response?.status(), 200);
-  await click("Tutor");
+  await openView(page, "Tutor");
   await expect(page.locator(".learning-tutor")).toBeVisible();
 }
 async function uiSave(action, predicate) {
@@ -90,7 +91,7 @@ async function startFixture(workspace = fixture) {
   await reloadTutor();
   await expect(page.locator(".learning-tutor").getByRole("region", { name: "Lernimpuls", exact: true })).toHaveCount(0);
   await expect(page.locator(".learning-tutor .tutor-primary-action")).toHaveCount(1);
-  await click("Lernkarten");
+  await openView(page, "Lernkarten");
   await page.getByLabel("Lernsammlung für Lernkarten", { exact: true }).selectOption(collection.id);
   await uiSave(() => click("Lernrunde starten"), workspace => workspace.flashcardSession?.index === 0 && workspace.flashcardSession.collectionId === collection.id && !workspace.tutorSession);
   await expect(studyQuestion()).toContainText(cards[0].question);

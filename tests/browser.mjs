@@ -1,6 +1,7 @@
 import { chromium } from "@playwright/test";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
+import { openView } from "./navigation.mjs";
 
 const origin = process.env.BRAIN_TEST_URL ?? "http://127.0.0.1:5173";
 if (!["127.0.0.1", "localhost"].includes(new URL(origin).hostname)) throw new Error("Browser tests may only mutate local test data.");
@@ -45,12 +46,12 @@ try {
   await page.getByRole("menu").waitFor({ state: "detached" });
   await page.keyboard.press("Escape");
 
-  await page.getByRole("button", { name: "Lernpfade", exact: true }).click();
+  await openView(page, "Lernpfade");
   await page.getByRole("heading", { name: "Dein Second Brain aufbauen", exact: true }).click();
   await page.getByRole("checkbox", { name: "Abgeschlossen" }).first().click();
   await page.getByText("Lernschritt abgeschlossen", { exact: true }).waitFor();
   await page.reload({ waitUntil: "networkidle" });
-  await page.getByRole("button", { name: "Lernpfade", exact: true }).click();
+  await openView(page, "Lernpfade");
   await page.getByRole("heading", { name: "Dein Second Brain aufbauen", exact: true }).click();
   assert.equal(await page.getByRole("checkbox", { name: "Abgeschlossen" }).first().isChecked(), true);
   await page.getByRole("button", { name: "Neuer Lernpfad", exact: true }).click();
@@ -69,7 +70,7 @@ try {
   const malformed = await page.request.put(origin + "/api/brain", { data: { revision: current.revision + 1, workspace: { ...current.workspace, notes: [] } } });
   assert.equal(malformed.status(), 400);
 
-  await page.getByRole("button", { name: "Mein Überblick", exact: true }).click();
+  await openView(page, "Mein Überblick");
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload({ waitUntil: "networkidle" });
   await page.getByRole("heading", { name: "Dein Wissen", exact: true }).waitFor();

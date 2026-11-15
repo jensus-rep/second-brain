@@ -1,6 +1,7 @@
 import { chromium, expect } from "@playwright/test";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
+import { openView } from "./navigation.mjs";
 
 const origin = process.env.BRAIN_TEST_URL ?? "http://127.0.0.1:5173";
 if (!["127.0.0.1", "localhost"].includes(new URL(origin).hostname)) throw new Error("Preparation tests may only mutate localhost.");
@@ -35,8 +36,7 @@ async function click(name, scope = page) {
 }
 
 async function openTests() {
-  if (!await button("Tests & Übungen").isVisible()) await click("Navigation öffnen");
-  await click("Tests & Übungen");
+  await openView(page, "Tests & Übungen");
   await expect(page.locator(".quizzes, .quiz-session")).toBeVisible();
 }
 

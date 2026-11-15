@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { setTimeout as pause } from "node:timers/promises";
 import { DatabaseSync } from "node:sqlite";
 import { brainBody } from "./brain-request.mjs";
+import { openView, accountItem, closeAccountMenu } from "./navigation.mjs";
 
 const origin = process.env.BRAIN_TEST_URL ?? "http://127.0.0.1:5173";
 if (!["127.0.0.1", "localhost"].includes(new URL(origin).hostname)) throw new Error("Learning flow tests may only mutate localhost.");
@@ -136,14 +137,15 @@ async function queueTwoAnswers(run, gate) {
   assert.equal(gate.writes.length, 1, "The second answer waits in the queue, while the UI is already ready to continue.");
 }
 async function pendingNavigationStaysInQuiz() {
-  await click("Mein Überblick");
+  await openView(page, "Mein Überblick");
   await expect(page.locator(".quiz-session")).toBeVisible();
   await expect(page.locator(".quiz-verdict")).toHaveText("Richtig beantwortet");
   await expect(hub()).toHaveCount(0);
   await page.keyboard.press("Control+k");
   await expect(page.locator(".quiz-session")).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Wissen durchsuchen", exact: true })).toHaveCount(0);
-  await expect(button("Import & Datensicherung")).toBeDisabled();
+  await expect(await accountItem(page, "Import & Datensicherung")).toBeDisabled();
+  await closeAccountMenu(page);
 }
 
 try {
@@ -329,7 +331,8 @@ try {
   await expect(page.locator(".quiz-session")).toHaveCount(0);
   await expect(page.locator(".quiz-save-notice")).toHaveCount(0);
   await expect(summary).toContainText("0 von 2 richtig");
-  await expect(button("Import & Datensicherung")).toBeEnabled();
+  await expect(await accountItem(page, "Import & Datensicherung")).toBeEnabled();
+  await closeAccountMenu(page);
   assert.equal(writesAfterFinish, 0, "Discarding local answers does not alter the saved result.");
   assert.deepEqual(await snapshot(), savedFinished);
   await page.unroute(api);

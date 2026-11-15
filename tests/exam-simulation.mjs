@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { openView } from "./navigation.mjs";
 
 // Every mutation must target loopback and match the selected local SQLite file.
 const origin = process.env.BRAIN_TEST_URL ?? "http://127.0.0.1:5173";
@@ -67,7 +68,7 @@ try {
   initial = (await snapshot()).workspace;
   await write(structuredClone(fixture));
   await page.reload({ waitUntil: "networkidle" });
-  await click("Tutor");
+  await openView(page, "Tutor");
   const tutor = page.locator(".learning-tutor");
   await expect(tutor).toBeVisible();
 

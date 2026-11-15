@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdir, realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { openView } from "./navigation.mjs";
 
 const origin = process.env.BRAIN_TEST_URL ?? "http://127.0.0.1:5173";
 if (!["localhost", "127.0.0.1"].includes(new URL(origin).hostname)) throw new Error("UI structure tests may only change localhost.");
@@ -36,11 +37,8 @@ async function write(workspace) {
 }
 const visibleButton = name => page.getByRole("button", { name, exact: true }).filter({ visible: true }).first();
 async function navigate(name) {
-  await expect.poll(async () => await visibleButton(name).isVisible() || await visibleButton("Weitere Bereiche öffnen").isVisible(), { message: "Navigation settles after changing the responsive breakpoint." }).toBe(true);
-  if (!await visibleButton(name).isVisible()) {
-    await visibleButton("Weitere Bereiche öffnen").click();
-  }
-  await visibleButton(name).click();
+  await expect.poll(async () => await page.getByRole("navigation", { name: "Hauptbereiche", exact: true }).isVisible() || await page.getByRole("navigation", { name: "Hauptnavigation", exact: true }).isVisible(), { message: "Navigation settles after changing the responsive breakpoint." }).toBe(true);
+  await openView(page, name);
 }
 async function fits(label, selectors = ".brain-main, .workspace-content") {
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false, label + ": page fits");

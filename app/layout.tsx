@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { Figtree } from "next/font/google";
 import "./globals.css";
 import "./visual-workspace.css";
 import "./reading-workspace.css";
@@ -15,6 +16,9 @@ import "./workspace-composition.css";
 import "./learning-transitions.css";
 import "./flashcard-transitions.css";
 import "./glossary.css";
+import "./atlas.css";
+
+const figtree = Figtree({ subsets: ["latin", "latin-ext"], variable: "--font-figtree", display: "swap" });
 
 export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover" };
 
@@ -33,7 +37,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="de">
+    <html lang="de" className={figtree.variable}>
       <body className="antialiased">{children}</body>
     </html>
   );

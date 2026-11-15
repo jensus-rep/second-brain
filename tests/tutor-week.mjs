@@ -4,6 +4,7 @@ import { realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { brainBody } from "./brain-request.mjs";
+import { openView } from "./navigation.mjs";
 
 // Existing weekly plans remain valid data after the Tutor surface is simplified.
 // All fixture imports and UI writes must match a verified loopback SQLite store.
@@ -49,7 +50,7 @@ async function write(workspace) {
 async function reloadTutor() {
   const response = await page.goto(origin, { waitUntil: "networkidle" });
   assert.equal(response?.status(), 200);
-  await page.getByRole("button", { name: "Tutor", exact: true }).filter({ visible: true }).first().click();
+  await openView(page, "Tutor");
   await expect(tutor()).toBeVisible();
 }
 async function uiSave(action, predicate) {

@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { unzipSync, strFromU8 } from "fflate";
 import { scriptSourceFingerprint } from "../lib/brain/scripts.ts";
+import { openView, accountItem } from "./navigation.mjs";
 
 const origin = process.env.BRAIN_TEST_URL ?? "http://127.0.0.1:5173";
 if (!["127.0.0.1", "localhost"].includes(new URL(origin).hostname)) throw new Error("Script tests only modify localhost.");
@@ -38,7 +39,7 @@ try {
   const note = { id: "script-qa-note", title: "QA Forschungsfrage", summary: "Ein Beispiel.", content: "## Zusammenhänge\n\n" + "Ein nachvollziehbares Beispiel zur Forschungsfrage.\n\n".repeat(85), topicId: null, tags: [], relatedIds: [], favorite: false, archived: false, createdAt: now, updatedAt: now };
   await write({ ...initial, notes: [...initial.notes, note] });
   await page.reload({ waitUntil: "networkidle" });
-  await visibleButton("Skripte").click();
+  await openView(page, "Skripte");
   await visibleButton("Neues Skript").click();
   const editor = page.getByRole("dialog", { name: "Skript anlegen", exact: true });
   await editor.getByLabel("Titel des Skripts", { exact: true }).fill("QA Forschung als roter Faden");
@@ -93,7 +94,7 @@ try {
   await expect(noteReader).toHaveCount(0);
   assert.ok(page.url().endsWith("#script=" + script.id));
 
-  await visibleButton("Wissensbibliothek").click();
+  await openView(page, "Wissensbibliothek");
   await page.getByRole("textbox", { name: "Wissen durchsuchen", exact: true }).fill("SkriptSuchwort");
   await page.getByRole("region", { name: "Skripte in der Wissenssuche", exact: true }).getByRole("button").click();
   await expect(reader).toBeVisible();
@@ -101,7 +102,7 @@ try {
   const collection = { id: "script-qa-collection", title: "QA Skriptsammlung", description: "Zusammenhängend lernen.", noteIds: [note.id], questionIds: [], cardIds: [], pathIds: [], scriptIds: [script.id] };
   await write({ ...current.workspace, learningCollections: [...current.workspace.learningCollections, collection] });
   await page.reload({ waitUntil: "networkidle" });
-  await visibleButton("Lernsammlungen").click();
+  await openView(page, "Lernsammlungen");
   await page.locator(".collection-card").filter({ has: page.getByRole("heading", { name: collection.title, exact: true }) }).click();
   await page.locator(".collection-scripts").getByRole("button").click();
   await expect(reader).toBeVisible();
@@ -124,7 +125,7 @@ try {
   assert.equal(await reader.locator(".script-scroll").evaluate(element => element.scrollWidth > element.clientWidth), false);
   await page.screenshot({ path: ".sites-runtime/qa/scripts-mobile.png", fullPage: true });
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await visibleButton("Import & Datensicherung").click();
+  await (await accountItem(page, "Import & Datensicherung")).click();
   const jsonDownload = page.waitForEvent("download");
   await visibleButton("Nur Wissensdaten als JSON").click();
   const json = await jsonDownload; const jsonPath = ".sites-runtime/qa/scripts-backup.json"; await json.saveAs(jsonPath);
@@ -144,7 +145,7 @@ try {
   await saved(w => w.scripts.some(s => s.id === script.id && s.chapters.length === 2));
   assert.ok(!(await snapshot()).workspace.scripts.find(s => s.id === script.id).chapters[1].content.includes(imageUrl), "ZIP import remaps script-only images");
 
-  await visibleButton("Skripte").click();
+  await openView(page, "Skripte");
   page.once("dialog", dialog => dialog.accept());
   await page.getByRole("button", { name: script.title + " löschen", exact: true }).click();
   await saved(w => !w.scripts.some(s => s.id === script.id) && w.learningCollections.find(c => c.id === collection.id).scriptIds.length === 0);

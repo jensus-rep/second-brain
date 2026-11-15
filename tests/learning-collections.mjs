@@ -4,6 +4,7 @@ import { mkdir, realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { brainBody } from "./brain-request.mjs";
+import { openView } from "./navigation.mjs";
 
 // Run against npm run dev. An isolated preview may override both variables:
 // BRAIN_TEST_URL=http://127.0.0.1:5185 BRAIN_TEST_SQLITE_PATH=/absolute/preview.sqlite
@@ -74,8 +75,7 @@ async function openCardFilters() {
   if (!await filters.evaluate(element => element.open)) await filters.locator("summary").click();
 }
 async function navigate(name) {
-  if (!await button(name).isVisible()) await click("Navigation öffnen");
-  await click(name);
+  await openView(page, name);
   if (name === "Lernkarten") await openCardFilters();
 }
 async function reload() {

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { openView } from "./navigation.mjs";
 
 const origin = process.env.BRAIN_TEST_URL ?? "http://127.0.0.1:5173";
 if (!["127.0.0.1", "localhost"].includes(new URL(origin).hostname)) throw new Error("Quiz completion tests only mutate localhost.");
@@ -50,7 +51,7 @@ async function openRun(mode, timed = false) {
   await write({ schemaVersion: 1, topics: [], notes: [], paths: [], completedStepIds: [], cards: [], quizQuestions: questions,
     quizRuns: [run], learningReminders: [], learningCollections: [] });
   await page.goto(origin, { waitUntil: "networkidle" });
-  await page.getByRole("button", { name: "Tests & Übungen", exact: true }).filter({ visible: true }).first().click();
+  await openView(page, "Tests & Übungen");
   await expect(page.locator(".quiz-question")).toContainText(questions[0].prompt);
   return run;
 }

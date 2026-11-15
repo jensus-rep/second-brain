@@ -1,6 +1,7 @@
 import { chromium, expect } from "@playwright/test";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
+import { openView } from "./navigation.mjs";
 
 const origin = process.env.BRAIN_TEST_URL ?? "http://127.0.0.1:5173";
 if (!["127.0.0.1", "localhost"].includes(new URL(origin).hostname)) throw new Error("Translation tests may only change local test data.");
@@ -85,7 +86,7 @@ try {
   await mobile.close();
 
   await reader.getByRole("button", { name: "Zur Übersicht", exact: true }).click();
-  await page.getByRole("button", { name: "Lernkarten", exact: true }).filter({ visible: true }).first().click();
+  await openView(page, "Lernkarten");
   await page.locator(".flashcard-filters-disclosure > summary").click();
   await page.getByRole("textbox", { name: "Lernkarten durchsuchen", exact: true }).fill(note.title);
   await expect(page.locator(".flashcard-list article")).toHaveCount(1);

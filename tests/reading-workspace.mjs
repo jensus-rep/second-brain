@@ -1,6 +1,7 @@
 import { chromium, expect } from "@playwright/test";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
+import { openView } from "./navigation.mjs";
 
 const origin = process.env.BRAIN_TEST_URL ?? "http://127.0.0.1:5173";
 if (!["127.0.0.1", "localhost"].includes(new URL(origin).hostname)) throw new Error("Reading tests may only change local test data.");
@@ -26,7 +27,7 @@ try {
   await page.reload({ waitUntil: "networkidle" });
   await mkdir(".sites-runtime/qa", { recursive: true });
 
-  await page.getByRole("button", { name: "Themen", exact: true }).click();
+  await openView(page, "Themen");
   await page.screenshot({ path: ".sites-runtime/qa/redesign-topics.png", fullPage: true });
   await page.locator(".topic-browser .topic-tree-open").filter({ hasText: topic.title }).click();
   await expect(page.locator(".note-card")).toHaveCount(2);
@@ -70,7 +71,7 @@ try {
   await reader.getByRole("button", { name: "#lesepruefung", exact: true }).click();
   await expect(page.getByRole("button", { name: "Tagfilter entfernen" })).toBeVisible();
   await expect(page.locator(".note-card")).toHaveCount(2);
-  await page.getByRole("button", { name: "Wissensbibliothek", exact: true }).click();
+  await openView(page, "Wissensbibliothek");
   await expect(page.locator(".filter-chips")).toHaveCount(0);
   await page.getByRole("button", { name: "Filtern", exact: true }).click();
   await page.getByRole("combobox", { name: "Nach Thema filtern" }).click();
@@ -78,13 +79,13 @@ try {
   await page.keyboard.press("Escape");
   await expect(page.getByRole("heading", { name: second.title, exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: note.title, exact: true })).not.toBeVisible();
-  await page.getByRole("button", { name: "Archiv", exact: true }).click();
+  await openView(page, "Archiv");
   await page.getByRole("button", { name: "Filtern", exact: true }).click();
   await page.getByRole("button", { name: "#nurimarchiv", exact: true }).click();
   await page.keyboard.press("Escape");
   await expect(page.locator(".note-card")).toHaveCount(1);
 
-  await page.getByRole("button", { name: "Lernsammlungen", exact: true }).click();
+  await openView(page, "Lernsammlungen");
   await page.locator(".collection-card").filter({ has: page.getByRole("heading", { name: collection.title, exact: true }) }).click();
   await page.getByRole("combobox", { name: "Inhalte der Lernsammlung nach Thema", exact: true }).selectOption(topic.id);
   await page.locator(".collection-note-list").getByRole("button", { name: nextNote.title + " " + topic.title, exact: true }).click();

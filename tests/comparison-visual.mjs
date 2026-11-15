@@ -2,6 +2,7 @@ import { chromium, expect } from "@playwright/test";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { seedWorkspace } from "../lib/brain/seed.ts";
+import { openView } from "./navigation.mjs";
 
 const origin = process.env.BRAIN_TEST_URL ?? "http://127.0.0.1:5173";
 if (!["127.0.0.1", "localhost"].includes(new URL(origin).hostname)) throw new Error("Local test data only.");
@@ -81,7 +82,7 @@ try {
   await expect(editor.locator("table")).toHaveCount(3);
   await page.goto(origin, { waitUntil: "networkidle" });
   await page.reload({ waitUntil: "networkidle" });
-  await page.getByRole("button", { name: "Lernkarten", exact: true }).click();
+  await openView(page, "Lernkarten");
   await page.getByRole("button", { name: "Lernrunde starten", exact: true }).click();
   await expect(page.locator("table")).toHaveCount(3);
   await page.getByRole("button", { name: "Antwort aufdecken", exact: true }).click();

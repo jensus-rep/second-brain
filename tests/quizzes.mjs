@@ -1,6 +1,7 @@
 import { chromium } from "@playwright/test";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
+import { openView } from "./navigation.mjs";
 
 const origin = process.env.BRAIN_TEST_URL ?? "http://127.0.0.1:5173";
 if (!["127.0.0.1", "localhost"].includes(new URL(origin).hostname)) throw new Error("Quiz tests may only mutate localhost.");
@@ -11,7 +12,7 @@ page.on("pageerror", error => errors.push(error.message));
 page.on("dialog", dialog => dialog.accept());
 const snapshot = async () => { const response = await page.request.get(origin + "/api/brain"); assert.equal(response.status(), 200); return response.json(); };
 const write = async workspace => { const current = await snapshot(); const response = await page.request.put(origin + "/api/brain", { data: { revision: current.revision, workspace } }); assert.equal(response.status(), 200); };
-const openTests = async () => { await page.getByRole("button", { name: "Tests & Übungen", exact: true }).click(); await page.locator(".quizzes, .quiz-session").first().waitFor(); };
+const openTests = async () => { await openView(page, "Tests & Übungen"); await page.locator(".quizzes, .quiz-session").first().waitFor(); };
 const reload = async () => { await page.reload({ waitUntil: "networkidle" }); await openTests(); };
 let initial;
 try {
@@ -65,7 +66,7 @@ try {
   await page.getByLabel("Erinnerungstermin").fill(localDate);
   await page.getByRole("button", { name: "Erinnerung speichern" }).click();
   await page.getByText("Lernerinnerung gespeichert", { exact: true }).waitFor();
-  await page.getByRole("button", { name: "Mein Überblick", exact: true }).click();
+  await openView(page, "Mein Überblick");
   await page.getByRole("region", { name: "Lernerinnerungen" }).waitFor();
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Kalenderexport für Projektmanagement" }).click();

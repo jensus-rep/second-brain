@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { gzipSync } from "node:zlib";
 import { brainBody } from "./brain-request.mjs";
+import { openView } from "./navigation.mjs";
 
 const origin = process.env.BRAIN_TEST_URL ?? "http://127.0.0.1:5173";
 if (!["127.0.0.1", "localhost"].includes(new URL(origin).hostname)) throw new Error("Save compression tests only mutate localhost.");
@@ -68,7 +69,7 @@ try {
     writes.push({ encoding: request.headers()["content-encoding"], gzip: raw[0] === 0x1f && raw[1] === 0x8b, bytes: raw.length, body: brainBody(request) });
   });
   await page.goto(origin, { waitUntil: "networkidle" });
-  await page.getByRole("button", { name: "Lernkarten", exact: true }).filter({ visible: true }).first().click();
+  await openView(page, "Lernkarten");
   await page.getByRole("button", { name: "Lernrunde starten", exact: true }).click();
   await expect(reveal()).toBeVisible();
   await expect(page.locator(".save-state")).toHaveText("Gespeichert");

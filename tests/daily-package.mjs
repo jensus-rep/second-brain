@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { openView } from "./navigation.mjs";
 
 // Walks one daily package end to end. All writes go to a verified loopback SQLite store.
 const origin = process.env.BRAIN_TEST_URL ?? "http://127.0.0.1:5173";
@@ -115,7 +116,7 @@ try {
   assert.notEqual(second.reading.noteId, finished.dailyPackage.reading.noteId, "the next content comes from another field");
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await button("Mein Überblick").click().catch(() => {});
+  await openView(page, "Mein Überblick").catch(() => {});
   await page.goto(origin, { waitUntil: "networkidle" });
   await expect(page.locator(".daily-card")).toContainText("Dein Paket wartet");
   await shot("home-mobile");

@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { referenceAnswerComparison } from "../lib/brain/answer-comparison.ts";
 import { brainBody } from "./brain-request.mjs";
+import { openView } from "./navigation.mjs";
 
 // Use an isolated local dev server and explicitly choose the same SQLite file.
 const origin = process.env.BRAIN_TEST_URL ?? "http://127.0.0.1:5193";
@@ -83,8 +84,7 @@ async function reload() {
   await expect(page.getByRole("heading", { name: "Dein Wissen", exact: true })).toBeVisible();
 }
 async function openCards() {
-  if (!await button("Lernkarten").isVisible()) await button("Navigation öffnen").click();
-  await button("Lernkarten").click();
+  await openView(page, "Lernkarten");
 }
 async function openFilters() {
   const disclosure = page.locator(".flashcard-filters-disclosure");

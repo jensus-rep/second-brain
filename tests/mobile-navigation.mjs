@@ -1,6 +1,7 @@
 import { chromium, webkit, expect } from "@playwright/test";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
+import { openView, VIEW_AREAS } from "./navigation.mjs";
 
 const origin = process.env.BRAIN_TEST_URL ?? "http://127.0.0.1:5173";
 if (!["127.0.0.1", "localhost"].includes(new URL(origin).hostname)) throw new Error("Mobile navigation tests may only change localhost.");
@@ -23,10 +24,21 @@ const write = async workspace => {
 
 const navigation = page.getByRole("navigation", { name: "Hauptnavigation", exact: true });
 const menu = page.getByRole("dialog", { name: "Alle Bereiche", exact: true });
+const areaNames = ["Start", "Wissen", "Lernen"];
 const directNames = ["Mein Überblick", "Wissensbibliothek", "Lernkarten", "Tests & Übungen"];
 const more = navigation.getByRole("button", { name: "Weitere Bereiche öffnen", exact: true });
 const destinations = ["Skripte", "Themen", "Lernsammlungen", "Lernpfade", "Verbindungen", "Favoriten", "Archiv"];
 const current = name => navigation.getByRole("button", { name, exact: true });
+const account = page.getByRole("button", { name: "Konto und Einstellungen", exact: true });
+
+/** The bottom bar marks the area; the area's sub-navigation (or the start heading) marks the view. */
+async function expectCurrentView(name) {
+  const area = VIEW_AREAS[name];
+  await expect(current(area)).toHaveAttribute("aria-current", "page");
+  await expect(navigation.locator('[aria-current="page"]')).toHaveCount(1);
+  if (area === "Start") await expect(page.getByRole("heading", { name: "Dein Wissen", exact: true })).toBeVisible();
+  else await expect(page.getByRole("navigation", { name: "Bereich " + area, exact: true }).getByRole("button", { name, exact: true })).toHaveAttribute("aria-current", "page");
+}
 
 async function noOverflow(label) {
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1), false, `${label}: document fits viewport`);
@@ -42,10 +54,8 @@ async function touchTarget(locator, label) {
 }
 
 async function navigate(name) {
-  await current(name).click();
-  await expect(current(name)).toHaveAttribute("aria-current", "page");
-  await expect(navigation.locator('[aria-current="page"]')).toHaveCount(1);
-  await expect(page.locator(".breadcrumb strong")).toHaveText(name);
+  await openView(page, name);
+  await expectCurrentView(name);
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeLessThan(2);
 }
 
@@ -60,13 +70,13 @@ async function mobileLayout(width, height) {
   await page.setViewportSize({ width, height });
   await expect(navigation).toBeVisible();
   await navigate("Mein Überblick");
-  await expect(page.locator(".mobile-toggle")).toBeVisible();
-  await touchTarget(page.locator(".mobile-toggle"), "Top menu toggle");
-  await expect(page.locator('[data-slot="sidebar-container"]')).not.toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Hauptbereiche", exact: true })).not.toBeVisible();
+  await touchTarget(account, "Account menu");
+  await touchTarget(page.getByRole("button", { name: "Suche öffnen", exact: true }), "Search");
   const navBounds = await navigation.boundingBox();
   assert.ok(navBounds.x >= -1 && navBounds.x + navBounds.width <= width + 1, `${width} × ${height}: navigation fits width`);
   assert.ok(Math.abs(navBounds.y + navBounds.height - height) <= 1, `${width} × ${height}: navigation stays at viewport bottom`);
-  for (const name of [...directNames, "Weitere Bereiche öffnen"]) await touchTarget(current(name), name);
+  for (const name of [...areaNames, "Weitere Bereiche öffnen"]) await touchTarget(current(name), name);
   assert.equal(await navigation.evaluate(el => el.scrollWidth > el.clientWidth + 1), false, "Bottom navigation has no horizontal overflow");
   await noOverflow(`${width} × ${height}`);
   await contentEndIsReachable(`${width} × ${height}`);
@@ -292,9 +302,7 @@ try {
     await expect(menu).toBeVisible();
     await menu.getByRole("button", { name, exact: true }).click();
     await expect(menu).not.toBeVisible();
-    await expect(more).toHaveAttribute("aria-current", "page");
-    await expect(navigation.locator('[aria-current="page"]')).toHaveCount(1);
-    await expect(page.locator(".breadcrumb strong")).toHaveText(name);
+    await expectCurrentView(name);
     await expect.poll(() => page.evaluate(() => window.scrollY)).toBeLessThan(2);
     await noOverflow(name);
     await contentEndIsReachable(name);
@@ -315,33 +323,36 @@ try {
     await expect(dialog).not.toBeVisible();
   }
 
-  // The existing top menu remains usable alongside the new bottom shortcuts.
+  // The account menu in the header stays usable on a phone.
   await page.evaluate(() => window.scrollTo(0, 0));
-  await page.locator(".mobile-toggle").click();
-  const sidebar = page.locator('[data-slot="sidebar"][data-mobile="true"]');
-  await expect(sidebar).toBeVisible();
-  await sidebar.getByRole("button", { name: "Mein Überblick", exact: true }).click();
-  await expect(sidebar).not.toBeVisible();
-  await expect(current("Mein Überblick")).toHaveAttribute("aria-current", "page");
+  await account.click();
+  const accountMenu = page.getByRole("menu");
+  await expect(accountMenu).toBeVisible();
+  for (const name of ["Import & Datensicherung", "Zugangsschlüssel", "Abmelden"]) await touchTarget(accountMenu.getByRole("menuitem", { name, exact: true }), name);
+  await page.keyboard.press("Escape");
+  await expect(accountMenu).not.toBeVisible();
+  await expect(account).toBeFocused();
+  await navigate("Mein Überblick");
 
-  // Crossing the CSS/sidebar breakpoint while a sheet is open must release the overlay.
+  // Crossing the breakpoint while a sheet is open must release the overlay; wide screens switch areas in the header.
   await more.click();
   await expect(menu).toBeVisible();
   for (const [width, height] of [[768, 844], [1440, 900], [844, 390]]) {
     await page.setViewportSize({ width, height });
     await expect(navigation).not.toBeVisible();
     await expect(menu).not.toBeVisible();
-    await expect(page.locator(".mobile-toggle")).not.toBeVisible();
-    await expect(page.locator('[data-slot="sidebar-container"]')).toBeVisible();
-    await page.locator('[data-slot="sidebar-container"]').getByRole("button", { name: "Wissensbibliothek", exact: true }).click();
+    const areas = page.getByRole("navigation", { name: "Hauptbereiche", exact: true });
+    await expect(areas).toBeVisible();
+    await openView(page, "Wissensbibliothek");
     await expect(page.getByRole("heading", { name: "Wissensbibliothek", exact: true })).toBeVisible();
+    await expect(areas.getByRole("button", { name: "Wissen", exact: true })).toHaveAttribute("aria-current", "page");
     await noOverflow(`Desktop ${width} × ${height}`);
     await page.screenshot({ path: `.sites-runtime/qa/mobile-navigation-${engine.name()}-${width}x${height}.png`, animations: "disabled" });
   }
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(navigation).toBeVisible();
   await expect(menu).not.toBeVisible();
-  await expect(current("Wissensbibliothek")).toHaveAttribute("aria-current", "page");
+  await expectCurrentView("Wissensbibliothek");
 
   for (const [width, height] of [[320, 700], [390, 844], [767, 844], [390, 320], [767, 390]]) await readerLayout(readerNote, width, height);
   await page.setViewportSize({ width: 390, height: 844 });
@@ -362,7 +373,7 @@ try {
   await expect(reader).not.toBeVisible();
   await learningLayouts(fixtureWorkspace, readerNote);
   assert.deepEqual(errors, [], "No browser runtime errors");
-  console.log(`PASS (${engine.name()}): bottom navigation, all destinations, active state, touch targets, content clearance, sheet closure/focus/Escape, scroll reset, top menu, reader dock/outline/editing, learning card/review persistence, practice/exam actions and results, portrait/landscape and 767/768px breakpoint.`);
+  console.log(`PASS (${engine.name()}): bottom area navigation, all destinations, active state, touch targets, content clearance, sheet closure/focus/Escape, scroll reset, account menu, reader dock/outline/editing, learning card/review persistence, practice/exam actions and results, portrait/landscape and 767/768px breakpoint.`);
 } catch (error) {
   await page.screenshot({ path: `.sites-runtime/qa/mobile-navigation-${engine.name()}-failure.png`, animations: "disabled" });
   throw error;

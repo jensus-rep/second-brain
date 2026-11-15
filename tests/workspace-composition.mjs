@@ -4,6 +4,7 @@ import { mkdir } from "node:fs/promises";
 import { seedWorkspace } from "../lib/brain/seed.ts";
 import { emptyWorkspace, workspaceSchema } from "../lib/brain/model.ts";
 import { brainBody } from "./brain-request.mjs";
+import { openView } from "./navigation.mjs";
 
 const origin = process.env.BRAIN_TEST_URL ?? "http://127.0.0.1:5173";
 if (!["127.0.0.1", "localhost"].includes(new URL(origin).hostname)) throw new Error("UI checks must use localhost.");
@@ -39,7 +40,6 @@ await page.route("**/*", async route => {
   if (url.pathname.startsWith("/api/tutor")) return route.fulfill({ json: { enabled: false } });
   return route.continue();
 });
-const navigation = name => page.locator('[data-slot="sidebar-content"]').getByRole("button", { name, exact: true });
 async function home() {
   await page.goto(origin, { waitUntil: "networkidle" });
   await expect(page.locator(".home-workspace")).toBeVisible();
@@ -89,7 +89,7 @@ try {
   await home();
   await page.locator(".home-collections .collection-card").first().click();
   await expect(page.locator(".collection-detail")).toBeVisible();
-  await navigation("Mein Überblick").click();
+  await openView(page, "Mein Überblick");
 
   for (const width of [1440, 1024, 768, 390, 320]) {
     await page.setViewportSize({ width, height: 1000 });

@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { referenceAnswerComparison } from "../lib/brain/answer-comparison.ts";
 import { brainBody } from "./brain-request.mjs";
+import { openView } from "./navigation.mjs";
 
 const origin = process.env.BRAIN_TEST_URL ?? "http://127.0.0.1:5173";
 if (!["127.0.0.1", "localhost"].includes(new URL(origin).hostname)) throw new Error("Flashcard tests may only change localhost.");
@@ -71,7 +72,7 @@ const fixture = { schemaVersion: 1, topics: [], notes: [], paths: [], completedS
 async function start(workspace = fixture) {
   await write(workspace);
   await page.goto(origin, { waitUntil: "networkidle" });
-  await page.getByRole("button", { name: "Lernkarten", exact: true }).filter({ visible: true }).first().click();
+  await openView(page, "Lernkarten");
   await page.getByRole("button", { name: "Lernrunde starten", exact: true }).click();
 }
 

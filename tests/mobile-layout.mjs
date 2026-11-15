@@ -1,6 +1,7 @@
 import { chromium, webkit, expect } from "@playwright/test";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
+import { openView } from "./navigation.mjs";
 
 const origin = process.env.BRAIN_TEST_URL ?? "http://127.0.0.1:5173";
 if (!["127.0.0.1", "localhost"].includes(new URL(origin).hostname)) throw new Error("Mobile tests may only change localhost.");
@@ -18,9 +19,7 @@ async function loaded(locator) {
   await expect.poll(() => locator.evaluate(img => img.complete && img.naturalWidth > 0 && img.naturalHeight > 0)).toBe(true);
 }
 async function navigate(name) {
-  await page.locator(".mobile-toggle").click();
-  await page.getByRole("button", { name, exact: true }).click();
-  await expect(page.locator('[data-slot="sidebar"][data-mobile="true"]')).toHaveCount(0);
+  await openView(page, name);
 }
 try {
   await page.goto(origin, { waitUntil: "networkidle" });
