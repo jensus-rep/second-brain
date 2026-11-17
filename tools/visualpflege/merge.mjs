@@ -17,7 +17,8 @@ if (!baseFile || !outFile || !draftFiles.length) throw new Error("Aufruf: merge.
 const protectedParts = text => JSON.stringify([
   [...text.matchAll(/```mermaid\n[\s\S]*?```/g)].map(m => m[0]),
   [...text.matchAll(/\/api\/media\/[0-9a-f-]{36}/gi)].map(m => m[0]),
-  [...text.matchAll(/(Aufzeichnung(en)? \d+[^\n]*?\[\d\d:\d\d\])/g)].map(m => m[1]),
+  // A recording reference: number, optional „title“, then the timestamp – never prose in between.
+  [...text.matchAll(/Aufzeichnung(?:en)? \d+(?: „[^“\n]*“)? \[\d\d:\d\d\]/g)].map(m => m[0]),
 ]);
 const changeLog = [];
 const base = JSON.parse(await readFile(baseFile, "utf8"));

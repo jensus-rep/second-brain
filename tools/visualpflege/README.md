@@ -15,3 +15,9 @@ Werkzeuge für den Grafik-Agenten ([agents/grafik-agent.md](../../agents/grafik-
    Bricht ab, wenn alter Text fehlt oder ein Diagramm unzulässig ist; setzt `updatedAt` und zieht Skript-Fingerabdrücke nach.
 6. **Einspielen**: `brain-api.mjs push <nachher.json>` (Sicherung, Revisionsprüfung, Kontroll-Pull). Bei „Speicherstatus unklar“ nicht erneut senden, sondern neu pullen und mit dem Entwurf vergleichen.
 7. Prüfbericht erneut erstellen und Ergebnis festhalten.
+
+## Varianten
+
+- **Textänderungen an Notizen** (z. B. Kursbezüge neutralisieren): `merge.mjs --textaenderung …` – Diagramme, Bildlinks und Aufzeichnungsangaben müssen identisch bleiben; Änderungsprotokoll `<nachher>-aenderungen.md`.
+- **Skript bauen**: `build-script.mjs <basis.json> <nachher.json> <rahmen.json> --id <id> --topic <thema> [--collection <sammlung>]`.
+- **Lernkarten und Testfragen umformulieren**: `merge-lernobjekte.mjs <basis.json> <nachher.json> <entwurf.json>...` – nur Wortlaut; IDs, Optionsreihenfolge, richtige Antworten und Fälligkeiten bleiben. Tutor-Lernnachweise und kuratierte Prioritäten werden mitgeführt; Restformulierungen und kursspezifische Einträge werden gemeldet.
