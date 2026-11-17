@@ -29,7 +29,8 @@ async function main() {
     let response;
     try {
       response = await fetch(origin + "/api/brain", {
-        method, redirect: "error", signal: AbortSignal.timeout(30_000),
+        // Saving a large workspace can take longer than reading it; a timed-out PUT may still have been stored.
+        method, redirect: "error", signal: AbortSignal.timeout(method === "PUT" ? 120_000 : 30_000),
         headers: { Authorization: "Bearer " + key, ...(data ? { "Content-Type": "application/json" } : {}) },
         ...(data ? { body: JSON.stringify(data) } : {}),
       });
