@@ -8,8 +8,18 @@ import { isAllowedDiagram } from "../../lib/brain/diagram.ts";
 import { remapScriptSourceFingerprints } from "../../lib/brain/scripts.ts";
 import { validateSnapshot } from "../lernpaket/skripte/snapshot.mjs";
 
-const [baseFile, outFile, ...draftFiles] = process.argv.slice(2);
-if (!baseFile || !outFile || !draftFiles.length) throw new Error("Aufruf: merge.mjs <basis-pull.json> <nachher.json> <entwurf.json>...");
+// --textaenderung: wording may change (e.g. neutralising course references). Instead of "old text intact",
+// mermaid blocks, media references and source lines (Aufzeichnung/Quelle) must stay identical; changed lines are logged.
+const args = process.argv.slice(2);
+const textMode = args.includes("--textaenderung");
+const [baseFile, outFile, ...draftFiles] = args.filter(a => a !== "--textaenderung");
+if (!baseFile || !outFile || !draftFiles.length) throw new Error("Aufruf: merge.mjs [--textaenderung] <basis-pull.json> <nachher.json> <entwurf.json>...");
+const protectedParts = text => JSON.stringify([
+  [...text.matchAll(/```mermaid\n[\s\S]*?```/g)].map(m => m[0]),
+  [...text.matchAll(/\/api\/media\/[0-9a-f-]{36}/gi)].map(m => m[0]),
+  [...text.matchAll(/(Aufzeichnung(en)? \d+[^\n]*?\[\d\d:\d\d\])/g)].map(m => m[1]),
+]);
+const changeLog = [];
 const base = JSON.parse(await readFile(baseFile, "utf8"));
 const before = base.workspace;
 const now = new Date().toISOString();
@@ -32,8 +42,15 @@ for (const file of draftFiles) {
     const note = byId.get(entry.id);
     if (!note) { errors.push(`${file}: Notiz ${entry.id} fehlt im Basisstand`); continue; }
     if (entry.status !== "ergänzt" || entry.content === note.content) continue;
-    const missing = keepsOldText(note.content, entry.content);
-    if (missing) { errors.push(`„${note.title}“: alter Text verändert oder entfernt: ${missing.slice(0, 80)}`); continue; }
+    if (textMode) {
+      if (protectedParts(note.content) !== protectedParts(entry.content)) { errors.push(`„${note.title}“: Diagramme, Bildreferenzen oder Quellenangaben verändert`); continue; }
+      const oldLines = new Set(note.content.split("\n")), newLines = new Set(entry.content.split("\n"));
+      const removed = [...oldLines].filter(l => !newLines.has(l)), added = [...newLines].filter(l => !oldLines.has(l));
+      changeLog.push(`## ${note.title} (${note.id})\n` + removed.map(l => "- " + l).join("\n") + "\n" + added.map(l => "+ " + l).join("\n"));
+    } else {
+      const missing = keepsOldText(note.content, entry.content);
+      if (missing) { errors.push(`„${note.title}“: alter Text verändert oder entfernt: ${missing.slice(0, 80)}`); continue; }
+    }
     const blocks = [...entry.content.matchAll(/```mermaid\n([\s\S]*?)```/g)].map(m => m[1]);
     const bad = blocks.filter(b => !isAllowedDiagram(b));
     if (bad.length) { errors.push(`„${note.title}“: ${bad.length} Diagramm(e) nicht zulässig`); continue; }
@@ -49,4 +66,5 @@ const after = remapScriptSourceFingerprints(before, { ...before, notes });
 const result = { ...base, workspace: after };
 validateSnapshot(result);
 await writeFile(outFile, JSON.stringify(result, null, 2) + "\n", { flag: "wx" });
+if (textMode) await writeFile(outFile.replace(/\.json$/, "") + "-aenderungen.md", changeLog.join("\n\n") + "\n", { flag: "wx" });
 console.log(`${changed.length} Notizen zusammengeführt (Revision ${base.revision}) → ${outFile}`);
