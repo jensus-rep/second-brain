@@ -345,7 +345,11 @@ export type Snapshot = { workspace: Workspace; revision: number };
 export const emptyWorkspace: Workspace = { schemaVersion: 1, notes: [], topics: [], paths: [], completedStepIds: [], cards: [], quizQuestions: [], quizRuns: [], learningReminders: [], learningCollections: [] };
 
 export function reviewCard(card: Flashcard, known: boolean, now = new Date()): Flashcard {
-  const intervalDays = known ? [1, 3, 7, 14, 30].find(days => days > card.intervalDays) ?? 30 : 0;
+  // An overdue card that is still known has proven the whole gap since its last
+  // review, so the next step starts from that gap instead of the planned interval.
+  const elapsedDays = card.reviews > 0 ? Math.floor((now.getTime() - (Date.parse(card.dueAt) - card.intervalDays * 86400000)) / 86400000) : 0;
+  const reached = Math.max(card.intervalDays, elapsedDays);
+  const intervalDays = known ? [1, 3, 7, 14, 30].find(days => days > reached) ?? 30 : 0;
   return { ...card, intervalDays, reviews: card.reviews + 1, dueAt: new Date(now.getTime() + (known ? intervalDays * 86400000 : 600000)).toISOString() };
 }
 

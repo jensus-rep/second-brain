@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { DAILY_PACKAGE_DECK, emptyWorkspace, quizRunSchema, reviewCard, workspaceSchema } from "../lib/brain/model.ts";
 import { recordCardReview } from "../lib/brain/learning-tutor.ts";
 import { recommendLearning, resumableFlashcardSession } from "../lib/brain/learning-resume.ts";
-import { DAILY_PACKAGE_CARDS, DAILY_REVIEW_CARDS, NEW_CARDS_PER_DAY, dailyPackageStatus, dailySeries, markDailyReading, noteSections, proposeDailyPackage, settleDailyPackage, startDailyPackage, validateDailyPackageQuiz, withRoomForDailyRun } from "../lib/brain/daily-package.ts";
+import { DAILY_NEW_CARDS, DAILY_PACKAGE_CARDS, DAILY_REVIEW_CARDS, NEW_CARDS_PER_DAY, dailyPackageStatus, dailySeries, markDailyReading, noteSections, proposeDailyPackage, settleDailyPackage, startDailyPackage, validateDailyPackageQuiz, withRoomForDailyRun } from "../lib/brain/daily-package.ts";
 
 const now = Date.parse("2026-11-08T08:00:00.000Z");
 const iso = new Date(now).toISOString();
@@ -61,12 +61,11 @@ test("sections split at level-two headings and leave out source lists", () => {
 test("a package caps cards, mixes fields and limits new cards", () => {
   const proposal = proposeDailyPackage(fixture(), false, now);
   assert.equal(proposal.cardIds.length, DAILY_PACKAGE_CARDS);
-  assert.equal(proposal.newCards, 2);
+  assert.equal(proposal.newCards, DAILY_NEW_CARDS);
   const review = proposal.cardIds.slice(0, DAILY_REVIEW_CARDS);
-  assert.equal(review.filter(id => id.startsWith("a")).length, 4);
-  assert.equal(review.filter(id => id.startsWith("b")).length, 4);
+  assert.ok(Math.abs(review.filter(id => id.startsWith("a")).length - review.filter(id => id.startsWith("b")).length) <= 1);
   assert.equal(proposal.questionIds.length, 3);
-  assert.ok(proposal.minutes >= 8 && proposal.minutes <= 12, `about ten minutes, got ${proposal.minutes}`);
+  assert.ok(proposal.minutes >= 6 && proposal.minutes <= 12, `about ten minutes, got ${proposal.minutes}`);
 });
 
 test("cards that are not due stay out, unsure cards come first", () => {
@@ -80,7 +79,7 @@ test("the exam collection gets half of the review slots while its date is ahead"
   const data = fixture({ cards: [...Array.from({ length: 20 }, (_, index) => card(`a${index}`, "n1")), ...Array.from({ length: 20 }, (_, index) => card(`b${index}`, "n2"))], topics: [{ id: "a", title: "A", description: "", color: "blue", parentId: null }, { id: "c", title: "C", description: "", color: "blue", parentId: null }, { id: "d", title: "D", description: "", color: "blue", parentId: null }, { id: "b", title: "B", description: "", color: "green", parentId: null }],
     notes: [note("n1", "a"), note("n2", "b")], learningCollections: [collection], learningFocus: { collectionId: "exam", subject: null, updatedAt: iso },
     tutorPlan: { goal: "Bestehen", targetDate: "2026-12-01", weeklyDays: 5, updatedAt: iso } });
-  assert.ok(proposeDailyPackage(data, false, now).cardIds.filter(id => id.startsWith("b")).length > 4, "more than an even share");
+  assert.ok(proposeDailyPackage(data, false, now).cardIds.slice(0, DAILY_REVIEW_CARDS).filter(id => id.startsWith("b")).length > DAILY_REVIEW_CARDS / 2, "more than an even share");
 });
 
 test("a full package runs through cards, reading and questions and counts the day", () => {
@@ -111,7 +110,7 @@ test("further packages stay within the daily limit for new cards and move to the
   data = startDailyPackage(data, "pack-2", false, now + 120_000);
   assert.equal(data.dailyPackage.number, 2);
   assert.notDeepEqual(data.dailyPackage.reading, first);
-  assert.notEqual(data.dailyPackage.reading.noteId, first.noteId, "the next package reads in another field");
+  assert.equal(data.dailyPackage.reading.noteId, first.noteId, "the next package of the day stays in the field and finishes the note");
   let days = data.dailyPackageDays.find(day => day.date === "2026-11-08");
   data = finishQuiz(markDailyReading(rateAll(data, now + 130_000), "pack-2", new Date(now + 180_000)), now + 190_000);
   for (let number = 3; number < 8; number++) {
@@ -177,4 +176,29 @@ test("the shared round limit only ever gives up older daily rounds", () => {
   const noDaily = { ...fixture(), quizRuns: [...full, run("r200")] };
   assert.equal(withRoomForDailyRun(noDaily).quizRuns.length, 200);
   assert.deepEqual(proposeDailyPackage(noDaily, false, now).questionIds, []);
+});
+
+test("the field of the day stays all day and rotates the next day", () => {
+  let data = startDailyPackage(fixture(), "pack-1", false, now);
+  data = finishQuiz(markDailyReading(rateAll(data), "pack-1", new Date(now + 60_000)));
+  assert.equal(data.dailyPackage.reading.noteId, "n1");
+  const sameDay = dailyPackageStatus(data, now + 120_000);
+  assert.equal(sameDay.domainId, "a");
+  assert.equal(sameDay.proposal.reading.noteId, "n1");
+  assert.deepEqual(sameDay.progress.map(field => [field.domainId, field.readSections, field.totalSections]), [["a", 1, 2], ["b", 0, 2]]);
+  const tomorrow = dailyPackageStatus(data, now + 86_400_000);
+  assert.equal(tomorrow.domainId, "b");
+  assert.equal(tomorrow.proposal.reading.noteId, "n2");
+});
+
+test("readings follow the script order and new cards follow the reading", () => {
+  const notes = [note("n1", "a1", { title: "Alpha" }), note("n3", "a1", { title: "Omega" }), note("n4", "a", { title: "Mitte" }), note("n2", "b")];
+  const script = { id: "s1", title: "Skript", summary: "", introduction: "", topicId: "a", tags: [], status: "ready", readingPosition: null, createdAt: past, updatedAt: past,
+    chapters: [{ id: "c1", title: "Eins", content: "", sources: [{ noteId: "n3", fingerprint: "00000000" }] }, { id: "c2", title: "Zwei", content: "", sources: [{ noteId: "n4", fingerprint: "00000000" }] }] };
+  const fresh = [card("x-n2", "n2", 0, past, 0), card("x-n1", "n1", 0, past, 0), card("x-n4", "n4", 0, past, 0), card("y-n3", "n3", 0, past, 0)];
+  const data = fixture({ notes, scripts: [script], cards: fresh, quizQuestions: [question("q1", ["n3"]), question("q2", ["n1"])] });
+  const proposal = proposeDailyPackage(data, false, now);
+  assert.equal(proposal.reading.noteId, "n3", "script chapter order wins over the title");
+  assert.deepEqual(proposal.cardIds, ["y-n3", "x-n4", "x-n1", "x-n2"], "read note, then its field in curriculum order, then the rest");
+  assert.deepEqual(proposal.questionIds, ["q1"]);
 });

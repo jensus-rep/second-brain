@@ -103,6 +103,8 @@ try {
   await button("Paket abschließen").click();
   await expect(page.getByRole("heading", { name: "Für heute geschafft" })).toBeVisible();
   await expect(page.locator(".daily-card")).toContainText("Dein erster Lerntag");
+  await expect(page.locator(".daily-progress li.is-today")).toContainText("Feld A");
+  await expect(page.locator(".daily-progress li.is-today")).toContainText("1/2");
   await shot("done");
   const finished = (await snapshot()).workspace;
   assert.equal(finished.dailyPackageDays.at(-1).completed, 1);
@@ -113,7 +115,8 @@ try {
   const second = (await snapshot()).workspace.dailyPackage;
   assert.equal(second.number, 2);
   assert.equal(second.cardIds.length, 0, "no card is rated before it is due");
-  assert.notEqual(second.reading.noteId, finished.dailyPackage.reading.noteId, "the next content comes from another field");
+  assert.equal(second.reading.noteId, finished.dailyPackage.reading.noteId, "the day stays in its field and finishes the note");
+  assert.notEqual(second.reading.section, finished.dailyPackage.reading.section);
 
   await page.setViewportSize({ width: 390, height: 844 });
   await openView(page, "Mein Überblick").catch(() => {});

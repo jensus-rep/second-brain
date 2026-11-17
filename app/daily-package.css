@@ -9,6 +9,14 @@
 .daily-card-actions [data-slot="button"] { min-height: 44px; }
 .daily-short-link { padding: 4px 0; color: var(--foreground-soft); font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
 .daily-short-link:disabled { opacity: .6; }
+.daily-progress { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 10px 0 0; padding: 0; list-style: none; }
+.daily-progress li { display: grid; gap: 3px; width: 150px; min-width: 0; color: var(--foreground-soft); font-size: 11px; line-height: 1.3; }
+.daily-progress-label { display: flex; justify-content: space-between; gap: 6px; }
+.daily-progress-label > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.daily-progress-label > span:last-child { flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.daily-progress [data-slot="progress"] { height: 3px; }
+.daily-progress li:not(.is-today) [data-slot="progress"] { opacity: .55; }
+.daily-progress li.is-today { color: var(--foreground); font-weight: 650; }
 .daily-view { max-width: 760px; }
 .daily-steps { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 18px; padding: 0; list-style: none; }
 .daily-steps li { display: flex; align-items: center; gap: 6px; padding: 5px 11px; color: var(--muted-foreground); background: var(--surface-subtle); border: 1px solid var(--border); border-radius: 999px; font-size: 12px; }
@@ -27,6 +35,7 @@
   .daily-card-copy { flex-basis: calc(100% - 62px); }
   .daily-card-actions { width: 100%; align-items: stretch; }
   .daily-short-link { text-align: center; }
+  .daily-progress li { width: calc(50% - 7px); }
   .daily-reading { padding: 18px; }
   .daily-reading h2 { font-size: 21px; }
   .daily-reading-actions [data-slot="button"] { width: 100%; }

@@ -119,6 +119,18 @@ test("flashcards schedule atomically with stable UTC intervals", () => {
   assert.equal(card.dueAt, "2026-10-03T12:10:00.000Z");
   assert.equal(reviewCard(card, true, now).intervalDays, 1);
 });
+test("a known overdue card gets credit for the whole gap since its last review", () => {
+  const now = new Date("2026-11-17T12:00:00.000Z");
+  const day = 86400000;
+  const overdue = { id: "late", question: "Frage", answer: "Antwort", noteId: null, intervalDays: 1, reviews: 1, dueAt: new Date(now.getTime() - 9 * day).toISOString() };
+  assert.equal(reviewCard(overdue, true, now).intervalDays, 14, "ten days since the last review lead to the next larger step");
+  assert.equal(reviewCard({ ...overdue, dueAt: new Date(now.getTime() - 40 * day).toISOString() }, true, now).intervalDays, 30);
+  assert.equal(reviewCard({ ...overdue, dueAt: now.toISOString() }, true, now).intervalDays, 3, "on time keeps the normal step");
+  assert.equal(reviewCard({ ...overdue, reviews: 0, intervalDays: 0 }, true, now).intervalDays, 1, "new cards get no credit");
+  const forgotten = reviewCard(overdue, false, now);
+  assert.equal(forgotten.intervalDays, 0);
+  assert.equal(Date.parse(forgotten.dueAt) - now.getTime(), 600000);
+});
 test("diagram boundary rejects network-capable image shapes and config", () => {
   assert.equal(isAllowedDiagram("flowchart LR\nA[Gedanke] --> B[Verstehen]"), true);
   assert.equal(isAllowedDiagram('flowchart LR\nA@{img: "https://example.com/pixel"}'), false);

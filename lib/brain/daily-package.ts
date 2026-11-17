@@ -8,12 +8,12 @@ import { withLearningNotes } from "./quiz-content.ts";
 import { latestQuestionResults } from "./quiz-preparation.ts";
 import { getTopicAncestors } from "./topics.ts";
 
-export const DAILY_REVIEW_CARDS = 8;
-export const DAILY_PACKAGE_CARDS = 10;
-export const DAILY_NEW_CARDS = 2;
+export const DAILY_REVIEW_CARDS = 5;
+export const DAILY_PACKAGE_CARDS = 8;
+export const DAILY_NEW_CARDS = 3;
 export const DAILY_SHORT_CARDS = 3;
 // Every new card returns several times, so the limit spans all packages of a day.
-export const NEW_CARDS_PER_DAY = 5;
+export const NEW_CARDS_PER_DAY = 6;
 export const DAILY_QUESTIONS = 3;
 const MAX_QUIZ_RUNS = 200;
 const MIN_SECTION_WORDS = 60;
@@ -26,10 +26,13 @@ export type DailyProposal = {
   subject: string | null; questionIds: string[]; minutes: number;
 };
 export type DailyStage = "ready" | "cards" | "read" | "quiz" | "done";
+export type DomainProgress = { domainId: string; title: string; readSections: number; totalSections: number };
 export type DailyStatus = {
   today: string; stage: DailyStage; package: DailyPackage | null; proposal: DailyProposal | null;
   action: LearningAction | null; completedToday: number; series: number; blockedByQuiz: boolean;
   remainingCards: number; section: NoteSection | null; note: Note | null;
+  // Reading progress per field; domainId marks the field of the day.
+  progress: DomainProgress[]; domainId: string | null;
 };
 
 const wordCount = (text: string) => text.replace(/!\[[^\]]*\]\([^)]*\)/g, " ").split(/\s+/).filter(Boolean).length;
@@ -105,18 +108,17 @@ function dayEntry(workspace: Workspace, date: string) {
   return workspace.dailyPackageDays?.find(day => day.date === date) ?? { date, completed: 0, newCards: 0 };
 }
 
-function chooseCards(workspace: Workspace, short: boolean, now: number) {
+function chooseCards(workspace: Workspace, plan: ReadingPlan, reading: Reading | null, short: boolean, now: number) {
   const notes = new Map(workspace.notes.map(note => [note.id, note]));
-  const domainOfTopic = domains(workspace);
-  const domainOf = (card: Flashcard) => domainOfTopic(card.noteId ? notes.get(card.noteId)?.topicId ?? null : null);
+  const domainOf = (card: Flashcard) => plan.domainOf(card.noteId ? notes.get(card.noteId)?.topicId ?? null : null);
   const active = workspace.cards.filter(card => !card.noteId || notes.get(card.noteId)?.archived === false);
   const priority = (card: Flashcard) => flashcardPriority(card) ?? 2;
   // Cards that are not due yet stay out: rating one would push its interval up early.
   const reviews = active.filter(card => card.reviews > 0 && (Date.parse(card.dueAt) <= now || card.intervalDays === 0)).sort((a, b) =>
     Number(b.intervalDays === 0) - Number(a.intervalDays === 0) || priority(a) - priority(b) || a.dueAt.localeCompare(b.dueAt) || a.id.localeCompare(b.id));
   const today = tutorDate(now);
-  const plan = workspace.tutorPlan;
-  const focus = plan?.targetDate && plan.targetDate >= today && workspace.learningFocus?.collectionId
+  const tutor = workspace.tutorPlan;
+  const focus = tutor?.targetDate && tutor.targetDate >= today && workspace.learningFocus?.collectionId
     ? learningCollections(workspace).find(collection => collection.id === workspace.learningFocus?.collectionId) : null;
   const examIds = new Set(focus ? collectionItems(workspace, focus).cards.map(card => card.id) : []);
   const reviewLimit = short ? DAILY_SHORT_CARDS : DAILY_REVIEW_CARDS;
@@ -125,10 +127,16 @@ function chooseCards(workspace: Workspace, short: boolean, now: number) {
   const rest = interleave(reviews.filter(card => !taken.has(card.id)), domainOf).slice(0, reviewLimit - exam.length);
   const review = interleave([...exam, ...rest], domainOf);
 
+  // New cards follow the reading: first the note being read, then the rest of
+  // its field in curriculum order, only then anything else.
   const room = Math.max(0, NEW_CARDS_PER_DAY - dayEntry(workspace, today).newCards);
-  const created = (card: Flashcard) => (card.noteId ? notes.get(card.noteId)?.createdAt : "") ?? "";
+  const tier = (card: Flashcard) => reading && card.noteId === reading.noteId ? 0 : reading && domainOf(card) === reading.domain ? 1 : 2;
+  const noteOrder = (a: Flashcard, b: Flashcard) => {
+    const left = a.noteId ? notes.get(a.noteId) : undefined, right = b.noteId ? notes.get(b.noteId) : undefined;
+    return !left || !right ? Number(!left) - Number(!right) : plan.byCurriculum(left, right);
+  };
   const fresh = active.filter(card => card.reviews === 0).sort((a, b) =>
-    created(b).localeCompare(created(a)) || priority(a) - priority(b) || a.id.localeCompare(b.id));
+    tier(a) - tier(b) || noteOrder(a, b) || priority(a) - priority(b) || a.id.localeCompare(b.id));
   const free = (short ? DAILY_SHORT_CARDS : DAILY_PACKAGE_CARDS) - review.length;
   const newLimit = Math.min(room, free, short || review.length < DAILY_REVIEW_CARDS ? free : DAILY_NEW_CARDS);
   const added = fresh.slice(0, Math.max(0, newLimit));
@@ -139,33 +147,75 @@ function linkedQuestions(workspace: Workspace) {
   return workspace.quizQuestions.map(question => withLearningNotes(question, workspace.notes));
 }
 
-function chooseReading(workspace: Workspace, questions: QuizQuestion[]) {
-  const domainOfTopic = domains(workspace);
-  const reads = workspace.noteReads ?? [];
-  const readAt = new Map(reads.map(read => [JSON.stringify([read.noteId, read.section]), read.readAt]));
-  const withQuestions = new Set(questions.flatMap(question => question.noteIds ?? []));
+type Reading = { noteId: string; section: string; domain: string };
+type ReadingPlan = ReturnType<typeof readingPlan>;
+const NO_RANK = Number.MAX_SAFE_INTEGER;
+const generatedCollection = /^learning-(subject|topic)-|^learning-unassigned$/;
+const sectionKey = (noteId: string, section: string) => JSON.stringify([noteId, section]);
+
+// Curriculum order: script chapters first, then hand-made learning collections.
+// Generated fallback collections only mirror storage order and are left out.
+function curriculumRank(workspace: Workspace) {
+  const order = new Map<string, number>();
+  const add = (noteId: string) => { if (!order.has(noteId)) order.set(noteId, order.size); };
+  for (const script of workspace.scripts ?? []) for (const chapter of script.chapters) chapter.sources.forEach(source => add(source.noteId));
+  for (const collection of learningCollections(workspace)) if (!generatedCollection.test(collection.id)) collection.noteIds.forEach(add);
+  return (noteId: string) => order.get(noteId) ?? NO_RANK;
+}
+
+function readingPlan(workspace: Workspace) {
+  const domainOf = domains(workspace);
+  const rank = curriculumRank(workspace);
   const candidates = workspace.notes.filter(note => !note.archived && !note.title.startsWith("Quellen") && !note.tags.includes("quellen"))
-    .map(note => ({ note, sections: noteSections(note), domain: domainOfTopic(note.topicId) })).filter(item => item.sections.length);
-  if (!candidates.length) return null;
-  const isRead = (note: Note, key: string) => readAt.has(JSON.stringify([note.id, key]));
+    .map(note => ({ note, sections: noteSections(note), domain: domainOf(note.topicId) })).filter(item => item.sections.length);
+  const byCurriculum = (a: Note, b: Note) => rank(a.id) - rank(b.id) || a.title.localeCompare(b.title, "de") || a.id.localeCompare(b.id);
+  const read = new Set((workspace.noteReads ?? []).map(entry => sectionKey(entry.noteId, entry.section)));
+  return { domainOf, byCurriculum, candidates, read, noteDomain: new Map(candidates.map(item => [item.note.id, item.domain])) };
+}
+
+// The whole day reads in one field. A field touched today stays; otherwise the
+// field read least recently comes next, so the field changes from day to day.
+function domainOrder(workspace: Workspace, plan: ReadingPlan, now: number) {
+  const today = tutorDate(now);
+  const reads = workspace.noteReads ?? [];
   const lastRead = new Map<string, string>();
-  const started = new Set(reads.map(read => read.noteId));
   for (const read of reads) {
-    const domain = candidates.find(item => item.note.id === read.noteId)?.domain;
+    const domain = plan.noteDomain.get(read.noteId);
     if (domain && (lastRead.get(domain) ?? "") < read.readAt) lastRead.set(domain, read.readAt);
   }
-  const order = [...new Set(candidates.map(item => item.domain))].sort((a, b) => (lastRead.get(a) ?? "").localeCompare(lastRead.get(b) ?? "") || a.localeCompare(b));
-  for (const domain of order) {
+  const order = [...new Set(plan.candidates.map(item => item.domain))].sort((a, b) => (lastRead.get(a) ?? "").localeCompare(lastRead.get(b) ?? "") || a.localeCompare(b));
+  const item = workspace.dailyPackage?.date === today ? workspace.dailyPackage : null;
+  const readToday = reads.filter(read => tutorDate(Date.parse(read.readAt)) === today && plan.noteDomain.has(read.noteId)).at(-1);
+  const current = (item?.reading && plan.noteDomain.get(item.reading.noteId)) || (readToday && plan.noteDomain.get(readToday.noteId));
+  return current ? [current, ...order.filter(domain => domain !== current)] : order;
+}
+
+function chooseReading(workspace: Workspace, plan: ReadingPlan, now: number): Reading | null {
+  const { candidates } = plan;
+  if (!candidates.length) return null;
+  const isRead = (note: Note, key: string) => plan.read.has(sectionKey(note.id, key));
+  const started = new Set((workspace.noteReads ?? []).map(read => read.noteId));
+  for (const domain of domainOrder(workspace, plan, now)) {
     const unread = candidates.filter(item => item.domain === domain && item.sections.some(section => !isRead(item.note, section.key)));
     // A note that was started is finished before the next one begins.
-    const pick = unread.sort((a, b) => Number(started.has(b.note.id)) - Number(started.has(a.note.id)) ||
-      Number(withQuestions.has(b.note.id)) - Number(withQuestions.has(a.note.id)) ||
-      b.note.createdAt.slice(0, 10).localeCompare(a.note.createdAt.slice(0, 10)) || a.note.title.localeCompare(b.note.title, "de"))[0];
-    if (pick) return { noteId: pick.note.id, section: pick.sections.find(section => !isRead(pick.note, section.key))!.key };
+    const pick = unread.sort((a, b) => Number(started.has(b.note.id)) - Number(started.has(a.note.id)) || plan.byCurriculum(a.note, b.note))[0];
+    if (pick) return { noteId: pick.note.id, section: pick.sections.find(section => !isRead(pick.note, section.key))!.key, domain };
   }
-  const oldest = candidates.flatMap(item => item.sections.map(section => ({ noteId: item.note.id, section: section.key, at: readAt.get(JSON.stringify([item.note.id, section.key])) ?? "" })))
+  const readAt = new Map((workspace.noteReads ?? []).map(read => [sectionKey(read.noteId, read.section), read.readAt]));
+  const oldest = candidates.flatMap(item => item.sections.map(section => ({ noteId: item.note.id, section: section.key, domain: item.domain, at: readAt.get(sectionKey(item.note.id, section.key)) ?? "" })))
     .sort((a, b) => a.at.localeCompare(b.at))[0];
-  return { noteId: oldest.noteId, section: oldest.section };
+  return { noteId: oldest.noteId, section: oldest.section, domain: oldest.domain };
+}
+
+function readingProgress(workspace: Workspace, plan: ReadingPlan): DomainProgress[] {
+  const totals = new Map<string, DomainProgress>();
+  for (const { note, sections, domain } of plan.candidates) {
+    const entry = totals.get(domain) ?? { domainId: domain, title: workspace.topics.find(topic => topic.id === domain)?.title ?? "Ohne Thema", readSections: 0, totalSections: 0 };
+    entry.totalSections += sections.length;
+    entry.readSections += sections.filter(section => plan.read.has(sectionKey(note.id, section.key))).length;
+    totals.set(domain, entry);
+  }
+  return [...totals.values()].sort((a, b) => a.title.localeCompare(b.title, "de"));
 }
 
 function hasRoomForRun(workspace: Workspace) {
@@ -199,10 +249,11 @@ function chooseQuestions(workspace: Workspace, questions: QuizQuestion[], noteId
   return { subject, questionIds: direct_.slice(0, DAILY_QUESTIONS).map(question => question.id) };
 }
 
-export function proposeDailyPackage(workspace: Workspace, short: boolean, now: number): DailyProposal | null {
-  const cards = chooseCards(workspace, short, now);
+export function proposeDailyPackage(workspace: Workspace, short: boolean, now: number, plan = readingPlan(workspace)): DailyProposal | null {
+  const next = chooseReading(workspace, plan, now);
+  const cards = chooseCards(workspace, plan, next, short, now);
   const questions = linkedQuestions(workspace);
-  const reading = short ? null : chooseReading(workspace, questions);
+  const reading = short || !next ? null : { noteId: next.noteId, section: next.section };
   const quiz = short ? { subject: null, questionIds: [] as string[] } : chooseQuestions(workspace, questions, reading?.noteId ?? null);
   if (!cards.cardIds.length && !reading && !quiz.questionIds.length) return null;
   const note = reading && workspace.notes.find(item => item.id === reading.noteId);
@@ -265,9 +316,12 @@ export function dailyPackageStatus(workspace: Workspace, now = Date.now()): Dail
   else if (stage === "quiz" && openRun) action = { kind: "resume-quiz", collectionId: openRun.collectionId ?? null, runId: openRun.id };
   else if (stage === "quiz") action = { kind: "checkpoint", collectionId: null, subject: open!.subject!, questionCount: open!.questionIds.length, questionIds: open!.questionIds, dailyPackageId: open!.id };
   const note = open ? readingNote(workspace, open) : null;
+  const plan = readingPlan(workspace);
+  const proposal = open ? null : proposeDailyPackage(workspace, false, now, plan);
+  const readingNoteId = (open?.reading ?? proposal?.reading ?? item?.reading)?.noteId;
   return {
-    today, stage, package: item, action, blockedByQuiz, note,
-    proposal: open ? null : proposeDailyPackage(workspace, false, now),
+    today, stage, package: item, action, blockedByQuiz, note, proposal,
+    progress: readingProgress(workspace, plan), domainId: readingNoteId ? plan.noteDomain.get(readingNoteId) ?? null : null,
     completedToday: dayEntry(workspace, today).completed, series: dailySeries(workspace, today),
     remainingCards: open ? remainingCards(workspace, open) : 0,
     section: note ? noteSections(note).find(section => section.key === open!.reading!.section) ?? noteSections(note)[0] ?? null : null,

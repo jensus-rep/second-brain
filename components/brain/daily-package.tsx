@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { ArrowRight, BookOpen, CalendarCheck, Check, ClipboardCheck, Layers3, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import type { Workspace } from "@/lib/brain/model";
 import type { SaveWorkspace } from "@/lib/brain/use-brain";
 import type { LearningAction } from "@/lib/brain/learning-resume";
@@ -19,6 +20,19 @@ function proposalSummary(proposal: DailyProposal) {
     proposal.questionIds.length ? questions(proposal.questionIds.length) : "",
   ].filter(Boolean);
   return `${parts.join(" · ")} · ca. ${proposal.minutes} Min.`;
+}
+
+// One slim bar per field; the field of the day is highlighted.
+function FieldProgress({ status }: { status: DailyStatus }) {
+  if (!status.progress.length) return null;
+  return <ul className="daily-progress" aria-label="Gelesene Abschnitte je Fachgebiet">{status.progress.map(field => {
+    const today = field.domainId === status.domainId;
+    return <li key={field.domainId} className={today ? "is-today" : undefined} aria-current={today ? "true" : undefined}
+      title={`${field.title}: ${field.readSections} von ${field.totalSections} Abschnitten gelesen${today ? " · Fachgebiet von heute" : ""}`}>
+      <span className="daily-progress-label"><span>{field.title}</span><span>{field.readSections}/{field.totalSections}</span></span>
+      <Progress value={field.totalSections ? Math.round(field.readSections / field.totalSections * 100) : 0} aria-label={`${field.title} gelesen`} />
+    </li>;
+  })}</ul>;
 }
 
 function seriesLabel(series: number) {
@@ -45,7 +59,7 @@ export function DailyPackageCard({ workspace, saving, now, onAction, onOpen }: {
   const text = done ? seriesLabel(status.series) + (status.completedToday > 1 ? ` · heute ${status.completedToday} Pakete` : "") : open ? nextStepLabel(status) : proposalSummary(proposal!);
   return <section className={"daily-card" + (done ? " is-done" : "")} aria-label="Dein Tagespaket">
     <span className="daily-card-mark">{done ? <Check size={22} aria-hidden="true" /> : <CalendarCheck size={22} aria-hidden="true" />}</span>
-    <div className="daily-card-copy"><span className="eyebrow">HEUTE</span><h2>{title}</h2><p>{text}</p></div>
+    <div className="daily-card-copy"><span className="eyebrow">HEUTE</span><h2>{title}</h2><p>{text}</p><FieldProgress status={status} /></div>
     <div className="daily-card-actions">
       {stage === "ready" && <Button disabled={saving} onClick={() => start()}><Play size={16} />Paket starten</Button>}
       {open && <Button disabled={saving} onClick={() => status.action ? onAction(status.action) : onOpen()}><Play size={16} />Weitermachen</Button>}
