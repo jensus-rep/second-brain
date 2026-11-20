@@ -94,6 +94,7 @@ function ScriptReader({ script, workspace, save, saving, onBack, onEdit, onOpenN
   const [chapterId, setChapterId] = useState(script.readingPosition?.chapterId ?? script.chapters[0].id);
   const [whole, setWhole] = useState(false);
   const [outlineOpen, setOutlineOpen] = useState(false);
+  const [positionError, setPositionError] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pending = useRef<{ chapterId: string; offset: number } | null>(null);
@@ -103,7 +104,7 @@ function ScriptReader({ script, workspace, save, saving, onBack, onEdit, onOpenN
   const index = script.chapters.indexOf(chapter);
   const states = chapterSourceState(chapter, workspace.notes);
   const outdated = states.some(source => source.state !== "current");
-  const persist = (id: string, offset: number) => save(current => saveScriptPosition(current, script.id, id, offset), "");
+  const persist = (id: string, offset: number) => save(current => saveScriptPosition(current, script.id, id, offset), "", { queue: true });
   useEffect(() => {
     const element = scrollRef.current;
     if (!element) return;
@@ -117,25 +118,33 @@ function ScriptReader({ script, workspace, save, saving, onBack, onEdit, onOpenN
   useEffect(() => () => {
     if (timer.current) clearTimeout(timer.current);
     const target = pending.current;
-    if (target) void save(current => saveScriptPosition(current, script.id, target.chapterId, target.offset), "");
+    if (target) void save(current => saveScriptPosition(current, script.id, target.chapterId, target.offset), "", { queue: true });
   }, [save, script.id]);
   async function flush() {
     if (timer.current) clearTimeout(timer.current);
     const target = pending.current;
     if (!target) return true;
     const ok = await persist(target.chapterId, target.offset);
-    if (ok && pending.current === target) pending.current = null;
+    if (pending.current === target) {
+      if (ok) pending.current = null;
+      setPositionError(!ok);
+    }
     return ok;
   }
-  async function navigate(id: string) {
-    if (timer.current) clearTimeout(timer.current);
-    if (!await persist(id, 0)) return;
-    pending.current = null; position.current = null; setWhole(false); setChapterId(id); setOutlineOpen(false);
+  function navigate(id: string) {
+    if (!whole && id === chapter.id) { setOutlineOpen(false); return; }
+    // Reading stays responsive while revision-bound position writes run in order.
+    pending.current = { chapterId: id, offset: 0 };
+    position.current = null;
+    restoring.current = true;
+    setWhole(false); setChapterId(id); setOutlineOpen(false);
+    void flush();
   }
   return <article className="script-reader" aria-label={script.title}>
     <div className="script-actions"><Button variant="ghost" disabled={saving} onClick={async () => { if (await flush()) onBack(); }}><ArrowLeft size={16} />Alle Skripte</Button><span>{scriptStatusLabels[script.status]}</span><Button variant="outline" disabled={saving} onClick={async () => { if (await flush()) onEdit(); }}><Pencil size={15} />Skript bearbeiten</Button><Button variant="outline" onClick={() => exportMarkdown(script, workspace)}><Download size={15} />Markdown exportieren</Button></div>
     <header className="script-heading"><span className="eyebrow">SKRIPT · {script.chapters.length} KAPITEL</span><h2>{script.title}</h2><p>{script.summary}</p>{script.topicId && <small>{getTopicPathLabel(workspace.topics, script.topicId)}</small>}</header>
-    <div className="script-reading-layout"><aside className="script-outline"><h3>Inhalt</h3><Button className="script-outline-toggle" variant="outline" aria-expanded={outlineOpen} aria-controls={"script-outline-" + script.id} onClick={() => setOutlineOpen(!outlineOpen)}><BookOpen size={16} />Inhaltsübersicht<span>{index + 1} / {script.chapters.length}</span></Button><div id={"script-outline-" + script.id} className={"script-outline-content" + (outlineOpen ? " is-open" : "")}><ol>{script.chapters.map((item, i) => <li key={item.id}><button disabled={saving} aria-current={!whole && item.id === chapter.id ? "step" : undefined} onClick={() => void navigate(item.id)}><span>{i + 1}.</span><span className="script-outline-title">{item.title}{chapterSourceState(item, workspace.notes).some(source => source.state !== "current") && <small>Quelle prüfen</small>}</span></button></li>)}</ol>
+    {positionError && <p role="status">Die Leseposition konnte nicht gespeichert werden. Du kannst weiterlesen. <Button variant="link" disabled={saving} onClick={() => void flush()}>Leseposition erneut speichern</Button></p>}
+    <div className="script-reading-layout"><aside className="script-outline"><h3>Inhalt</h3><Button className="script-outline-toggle" variant="outline" aria-expanded={outlineOpen} aria-controls={"script-outline-" + script.id} onClick={() => setOutlineOpen(!outlineOpen)}><BookOpen size={16} />Inhaltsübersicht<span>{index + 1} / {script.chapters.length}</span></Button><div id={"script-outline-" + script.id} className={"script-outline-content" + (outlineOpen ? " is-open" : "")}><ol>{script.chapters.map((item, i) => <li key={item.id}><button aria-current={!whole && item.id === chapter.id ? "step" : undefined} onClick={() => void navigate(item.id)}><span>{i + 1}.</span><span className="script-outline-title">{item.title}{chapterSourceState(item, workspace.notes).some(source => source.state !== "current") && <small>Quelle prüfen</small>}</span></button></li>)}</ol>
       <Button variant="outline" aria-pressed={whole} disabled={saving} onClick={async () => { if (await flush()) setWhole(!whole); }}>{whole ? "Kapitelansicht" : "Gesamtes Skript lesen"}</Button><p className="small-note">Die Leseposition in der Kapitelansicht wird automatisch gespeichert.</p></div></aside>
       <div className="script-scroll" ref={scrollRef} tabIndex={0} aria-label="Skript lesen" onScroll={() => {
         const element = scrollRef.current;
@@ -144,7 +153,7 @@ function ScriptReader({ script, workspace, save, saving, onBack, onEdit, onOpenN
         const target = { chapterId: chapter.id, offset };
         pending.current = target; position.current = { ...target, updatedAt: new Date().toISOString() };
         if (timer.current) clearTimeout(timer.current);
-        timer.current = setTimeout(async () => { if (await persist(target.chapterId, target.offset) && pending.current === target) pending.current = null; }, 900);
+        timer.current = setTimeout(() => { void flush(); }, 900);
       }}>
         {(whole || index === 0) && script.introduction && <section className="script-introduction"><Markdown content={script.introduction} /></section>}
         {whole ? script.chapters.map((item, i) => <section className="script-full-chapter" key={item.id}><h3>{i + 1}. {item.title}</h3><Markdown content={item.content} />{chapterSourceState(item, workspace.notes).some(source => source.state !== "current") && <p className="script-source-warning">Quellenstand prüfen: In diesem Kapitel gibt es geänderte, archivierte oder fehlende Fachnotizen.</p>}</section>) : <section><span className="eyebrow">KAPITEL {index + 1} VON {script.chapters.length}</span><h3 className="script-chapter-title">{chapter.title}</h3>
@@ -157,7 +166,7 @@ function ScriptReader({ script, workspace, save, saving, onBack, onEdit, onOpenN
           }, "Kapitel als geprüft markiert")}><Check size={14} />Nach Prüfung als aktuell markieren</Button>}</div>}
           <Markdown content={chapter.content || "Dieses Kapitel hat noch keinen Text."} />
           {!!states.length && <div className="script-sources"><h4>Fachnotizen zu diesem Kapitel</h4>{states.map(source => <div key={source.noteId}>{source.note ? <Button variant="link" onClick={async () => { if (await flush()) onOpenNote(source.noteId); }}>{source.note.title}</Button> : <span>Fehlende Fachnotiz: {source.noteId}</span>}<small>{({ current: "Stand übernommen", changed: "Geändert – prüfen", archived: "Archiviert – prüfen", missing: "Nicht mehr vorhanden" })[source.state]}</small></div>)}</div>}
-          <div className="script-chapter-navigation"><Button variant="outline" disabled={saving || index === 0} onClick={() => void navigate(script.chapters[index - 1].id)}><ArrowLeft size={15} />Vorheriges Kapitel</Button><span>{index + 1} / {script.chapters.length}</span><Button disabled={saving || index === script.chapters.length - 1} onClick={() => void navigate(script.chapters[index + 1].id)}>Nächstes Kapitel<ArrowRight size={15} /></Button></div>
+          <div className="script-chapter-navigation"><Button variant="outline" disabled={index === 0} onClick={() => void navigate(script.chapters[index - 1].id)}><ArrowLeft size={15} />Vorheriges Kapitel</Button><span>{index + 1} / {script.chapters.length}</span><Button disabled={index === script.chapters.length - 1} onClick={() => void navigate(script.chapters[index + 1].id)}>Nächstes Kapitel<ArrowRight size={15} /></Button></div>
         </section>}
       </div>
     </div>
